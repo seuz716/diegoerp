@@ -1,8 +1,7 @@
 /**
  * LAYER 4: DAO — DATA ACCESS OBJECT
  * Resuelve Problemas: 
- * - #2: Logica y logs movidos a Domain.
- * - #6: getCartera delega cálculo a Domain.
+ * - #2: Escrito optimizado limitando getDataRange (Cuotas Scripting).
  */
 
 const DAO = {
@@ -35,22 +34,24 @@ const DAO = {
       }
   },
 
+  /**
+   * ACTUALIZACIÓN OPTIMIZADA - No lee Array entero, evita Timeout.
+   */
   updateCarteraBatch(cambios) {
     if (!cambios || cambios.length === 0) return true;
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
 
-    const fullData = sheet.getDataRange().getValues();
-
+    // Solo tocamos las filas específicas, evitando exceder la cuota O(1) de Google por fila.
     for (const cambio of cambios) {
-      if (cambio.rowIndex > 0 && cambio.rowIndex <= fullData.length) {
-        fullData[cambio.rowIndex - 1][COL.saldo] = cambio.saldo;
-        fullData[cambio.rowIndex - 1][COL.estado] = cambio.estado;
+      if (cambio.rowIndex > 0) {
+         // Índice +1 para filas en GSheets (las columnas son 0-based en array interno pero 1-based en range)
+         sheet.getRange(cambio.rowIndex, COL.saldo + 1, 1, 1).setValue(cambio.saldo);
+         sheet.getRange(cambio.rowIndex, COL.estado + 1, 1, 1).setValue(cambio.estado);
       }
     }
 
-    sheet.getRange(1, 1, fullData.length, fullData[0].length).setValues(fullData);
     return true;
   },
 

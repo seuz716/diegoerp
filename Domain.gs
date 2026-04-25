@@ -1,29 +1,27 @@
 /**
  * LAYER 5: DOMAIN LOGIC — TRANSACCIONES SIMULADAS Y NEGOCIO
- * Resuelve Problemas:
- * - #5: PATRÓN DAO - Métodos asíncronos mal etiquetados.
- * - #8: DOMAIN utiliza DAO en lugar de acceder a CACHE directamente.
- * - #2 y #6: Absorbe orquestación de locks, logs y lógica de estados comerciales.
+ * Resuelve Problemas #3, #4 y #5 
  */
 
 const DOMAIN = {
   saveTercero(tercero) {
     let lockAcquired = null;
     try {
-      lockAcquired = LOCK_MANAGER.acquireLock();
-
       if (!tercero || typeof tercero !== 'object') return _error('Datos inválidos.');
-
       const id = _sanitizeId(tercero.id).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
       if (!id) return _error("ID de tercero inválido.");
 
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(id); // Lock Granular
+
       const nombre = String(tercero.nombre || "S.N.").trim().slice(0, 100);
-      const tipo = ["CLIENTE", "PROVEEDOR"].includes(String(tercero.tipo || "").toUpperCase())
-        ? String(tercero.tipo).toUpperCase()
-        : "CLIENTE";
+      const tipo = ["CLIENTE", "PROVEEDOR"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
+      // 1. Invalidación preventiva: para minimizar gaps de cache.
+      CACHE.invalidateTerceros();
+
+      // 2. Operaciones Database
       const resultado = DAO.saveTerceroImpl(tercero, id, nombre, tipo, limite, activo);
 
       if (resultado.isUpdate) {
@@ -32,8 +30,8 @@ const DOMAIN = {
         LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS");
       }
 
+      // 3. Flush final garantizado 
       SpreadsheetApp.flush();
-      CACHE.invalidateTerceros();
       return { success: true, id };
 
     } catch (e) {
@@ -50,6 +48,13 @@ const DOMAIN = {
     const baseCartera = DAO.getCarteraBase();
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
 
+    // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
+    CACHE.refresh(); 
+    const tercerosMap = new Map();
+    if(CACHE.terceros) {
+        CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
+    }
+
     return baseCartera
       .map(c => {
         let estado = c.estado;
@@ -58,7 +63,8 @@ const DOMAIN = {
           if (fv < hoy) estado = CARTERA_CONFIG.ESTADOS.VENCIDA;
         }
 
-        const tercero = DAO.getTerceroById(c.id_tercero);
+        // Acceso O(1) rápido
+        const tercero = tercerosMap.get(c.id_tercero) || null;
         return {
           ...c,
           estado,
@@ -76,13 +82,14 @@ const DOMAIN = {
     const txPlan = { movimientos: [], cambios: [], logEntry: null };
 
     try {
-      lockAcquired = LOCK_MANAGER.acquireLock();
+      const idTerceroLimpio = _sanitizeId(idTercero);
+      if (!idTerceroLimpio) return _error('ID tercero inválido.');
+
+      // Lock Selectivo únicamente de ESE tercero.
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(idTerceroLimpio);
 
       const valor = _parseMoneda(valorAbono, NaN);
       if (isNaN(valor) || valor <= 0) return _error('Valor inválido (mínimo 1 centavo).');
-
-      const idTerceroLimpio = _sanitizeId(idTercero);
-      if (!idTerceroLimpio) return _error('ID tercero inválido.');
 
       const tercero = DAO.getTerceroById(idTerceroLimpio);
       if (!tercero) {
@@ -119,37 +126,26 @@ const DOMAIN = {
         const nuevoEstado = nuevoSaldo <= 0 ? CARTERA_CONFIG.ESTADOS.CANCELADA : CARTERA_CONFIG.ESTADOS.PARCIAL;
 
         txPlan.movimientos.push({
-          id: idPrefijo + "_" + (movIdx++),
-          fecha: fechaMov,
-          id_cartera: p.id,
-          id_tercero: idTerceroLimpio,
-          valor: aplicado,
-          tipo_mov: (aplicado >= p.saldo) ? "CANCELACION" : "ABONO",
-          referencia: refLimpia,
+          id: idPrefijo + "_" + (movIdx++), fecha: fechaMov, id_cartera: p.id,
+          id_tercero: idTerceroLimpio, valor: aplicado,
+          tipo_mov: (aplicado >= p.saldo) ? "CANCELACION" : "ABONO", referencia: refLimpia,
         });
 
         txPlan.cambios.push({ rowIndex: p.rowIndex, saldo: nuevoSaldo, estado: nuevoEstado });
         restante -= aplicado;
       }
 
-      if (txPlan.movimientos.length !== txPlan.cambios.length) {
-        throw new Error("VALIDACIÓN INTERNA: inconsistencia movimientos vs cambios");
-      }
+      // Invalidación DE CACHÉ ANTES de iniciar escritura mitigando la ventana de lectura errónea
+      CACHE.invalidateCartera(); 
 
       if (txPlan.movimientos.length > 0) {
         for (const mov of txPlan.movimientos) { DAO.createMovimiento(mov); }
       }
-
       DAO.updateCarteraBatch(txPlan.cambios);
+      LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio, { anterior_saldo: totalDeuda }, { nuevo_saldo: totalDeuda - valor, movimientos: txPlan.movimientos.length }, "SUCCESS");
 
-      LOG_ENGINE.logEvent(
-        "ABONO_PROCESADO", "CARTERA", idTerceroLimpio,
-        { anterior_saldo: totalDeuda },
-        { nuevo_saldo: totalDeuda - valor, movimientos: txPlan.movimientos.length }, "SUCCESS"
-      );
-
+      // Flush final
       SpreadsheetApp.flush();
-      CACHE.invalidateCartera(); 
 
       return { success: true, aplicado: valor - restante, restante: Math.max(0, restante), movimientos: txPlan.movimientos.length };
 
@@ -164,31 +160,41 @@ const DOMAIN = {
   crearCarteraAtomic(idTercero, origenId, total, tipo, diasCredito) {
     const idTerceroLimpio = _sanitizeId(idTercero);
     const totalLimpio = _parseMoneda(total, NaN);
+    let lockAcquired = null;
 
-    if (!idTerceroLimpio) throw new Error("ID tercero inválido.");
-    if (isNaN(totalLimpio) || totalLimpio <= 0) throw new Error("Monto inválido.");
+    try {
+      if (!idTerceroLimpio) throw new Error("ID tercero inválido.");
+      if (isNaN(totalLimpio) || totalLimpio <= 0) throw new Error("Monto inválido.");
 
-    const tercero = DAO.getTerceroById(idTerceroLimpio);
-    if (!tercero) { throw new Error(`Tercero ${idTerceroLimpio} no existe.`); }
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(idTerceroLimpio);
 
-    if (tipo === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
-      const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
-      if ((saldoActual + totalLimpio) > tercero.limite_credito) {
-        throw new Error(`Límite de crédito superado. Disponible: $${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+      const tercero = DAO.getTerceroById(idTerceroLimpio);
+      if (!tercero) { throw new Error(`Tercero ${idTerceroLimpio} no existe.`); }
+
+      if (tipo === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
+        const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
+        if ((saldoActual + totalLimpio) > tercero.limite_credito) {
+          throw new Error(`Límite de crédito superado. Disponible: $${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+        }
       }
+
+      CACHE.invalidateCartera(); // Pre-invalidación
+
+      const idCartera = (tipo === CARTERA_CONFIG.TIPOS.CXC ? "CXC" : "CXP") + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+
+      const record = {
+        id: idCartera, fecha: new Date(), id_tercero: idTerceroLimpio, origen_id: String(origenId).trim(),
+        total: totalLimpio, saldo: totalLimpio, tipo: tipo, estado: CARTERA_CONFIG.ESTADOS.ABIERTA,
+        fecha_vencimiento: (() => { const d = new Date(); d.setDate(d.getDate() + (parseInt(diasCredito) || 30)); return d; })(),
+      };
+
+      DAO.createCartera(record);
+      LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS");
+      
+      SpreadsheetApp.flush();
+      return idCartera;
+    } finally {
+      if (lockAcquired) lockAcquired.releaseLock();
     }
-
-    const idCartera = (tipo === CARTERA_CONFIG.TIPOS.CXC ? "CXC" : "CXP") + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-
-    const record = {
-      id: idCartera, fecha: new Date(), id_tercero: idTerceroLimpio, origen_id: String(origenId).trim(),
-      total: totalLimpio, saldo: totalLimpio, tipo: tipo, estado: CARTERA_CONFIG.ESTADOS.ABIERTA,
-      fecha_vencimiento: (() => { const d = new Date(); d.setDate(d.getDate() + (parseInt(diasCredito) || 30)); return d; })(),
-    };
-
-    DAO.createCartera(record);
-    LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS");
-    CACHE.invalidateCartera();
-    return idCartera;
   },
 };
