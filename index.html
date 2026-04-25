@@ -33,7 +33,12 @@
     html { scroll-behavior: smooth; }
     body {
       background-color: var(--bg-dark);
-      background-image: radial-gradient(at 0% 0%, rgba(163, 177, 198, 0.05) 0px, transparent 50%);
+      background-image:
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"),
+        radial-gradient(at 0% 0%, rgba(163, 177, 198, 0.07) 0px, transparent 55%),
+        radial-gradient(at 100% 100%, rgba(100, 116, 139, 0.05) 0px, transparent 50%);
+      background-blend-mode: overlay, normal, normal;
+      background-size: 180px, auto, auto;
       color: var(--text-main);
       font-family: 'Outfit', sans-serif;
       min-height: 100vh;
@@ -188,10 +193,10 @@
       display: flex; align-items: center; justify-content: center; gap: 0.5rem;
       font-size: 1rem; user-select: none; min-height: 48px;
     }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
-    .btn:active { transform: translateY(0); }
+    .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
     .btn:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; transform: none; box-shadow: none; }
     
     .btn-primary { background: var(--accent-gradient); color: #000; }
     .btn-primary:hover { box-shadow: 0 8px 16px rgba(163, 177, 198, 0.3); }
@@ -218,6 +223,34 @@
     .view { display: none; animation: fadeIn 0.3s ease; }
     .view.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Staggered reveal animation */
+    .reveal {
+      opacity: 0;
+      transform: translateY(16px);
+      animation: revealUp 0.45s ease forwards;
+      animation-delay: calc(var(--order, 0) * 80ms);
+    }
+    @keyframes revealUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 1rem; padding: 3rem 1rem;
+      color: var(--text-muted); text-align: center;
+    }
+    .empty-state-icon {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: rgba(163,177,198,0.08); display: flex;
+      align-items: center; justify-content: center;
+      border: 1px solid var(--glass-border);
+    }
+    .empty-state-icon svg { width: 28px; height: 28px; stroke: var(--text-muted); }
+    .empty-state h4 { font-size: 1rem; font-weight: 600; color: var(--text-main); margin: 0; }
+    .empty-state p { font-size: 0.85rem; margin: 0; max-width: 280px; }
+    .empty-state .btn { margin-top: 0.5rem; width: auto; }
 
     /* Mobile Navigation */
     #bottom-nav { 
@@ -254,6 +287,7 @@
     /* Accesibilidad */
     @media (prefers-reduced-motion: reduce) {
       * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      .reveal { animation: none; opacity: 1; transform: none; }
     }
     
     .sr-only {
@@ -292,7 +326,7 @@
       <section id="view-dashboard" class="view active">
         <h2>Resumen Financiero</h2>
         <div class="stats-grid">
-          <div class="card">
+          <div class="card reveal" style="--order:0">
             <div style="color: var(--text-muted); font-size: 0.8rem;">Por Cobrar (CxC)</div>
             <div class="stat-value" id="dash-cxc" aria-live="polite">$0</div>
             <div style="font-size: 0.85rem;">
@@ -300,7 +334,7 @@
               <span id="dash-cxc-venc" style="font-weight: 600;">$0</span>
             </div>
           </div>
-          <div class="card">
+          <div class="card reveal" style="--order:1">
             <div style="color: var(--text-muted); font-size: 0.8rem;">Por Pagar (CxP)</div>
             <div class="stat-value" id="dash-cxp" aria-live="polite">$0</div>
             <div style="font-size: 0.85rem;">
@@ -309,7 +343,7 @@
             </div>
           </div>
         </div>
-        <div class="card">
+        <div class="card reveal" style="--order:2">
           <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar cartera con inteligencia artificial">
             <i data-lucide="sparkles"></i> Analizar Cartera con IA
           </button>
@@ -433,7 +467,7 @@
 
   <!-- MOBILE BOTTOM NAV -->
   <nav id="bottom-nav" role="navigation" aria-label="Navegación móvil">
-    <div class="mobile-nav-btn active" role="button" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')" aria-label="Dashboard">
+    <div class="mobile-nav-btn active" role="button" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')" aria-label="Dashboard" aria-current="page">
       <i data-lucide="home"></i>
     </div>
     <div class="mobile-nav-btn" role="button" tabindex="0" onclick="switchView(event, 'terceros')" onkeypress="handleKeyboardNav(event, 'terceros')" aria-label="Terceros">
@@ -513,19 +547,20 @@
 
   <script>
     // ═════════════════════════════════════════════════════════════════════════════════
-    // MICROERP FRONTEND v3.0 — REFACTORIZADO SENIOR LEVEL
+    // MICROERP FRONTEND v3.1 — REFACTORIZADO SENIOR LEVEL
     // Mejoras: Manejo de errores global, validación robusta, UX mejorado, Responsividad
+    // Fix: lucide.createIcons() movido a load event; focus trap; alert() eliminado;
+    //       empty state diseñado; blur validation; noise bg; stagger; aria-current; toast cleanup
     // ═════════════════════════════════════════════════════════════════════════════════
 
     // ─────────────────────────────────────────────────────────────────────────────────
     // 1. ESTADO GLOBAL Y CONFIGURACIÓN
     // ─────────────────────────────────────────────────────────────────────────────────
-    lucide.createIcons();
-    
     const AppState = {
       isLoading: false,
       tercerosCache: [],
       toastTimeout: 5000,
+      _focusTrapCleanup: null,  // Fix #2: registro del cleanup de focus trap
     };
 
     // ─────────────────────────────────────────────────────────────────────────────────
@@ -550,15 +585,22 @@
         info: '<i data-lucide="info"></i>',
       };
 
+      // Botón de cierre manual
       toast.innerHTML = `
         <div class="toast-icon">${icons[type] || icons.info}</div>
         <div class="toast-message">${escapeHTML(message)}</div>
+        <button class="toast-close" aria-label="Cerrar notificación" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 0 0 0.5rem;font-size:1.1rem;">✕</button>
       `;
       
       container.appendChild(toast);
-      lucide.createIcons();
-      
-      setTimeout(() => toast.remove(), duration);
+      lucide.createIcons({ nodes: [toast] });
+
+      // Fix #10: guardar timeout ID para limpiar si se cierra manualmente
+      const tid = setTimeout(() => toast.remove(), duration);
+      toast.querySelector('.toast-close').addEventListener('click', () => {
+        clearTimeout(tid);
+        toast.remove();
+      });
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────
@@ -734,10 +776,14 @@
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.getElementById('view-' + viewId).classList.add('active');
 
-      // Actualizar navegación
-      document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(b => b.classList.remove('active'));
+      // Actualizar navegación + Fix #9: aria-current para screen readers
+      document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(b => {
+        b.classList.remove('active');
+        b.removeAttribute('aria-current');
+      });
       if (e && e.currentTarget) {
         e.currentTarget.classList.add('active');
+        e.currentTarget.setAttribute('aria-current', 'page');
       }
 
       // Cargar datos según vista
@@ -767,18 +813,65 @@
       }
     }
 
+    // Fix #2: Focus trap para accesibilidad en modales
+    function trapFocus(modal) {
+      const focusable = modal.querySelectorAll(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable.length) return () => {};
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      function handler(e) {
+        if (e.key !== 'Tab') return;
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+
+      function escHandler(e) {
+        if (e.key === 'Escape') toggleModal(modal.id);
+      }
+
+      modal.addEventListener('keydown', handler);
+      modal.addEventListener('keydown', escHandler);
+      // Auto-focus primer elemento
+      setTimeout(() => first.focus(), 50);
+
+      return function cleanup() {
+        modal.removeEventListener('keydown', handler);
+        modal.removeEventListener('keydown', escHandler);
+      };
+    }
+
     function toggleModal(id) {
       const el = document.getElementById(id);
-      if (el) {
-        el.classList.toggle('active');
-        el.setAttribute('aria-hidden', !el.classList.contains('active'));
-        
+      if (!el) return;
+
+      const isOpening = !el.classList.contains('active');
+      el.classList.toggle('active');
+      el.setAttribute('aria-hidden', String(!el.classList.contains('active')));
+
+      if (isOpening) {
+        // Guardar el elemento que tenía foco antes de abrir
+        el._triggerElement = document.activeElement;
+        // Iniciar focus trap
+        if (AppState._focusTrapCleanup) AppState._focusTrapCleanup();
+        AppState._focusTrapCleanup = trapFocus(el);
+      } else {
         // Limpiar formularios al cerrar
-        if (!el.classList.contains('active')) {
-          const form = el.querySelector('form');
-          if (form) form.reset();
-          el.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+        const form = el.querySelector('form');
+        if (form) form.reset();
+        el.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+        // Limpiar focus trap y retornar foco
+        if (AppState._focusTrapCleanup) {
+          AppState._focusTrapCleanup();
+          AppState._focusTrapCleanup = null;
         }
+        if (el._triggerElement) el._triggerElement.focus();
       }
     }
 
@@ -839,7 +932,24 @@
             const tbody = document.getElementById('tabla-terceros');
             
             if (AppState.tercerosCache.length === 0) {
-              tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">No hay terceros registrados</td></tr>';
+              // Fix #6: Empty state diseñado con ilustración + acción primaria
+              tbody.innerHTML = `
+                <tr>
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <div class="empty-state-icon">
+                        <i data-lucide="users"></i>
+                      </div>
+                      <h4>Sin terceros registrados</h4>
+                      <p>Aún no hay clientes o proveedores. Crea el primero para comenzar.</p>
+                      <button class="btn btn-primary btn-small" onclick="toggleModal('modal-tercero')" aria-label="Crear primer tercero">
+                        <i data-lucide="user-plus"></i> Crear primero
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+              lucide.createIcons({ nodes: [tbody] });
               return;
             }
 
@@ -852,7 +962,7 @@
                   <td>${escapeHTML(t.tipo || '')}</td>
                   <td>${formatCur(t.limite_credito || 0)}</td>
                   <td>
-                    <button class="btn btn-small btn-outline" onclick="alert('Función en desarrollo')" aria-label="Opciones">⋯</button>
+                    <button class="btn btn-small btn-outline" onclick="showToast('Opciones de edición próximamente disponibles', 'info', 3000)" aria-label="Opciones de tercero">⋯</button>
                   </td>
                 </tr>
               `;
@@ -1117,7 +1227,10 @@
     // ─────────────────────────────────────────────────────────────────────────────────
 
     window.addEventListener('load', () => {
-      console.log('✅ MicroERP Frontend v3.0 Iniciado');
+      console.log('✅ MicroERP Frontend v3.1 Iniciado');
+
+      // Fix #3: lucide.createIcons() DENTRO del load event, cuando el DOM está listo
+      lucide.createIcons();
       
       // Precarga de datos
       loadSelectTerceros();
@@ -1132,11 +1245,21 @@
         });
       });
 
-      // Validación en tiempo real
+      // Fix #5: Validación en blur (Design System) + en change
       document.querySelectorAll('input[type="number"]').forEach(input => {
-        input.addEventListener('change', () => {
-          const hasError = !isValidNumber(input.value);
+        const validate = () => {
+          // El campo límite de crédito puede ser 0, solo validar si tiene required
+          const hasError = input.hasAttribute('required') ? !isValidNumber(input.value) : false;
           setFieldError(input.id, hasError);
+        };
+        input.addEventListener('change', validate);
+        input.addEventListener('blur', validate);
+      });
+
+      // Blur validation para campos de texto requeridos
+      document.querySelectorAll('input[type="text"][required], input[type="email"][required]').forEach(input => {
+        input.addEventListener('blur', () => {
+          setFieldError(input.id, !isNotEmpty(input.value));
         });
       });
 
