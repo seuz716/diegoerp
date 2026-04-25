@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>MicroERP - Cartera Pro</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --primary: #a3b1c6;
+      --primary-dark: #64748b;
+      --secondary: #e2e8f0;
+      --bg-dark: #0d1117;
+      --bg-card: rgba(28, 33, 40, 0.85);
+      --glass-border: rgba(163, 177, 198, 0.2);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-gradient: linear-gradient(135deg, #e2e8f0 0%, #64748b 100%);
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --info: #3b82f6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: radial-gradient(at 0% 0%, rgba(163, 177, 198, 0.05) 0px, transparent 50%);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* LAYOUT */
+    #sidebar {
+      width: 260px; height: 100vh; background: var(--bg-card); backdrop-filter: blur(16px);
+      border-right: 1px solid var(--glass-border); padding: 2rem 1.5rem; position: sticky; top: 0;
+      display: flex; flex-direction: column; z-index: 100;
+    }
+
+    #app-shell { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; }
+    #main-content { padding: 2rem; max-width: 1200px; margin: 0 auto; width: 100%; flex: 1; }
+
+    /* BLOCKING OVERLAY (loader mejorado) */
+    #ui-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);
+      display: none; z-index: 1999; align-items: center; justify-content: center;
+    }
+    #ui-overlay.active { display: flex; }
+    #ui-overlay > div {
+      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 16px;
+      padding: 2rem; text-align: center;
+    }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--glass-border); border-top-color: var(--primary);
+      border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* TOAST NOTIFICATIONS */
+    #toast-container {
+      position: fixed; bottom: 2rem; right: 2rem; z-index: 2000; display: flex; flex-direction: column; gap: 1rem;
+    }
+    .toast {
+      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 12px;
+      padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; animation: slideIn 0.3s ease;
+      min-width: 300px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+    .toast.info { border-left: 4px solid var(--info); }
+    @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* CONFIRM DIALOG */
+    #confirm-dialog {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: none; align-items: center; justify-content: center;
+      z-index: 2001;
+    }
+    #confirm-dialog.active { display: flex; }
+    #confirm-dialog .card {
+      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 16px;
+      padding: 2rem; min-width: 400px;
+    }
+    #confirm-dialog h3 { margin-bottom: 1rem; }
+    #confirm-dialog .buttons { display: flex; gap: 1rem; margin-top: 1.5rem; }
+    #confirm-dialog .buttons button { flex: 1; }
+
+    /* UI ELEMENTS */
+    .brand { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 3rem; font-size: 1.5rem; font-weight: 800;
+      background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    .nav-btn { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 12px; color: var(--text-muted);
+      cursor: pointer; transition: 0.3s; border: 1px solid transparent; user-select: none; }
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+    .nav-btn.active { background: rgba(163, 177, 198, 0.1); border-color: rgba(163, 177, 198, 0.3); color: var(--secondary); }
+
+    .card { background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px;
+      padding: 1.5rem; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); margin-bottom: 1.5rem; }
+    
+    /* STATS */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .stat-value { font-size: 1.8rem; font-weight: 800; margin: 0.5rem 0; }
+
+    /* TABLES */
+    .table-container { overflow-x: auto; border-radius: 12px; border: 1px solid var(--glass-border); }
+    table { width: 100%; border-collapse: collapse; min-width: 600px; }
+    th { background: rgba(13, 17, 23, 0.8); padding: 1rem; color: var(--text-muted); font-size: 0.8rem;
+      text-transform: uppercase; text-align: left; }
+    td { padding: 1rem; border-top: 1px solid var(--glass-border); }
+
+    /* BADGES */
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+    .badge.abierta { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .badge.vencida { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge.cancelada { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .badge.parcial { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+    /* FORMS */
+    input, select { width: 100%; background: rgba(13, 17, 23, 0.5); border: 1px solid var(--glass-border); border-radius: 8px;
+      padding: 0.8rem; color: #fff; margin-top: 0.4rem; outline: none; transition: 0.2s; }
+    input:focus, select:focus { border-color: var(--primary); background: rgba(13, 17, 23, 0.8); }
+    input.error { border-color: var(--danger); }
+
+    .btn { width: 100%; padding: 1rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer;
+      transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 0.5rem; user-select: none; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent-gradient); color: #000; }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(163, 177, 198, 0.3); }
+    .btn-outline { background: transparent; border: 1px solid var(--glass-border); color: #fff; }
+    .btn-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+
+    /* MODAL */
+    #modal-tercero { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); z-index: 1000;
+      align-items: center; justify-content: center; padding: 1rem; }
+    #modal-tercero.active { display: flex; }
+    #modal-tercero .card { width: 100%; max-width: 400px; margin: 0; }
+
+    /* VIEWS */
+    .view { display: none; animation: fadeIn 0.3s ease; }
+    .view.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* MOBILE */
+    #bottom-nav { display: none; position: fixed; bottom: 1rem; left: 1rem; right: 1rem; height: 64px;
+      background: rgba(28, 33, 40, 0.95); border-radius: 20px; border: 1px solid var(--glass-border); z-index: 1000;
+      justify-content: space-around; align-items: center; }
+    @media (max-width: 768px) {
+      #sidebar { display: none; }
+      #bottom-nav { display: flex; }
+      .stats-grid { grid-template-columns: 1fr; }
+      #toast-container { bottom: 80px; right: 1rem; }
+    }
+
+    /* ACCESSIBILITY */
+    button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+  </style>
+</head>
+<body>
+
+  <!-- BLOCKING OVERLAY (Loader profesional) -->
+  <div id="ui-overlay">
+    <div>
+      <div class="spinner"></div>
+      <p id="overlay-text">Procesando...</p>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="toast-container"></div>
+
+  <!-- CONFIRM DIALOG -->
+  <div id="confirm-dialog">
+    <div class="card">
+      <h3 id="confirm-title">¿Confirmar?</h3>
+      <p id="confirm-message">Esta acción no se puede deshacer.</p>
+      <div class="buttons">
+        <button class="btn btn-outline" id="confirm-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="confirm-ok">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <aside id="sidebar">
+    <div class="brand"><i data-lucide="layers"></i> MicroERP</div>
+    <nav id="sidebar-nav"></nav>
+  </aside>
+
+  <main id="app-shell">
+    <div id="main-content">
+      
+      <!-- DASHBOARD -->
+      <section id="view-dashboard" class="view active">
+        <h2 style="margin-bottom: 1.5rem;">Resumen Financiero</h2>
+        <div class="stats-grid">
+          <div class="card">
+            <div style="color: var(--text-muted); font-size: 0.8rem;">POR COBRAR (CXC)</div>
+            <div class="stat-value" id="dash-cxc">$0</div>
+            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxc-venc" style="font-weight: 600;">$0</span></div>
+          </div>
+          <div class="card">
+            <div style="color: var(--text-muted); font-size: 0.8rem;">POR PAGAR (CXP)</div>
+            <div class="stat-value" id="dash-cxp">$0</div>
+            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxp-venc" style="font-weight: 600;">$0</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <button class="btn btn-primary" data-action="analyze-ia">
+            <i data-lucide="sparkles"></i> Analizar Cartera con IA
+          </button>
+          <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.6;"></div>
+        </div>
+      </section>
+
+      <!-- TERCEROS -->
+      <section id="view-terceros" class="view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <h2>Terceros</h2>
+          <button class="btn btn-primary" style="width:auto;" data-action="new-tercero">
+            <i data-lucide="user-plus"></i> Nuevo
+          </button>
+        </div>
+        <div class="card table-container">
+          <table>
+            <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite</th><th>Acciones</th></tr></thead>
+            <tbody id="tabla-terceros"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- CARTERA -->
+      <section id="view-cartera" class="view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <h2>Movimientos</h2>
+          <select id="filtro-cartera" style="width:auto; margin:0;">
+            <option value="">Todos</option>
+            <option value="CxC">CxC</option>
+            <option value="CxP">CxP</option>
+          </select>
+        </div>
+        <div class="card table-container">
+          <table>
+            <thead><tr><th>Fecha</th><th>Cliente/Proveedor</th><th>Saldo</th><th>Estado</th><th>Vencimiento</th></tr></thead>
+            <tbody id="tabla-cartera"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ABONOS -->
+      <section id="view-abonos" class="view">
+        <div class="card" style="max-width: 500px; margin: 0 auto;">
+          <h3 style="margin-bottom:1.5rem;">Registrar Pago (FIFO)</h3>
+          <form id="form-abono">
+            <div style="margin-bottom:1rem;">
+              <label for="abono-tercero">Cliente</label>
+              <select id="abono-tercero" required></select>
+              <small id="error-tercero" style="color: var(--danger); display: none;"></small>
+            </div>
+            <div style="margin-bottom:1rem;">
+              <label for="abono-tipo">Tipo</label>
+              <select id="abono-tipo">
+                <option value="CxC">Cobro a Cliente</option>
+                <option value="CxP">Pago a Proveedor</option>
+              </select>
+            </div>
+            <div style="margin-bottom:1rem;">
+              <label for="abono-valor">Monto</label>
+              <input type="number" id="abono-valor" min="1" step="0.01" required/>
+              <small id="error-valor" style="color: var(--danger); display: none;"></small>
+            </div>
+            <div style="margin-bottom:1.5rem;">
+              <label for="abono-ref">Referencia (Ej: Recibo 001)</label>
+              <input type="text" id="abono-ref" maxlength="100" required/>
+            </div>
+            <button type="submit" class="btn btn-primary" id="btn-submit-abono">Ejecutar Movimiento</button>
+          </form>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- BOTTOM NAV (Mobile) -->
+  <nav id="bottom-nav"></nav>
+
+  <!-- MODAL: Nuevo Tercero -->
+  <div id="modal-tercero">
+    <div class="card">
+      <h3>Nuevo Tercero</h3>
+      <form id="form-tercero" style="margin-top:1rem;">
+        <input type="text" id="t-id" placeholder="ID / NIT" required maxlength="50"/>
+        <input type="text" id="t-nombre" placeholder="Nombre" required maxlength="100"/>
+        <select id="t-tipo"><option value="CLIENTE">Cliente</option><option value="PROVEEDOR">Proveedor</option></select>
+        <input type="number" id="t-limite" placeholder="Límite Crédito" value="0" min="0"/>
+        <div style="display:flex; gap:1rem; margin-top:1.5rem;">
+          <button type="button" class="btn btn-outline" id="btn-close-modal">Cerrar</button>
+          <button type="submit" class="btn btn-primary">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════════════════════ -->
+  <!-- SCRIPT: SaaS LEVEL (State Central + Event Delegation + Robust Error Handling)     -->
+  <!-- ═════════════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    lucide.createIcons();
+
+    // ═══ ESTADO CENTRAL ═══
+    const APP_STATE = {
+      currentView: localStorage.getItem("microerp_view") || "dashboard",
+      terceros: [],
+      cartera: [],
+      isSubmitting: false,
+      
+      setViewAndPersist(viewId) {
+        this.currentView = viewId;
+        localStorage.setItem("microerp_view", viewId);
+      },
+    };
+
+    // ═══ UTILIDADES ═══
+    function escapeHTML(str) {
+      return String(str || "").replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    function formatCur(v) {
+      const num = typeof v === 'number' ? v : (v / 100);
+      return new Intl.NumberFormat('es-CO', { 
+        style: 'currency', currency: 'COP', maximumFractionDigits: 0 
+      }).format(num);
+    }
+
+    function isValidNumber(n) {
+      const num = parseFloat(n);
+      return !isNaN(num) && num > 0;
+    }
+
+    // ═══ BLOCKING OVERLAY ═══
+    function showOverlay(text = "Procesando...") {
+      document.getElementById("overlay-text").textContent = text;
+      document.getElementById("ui-overlay").classList.add("active");
+    }
+
+    function hideOverlay() {
+      document.getElementById("ui-overlay").classList.remove("active");
+    }
+
+    // ═══ TOAST NOTIFICATIONS ═══
+    function showToast(message, type = "info", duration = 4000) {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      toast.className = `toast ${type}`;
+      
+      const icon = type === "success" ? "✓" : (type === "error" ? "✕" : "ℹ");
+      toast.innerHTML = `<span>${icon}</span><span>${escapeHTML(message)}</span>`;
+      
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.animation = "slideIn 0.3s ease reverse";
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    // ═══ CONFIRM DIALOG ═══
+    function showConfirm(title, message) {
+      return new Promise((resolve) => {
+        document.getElementById("confirm-title").textContent = title;
+        document.getElementById("confirm-message").textContent = message;
+        document.getElementById("confirm-dialog").classList.add("active");
+
+        const okBtn = document.getElementById("confirm-ok");
+        const cancelBtn = document.getElementById("confirm-cancel");
+
+        const cleanup = () => {
+          document.getElementById("confirm-dialog").classList.remove("active");
+          okBtn.removeEventListener("click", onOk);
+          cancelBtn.removeEventListener("click", onCancel);
+        };
+
+        const onOk = () => { cleanup(); resolve(true); };
+        const onCancel = () => { cleanup(); resolve(false); };
+
+        okBtn.addEventListener("click", onOk);
+        cancelBtn.addEventListener("click", onCancel);
+      });
+    }
+
+    // ═══ DOBLE SUBMIT PREVENTION ═══
+    function withSubmitLock(fn) {
+      return async function(...args) {
+        if (APP_STATE.isSubmitting) return;
+        APP_STATE.isSubmitting = true;
+        try {
+          await fn(...args);
+        } finally {
+          APP_STATE.isSubmitting = false;
+        }
+      };
+    }
+
+    // ═══ VIEW SWITCHING ═══
+    function switchView(viewId) {
+      document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+      document.getElementById("view-" + viewId).classList.add("active");
+
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+      document.querySelector(`[data-view="${viewId}"]`)?.classList.add("active");
+
+      APP_STATE.setViewAndPersist(viewId);
+
+      if (viewId === "dashboard") loadDashboard();
+      if (viewId === "terceros") loadTerceros();
+      if (viewId === "cartera") loadCartera();
+      if (viewId === "abonos") loadSelectTerceros();
+    }
+
+    // ═══ API CALLS ═══
+
+    function loadDashboard() {
+      showOverlay("Cargando dashboard...");
+      google.script.run
+        .withSuccessHandler(data => {
+          hideOverlay();
+          document.getElementById("dash-cxc").textContent = formatCur(data.porCobrar);
+          document.getElementById("dash-cxc-venc").textContent = formatCur(data.vencidaCxC);
+          document.getElementById("dash-cxp").textContent = formatCur(data.porPagar);
+          document.getElementById("dash-cxp-venc").textContent = formatCur(data.vencidaCxP);
+
+          if (data.vencidaCxC > 0) {
+            document.getElementById("dash-cxc-venc").style.color = "var(--danger)";
+          }
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          showToast("Error al cargar dashboard", "error");
+          console.error(err);
+        })
+        .getDashboardCartera();
+    }
+
+    function loadTerceros() {
+      showOverlay("Cargando terceros...");
+      google.script.run
+        .withSuccessHandler(data => {
+          hideOverlay();
+          APP_STATE.terceros = data;
+          renderTerceros(data);
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          showToast("Error al cargar terceros", "error");
+          console.error(err);
+        })
+        .getTerceros();
+    }
+
+    function renderTerceros(data) {
+      const tbody = document.getElementById("tabla-terceros");
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay terceros activos</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(t => `
+        <tr>
+          <td>${escapeHTML(t.id)}</td>
+          <td>${escapeHTML(t.nombre)}</td>
+          <td>${escapeHTML(t.tipo)}</td>
+          <td>${formatCur(t.limite_credito)}</td>
+          <td><button class="btn-action btn-delete" data-id="${escapeHTML(t.id)}" style="padding:4px 8px; font-size:10px;">✕ Inactivo</button></td>
+        </tr>
+      `).join("");
+    }
+
+    function loadCartera() {
+      showOverlay("Cargando cartera...");
+      const filtro = document.getElementById("filtro-cartera").value || null;
+      google.script.run
+        .withSuccessHandler(data => {
+          hideOverlay();
+          APP_STATE.cartera = data;
+          renderCartera(data);
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          showToast("Error al cargar cartera", "error");
+          console.error(err);
+        })
+        .getCartera(null, filtro);
+    }
+
+    function renderCartera(data) {
+      const tbody = document.getElementById("tabla-cartera");
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Sin movimientos</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(c => {
+        const isVencida = c.estado === "VENCIDA";
+        const rowBg = isVencida ? 'style="background:rgba(239,68,68,0.1);"' : "";
+        return `
+          <tr ${rowBg}>
+            <td>${escapeHTML(c.fecha)}</td>
+            <td>
+              <strong>${escapeHTML(c.nombre_tercero || c.id_tercero)}</strong><br>
+              <small style="color:var(--text-muted);">${escapeHTML(c.id_tercero)}</small>
+            </td>
+            <td style="font-weight:600;">${formatCur(c.saldo)}</td>
+            <td><span class="badge ${c.estado.toLowerCase()}">${escapeHTML(c.estado)}</span></td>
+            <td>
+              ${escapeHTML(c.fecha_vencimiento || "")}
+              ${isVencida ? `<br><span style="color:var(--danger); font-size:0.8rem;">📅 ${c.dias_vencido} días</span>` : ""}
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function loadSelectTerceros() {
+      showOverlay("Cargando clientes...");
+      google.script.run
+        .withSuccessHandler(data => {
+          hideOverlay();
+          APP_STATE.terceros = data;
+          const sel = document.getElementById("abono-tercero");
+          sel.innerHTML = '<option value="">⚠️ Seleccione cliente...</option>' +
+            data.map(t => `<option value="${t.id}">${escapeHTML(t.nombre)}</option>`).join("");
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          console.error(err);
+        })
+        .getTerceros();
+    }
+
+    // ═══ EVENT HANDLERS (Event Delegation) ═══
+
+    document.addEventListener("click", async (e) => {
+      const action = e.target.closest("[data-action]")?.getAttribute("data-action");
+      const viewBtn = e.target.closest("[data-view]");
+
+      if (viewBtn) {
+        switchView(viewBtn.getAttribute("data-view"));
+        return;
+      }
+
+      switch(action) {
+        case "analyze-ia":
+          await handleAnalyzeIA();
+          break;
+        case "new-tercero":
+          document.getElementById("modal-tercero").classList.add("active");
+          break;
+      }
+
+      // Delete actions
+      if (e.target.classList.contains("btn-delete")) {
+        const id = e.target.getAttribute("data-id");
+        const confirmed = await showConfirm("Desactivar tercero", "¿Desactivar este tercero?");
+        if (confirmed) {
+          showToast("Función en construcción", "info");
+        }
+      }
+    });
+
+    // Filter cartera cambio
+    document.getElementById("filtro-cartera").addEventListener("change", loadCartera);
+
+    // Close modal
+    document.getElementById("btn-close-modal").addEventListener("click", () => {
+      document.getElementById("modal-tercero").classList.remove("active");
+    });
+
+    // Form: Tercero
+    document.getElementById("form-tercero").addEventListener("submit", withSubmitLock(async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("t-id").value.trim();
+      const nombre = document.getElementById("t-nombre").value.trim();
+      const tipo = document.getElementById("t-tipo").value;
+      const limite = document.getElementById("t-limite").value.trim();
+
+      if (!id || !nombre) {
+        showToast("Falta información", "error");
+        return;
+      }
+
+      showOverlay("Guardando tercero...");
+      google.script.run
+        .withSuccessHandler(res => {
+          hideOverlay();
+          if (res.success) {
+            showToast("✓ Tercero guardado", "success");
+            document.getElementById("form-tercero").reset();
+            document.getElementById("modal-tercero").classList.remove("active");
+            loadTerceros();
+          } else {
+            showToast(res.message || "Error desconocido", "error");
+          }
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          showToast("Error del sistema", "error");
+          console.error(err);
+        })
+        .saveTercero({
+          id, nombre, tipo,
+          limite_credito: parseFloat(limite) || 0
+        });
+    }));
+
+    // Form: Abono
+    document.getElementById("form-abono").addEventListener("submit", withSubmitLock(async (e) => {
+      e.preventDefault();
+
+      const tercero = document.getElementById("abono-tercero").value.trim();
+      const valor = document.getElementById("abono-valor").value.trim();
+      const ref = document.getElementById("abono-ref").value.trim();
+      const tipo = document.getElementById("abono-tipo").value;
+
+      // VALIDACIÓN
+      let valid = true;
+      if (!tercero) {
+        document.getElementById("error-tercero").textContent = "Selecciona un cliente";
+        document.getElementById("error-tercero").style.display = "block";
+        valid = false;
+      }
+
+      if (!isValidNumber(valor)) {
+        document.getElementById("error-valor").textContent = "Monto debe ser > 0";
+        document.getElementById("error-valor").style.display = "block";
+        valid = false;
+      }
+
+      if (!ref) {
+        showToast("Ingresa una referencia", "error");
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      const confirmed = await showConfirm("Confirmar abono", `Procesa $${formatCur(parseFloat(valor))}?`);
+      if (!confirmed) return;
+
+      showOverlay("Procesando abono...");
+      google.script.run
+        .withSuccessHandler(res => {
+          hideOverlay();
+          if (res.success) {
+            showToast(`✓ Abono de $${formatCur(res.aplicado)}`, "success");
+            document.getElementById("form-abono").reset();
+            switchView("dashboard");
+          } else {
+            showToast(res.message || "Error desconocido", "error");
+          }
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          showToast("Error del sistema", "error");
+          console.error(err);
+        })
+        .registrarAbono(tercero, parseFloat(valor), ref, tipo);
+    }));
+
+    // Análisis IA
+    async function handleAnalyzeIA() {
+      const resDiv = document.getElementById("ia-result");
+      resDiv.style.display = "block";
+      resDiv.textContent = "⏳ Gemini está analizando...";
+
+      showOverlay("Analizando con IA...");
+      google.script.run
+        .withSuccessHandler(res => {
+          hideOverlay();
+          if (res.success) {
+            resDiv.textContent = res.analisis;
+            showToast("✓ Análisis completado", "success");
+          } else {
+            resDiv.textContent = "❌ " + escapeHTML(res.message);
+            showToast("Error en análisis", "error");
+          }
+        })
+        .withFailureHandler(err => {
+          hideOverlay();
+          resDiv.textContent = "❌ Error conectando con IA";
+          showToast("Error del sistema", "error");
+          console.error(err);
+        })
+        .analizarConGeminiCompleto();
+    }
+
+    // ═══ NAVIGATION BUILD (Dinamic) ═══
+    function buildNav() {
+      const nav = document.getElementById("sidebar-nav");
+      const navItems = [
+        { view: "dashboard", label: "Dashboard", icon: "layout-dashboard" },
+        { view: "terceros", label: "Terceros", icon: "users" },
+        { view: "cartera", label: "Cartera", icon: "wallet" },
+        { view: "abonos", label: "Nuevo Abono", icon: "coins" },
+      ];
+
+      nav.innerHTML = navItems.map(item => `
+        <div class="nav-btn ${APP_STATE.currentView === item.view ? "active" : ""}" 
+             data-view="${item.view}" role="button" tabindex="0">
+          <i data-lucide="${item.icon}"></i> ${item.label}
+        </div>
+      `).join("");
+
+      // Bottom nav (mobile)
+      const bottomNav = document.getElementById("bottom-nav");
+      bottomNav.innerHTML = navItems.map(item => `
+        <div class="nav-btn ${APP_STATE.currentView === item.view ? "active" : ""}"
+             data-view="${item.view}" role="button" tabindex="0">
+          <i data-lucide="${item.icon}"></i>
+        </div>
+      `).join("");
+
+      lucide.createIcons();
+    }
+
+    // ═══ INIT ═══
+    window.addEventListener("load", () => {
+      buildNav();
+      switchView(APP_STATE.currentView);
+    });
+  </script>
+</body>
+</html>
