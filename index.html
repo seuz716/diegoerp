@@ -2,7 +2,9 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover">
+  <meta name="description" content="MicroERP - Sistema de Cartera de Crédito">
+  <meta name="theme-color" content="#0d1117">
   <title>MicroERP - Cartera Pro</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,10 +25,12 @@
       --danger: #ef4444;
       --warning: #f59e0b;
       --success: #10b981;
+      --info: #3b82f6;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+    html { scroll-behavior: smooth; }
     body {
       background-color: var(--bg-dark);
       background-image: radial-gradient(at 0% 0%, rgba(163, 177, 198, 0.05) 0px, transparent 50%);
@@ -34,136 +38,392 @@
       font-family: 'Outfit', sans-serif;
       min-height: 100vh;
       display: flex;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Layout */
+    /* Layout Principal */
     #sidebar {
-      width: 260px; height: 100vh; background: var(--bg-card); backdrop-filter: blur(16px);
+      width: 280px; height: 100vh; background: var(--bg-card); backdrop-filter: blur(16px);
       border-right: 1px solid var(--glass-border); padding: 2rem 1.5rem; position: sticky; top: 0;
-      display: flex; flex-direction: column; z-index: 100;
+      display: flex; flex-direction: column; z-index: 100; overflow-y: auto;
     }
 
-    #app-shell { flex: 1; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; }
-    #main-content { padding: 2rem; max-width: 1200px; margin: 0 auto; width: 100%; flex: 1; }
+    #app-shell { 
+      flex: 1; display: flex; flex-direction: column; height: 100vh; overflow-y: auto; 
+      padding-bottom: 5rem;
+    }
+    
+    #main-content { 
+      padding: 1.5rem; max-width: 1200px; margin: 0 auto; width: 100%; flex: 1; 
+    }
 
     /* UI Elements */
-    .brand { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 3rem; font-size: 1.5rem; font-weight: 800; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .brand { 
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 3rem; 
+      font-size: 1.5rem; font-weight: 800; background: var(--accent-gradient); 
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+    }
     
-    .nav-btn, .mobile-nav-btn { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 12px; color: var(--text-muted); cursor: pointer; transition: 0.3s; border: 1px solid transparent; }
-    .nav-btn:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
-    .nav-btn.active, .mobile-nav-btn.active { background: rgba(163, 177, 198, 0.1); border-color: rgba(163, 177, 198, 0.3); color: var(--secondary); }
+    .nav-btn, .mobile-nav-btn { 
+      display: flex; align-items: center; gap: 1rem; padding: 0.875rem; 
+      border-radius: 12px; color: var(--text-muted); cursor: pointer; 
+      transition: 0.3s ease; border: 1px solid transparent; 
+      font-size: 0.95rem; user-select: none;
+    }
+    .nav-btn:hover, .mobile-nav-btn:hover { 
+      background: rgba(255, 255, 255, 0.05); color: var(--text-main); 
+    }
+    .nav-btn:focus, .mobile-nav-btn:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .nav-btn.active, .mobile-nav-btn.active { 
+      background: rgba(163, 177, 198, 0.1); border-color: rgba(163, 177, 198, 0.3); 
+      color: var(--secondary); 
+    }
 
-    .card { background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); margin-bottom: 1.5rem; }
+    .card { 
+      background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); 
+      border-radius: 16px; padding: 1.5rem; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); 
+      margin-bottom: 1.5rem; 
+    }
     
-    /* Stats */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
-    .stat-value { font-size: 1.8rem; font-weight: 800; margin: 0.5rem 0; }
+    h2, h3 { margin-bottom: 1rem; font-size: clamp(1.25rem, 5vw, 1.875rem); }
+    label { display: block; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 600; }
+
+    /* Stats Grid */
+    .stats-grid { 
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+      gap: 1.5rem; margin-bottom: 2rem; 
+    }
+    .stat-value { 
+      font-size: clamp(1.5rem, 5vw, 1.875rem); font-weight: 800; margin: 0.5rem 0; 
+    }
 
     /* Tables */
-    .table-container { overflow-x: auto; border-radius: 12px; border: 1px solid var(--glass-border); }
-    table { width: 100%; border-collapse: collapse; min-width: 600px; }
-    th { background: rgba(13, 17, 23, 0.8); padding: 1rem; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; text-align: left; }
+    .table-container { 
+      overflow-x: auto; border-radius: 12px; border: 1px solid var(--glass-border); 
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th { 
+      background: rgba(13, 17, 23, 0.8); padding: 1rem; color: var(--text-muted); 
+      font-size: 0.8rem; text-transform: uppercase; text-align: left; 
+    }
     td { padding: 1rem; border-top: 1px solid var(--glass-border); }
 
     /* Badges */
-    .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+    .badge { 
+      padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; 
+      font-weight: 700; text-transform: uppercase; display: inline-block; 
+    }
     .badge.abierta { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
     .badge.vencida { background: rgba(239, 68, 68, 0.2); color: #f87171; }
     .badge.cancelada { background: rgba(16, 185, 129, 0.2); color: #34d399; }
     .badge.parcial { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 
-    /* Loader */
-    #global-loader { position: fixed; top: 0; left: 0; width: 100%; height: 3px; background: var(--accent-gradient); z-index: 2000; transform: scaleX(0); transform-origin: left; transition: 0.3s; }
+    /* Loader Global */
+    #global-loader { 
+      position: fixed; top: 0; left: 0; width: 100%; height: 3px; 
+      background: var(--accent-gradient); z-index: 2000; 
+      transform: scaleX(0); transform-origin: left; 
+      transition: transform 0.3s ease; 
+    }
     #global-loader.loading { transform: scaleX(1); }
 
-    /* Forms */
-    input, select { width: 100%; background: rgba(13, 17, 23, 0.5); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.8rem; color: #fff; margin-top: 0.4rem; outline: none; }
-    .btn { width: 100%; padding: 1rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-    .btn-primary { background: var(--accent-gradient); color: #000; }
-    .btn-outline { background: transparent; border: 1px solid var(--glass-border); color: #fff; }
+    /* Spinner */
+    .spinner {
+      display: inline-block; width: 1.2rem; height: 1.2rem;
+      border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid #fff;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Mobile */
-    #bottom-nav { display: none; position: fixed; bottom: 1rem; left: 1rem; right: 1rem; height: 64px; background: rgba(28, 33, 40, 0.95); border-radius: 20px; border: 1px solid var(--glass-border); z-index: 1000; justify-content: space-around; align-items: center; }
-    @media (max-width: 768px) { #sidebar { display: none; } #bottom-nav { display: flex; } .stats-grid { grid-template-columns: 1fr; } }
+    /* Toast Notifications */
+    #toast-container {
+      position: fixed; bottom: 5.5rem; left: 1rem; right: 1rem;
+      z-index: 3000; display: flex; flex-direction: column; gap: 0.75rem;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--bg-card); border: 1px solid var(--glass-border); 
+      border-radius: 12px; padding: 1rem 1.5rem; 
+      display: flex; align-items: center; gap: 1rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      animation: slideIn 0.3s ease, slideOut 0.3s ease 4.7s;
+      pointer-events: auto;
+      max-width: 400px;
+    }
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+    .toast.warning { border-left: 4px solid var(--warning); }
+    .toast.info { border-left: 4px solid var(--info); }
+    .toast-icon { flex-shrink: 0; }
+    .toast-message { flex: 1; font-size: 0.95rem; }
+    @keyframes slideIn { from { transform: translateX(-400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes slideOut { to { transform: translateX(-400px); opacity: 0; } }
+
+    /* Forms */
+    input, select, textarea { 
+      width: 100%; background: rgba(13, 17, 23, 0.5); 
+      border: 1px solid var(--glass-border); border-radius: 8px; 
+      padding: 0.875rem; color: #fff; margin-top: 0.25rem; 
+      outline: none; transition: 0.2s ease;
+      font-size: 1rem;
+      font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus { 
+      border-color: var(--primary); box-shadow: 0 0 0 2px rgba(163, 177, 198, 0.1); 
+    }
+    input:invalid { border-color: var(--danger); }
+    input::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+    .form-group { margin-bottom: 1.25rem; }
+    .error-message { 
+      color: var(--danger); font-size: 0.85rem; margin-top: 0.25rem; display: none; 
+    }
+    .form-group.error .error-message { display: block; }
+
+    /* Buttons */
+    .btn { 
+      width: 100%; padding: 1rem; border-radius: 8px; border: none; 
+      font-weight: 600; cursor: pointer; transition: 0.3s ease; 
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      font-size: 1rem; user-select: none; min-height: 48px;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+    .btn:active { transform: translateY(0); }
+    .btn:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    
+    .btn-primary { background: var(--accent-gradient); color: #000; }
+    .btn-primary:hover { box-shadow: 0 8px 16px rgba(163, 177, 198, 0.3); }
+    .btn-outline { background: transparent; border: 1px solid var(--glass-border); color: #fff; }
+    .btn-outline:hover { background: rgba(255, 255, 255, 0.05); }
+    .btn-danger { background: var(--danger); color: #fff; }
+
+    .btn-small { width: auto; padding: 0.5rem 1rem; font-size: 0.85rem; min-height: auto; }
+
+    /* Modal */
+    .modal {
+      display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); 
+      z-index: 3000; align-items: center; justify-content: center; 
+      padding: 1rem; animation: fadeIn 0.3s ease;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      width: 100%; max-width: 500px; background: var(--bg-card); 
+      border-radius: 16px; border: 1px solid var(--glass-border);
+      padding: 2rem; max-height: 90vh; overflow-y: auto;
+    }
+
+    /* Views */
     .view { display: none; animation: fadeIn 0.3s ease; }
     .view.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Mobile Navigation */
+    #bottom-nav { 
+      display: none; position: fixed; bottom: 1rem; left: 1rem; right: 1rem; 
+      height: 64px; background: rgba(28, 33, 40, 0.95); border-radius: 20px; 
+      border: 1px solid var(--glass-border); z-index: 1000; 
+      justify-content: space-around; align-items: center; 
+    }
+
+    /* Responsividad */
+    @media (max-width: 768px) { 
+      #sidebar { display: none; } 
+      #bottom-nav { display: flex; } 
+      #app-shell { padding-bottom: 6rem; }
+      #main-content { padding: 1rem; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .card { padding: 1rem; }
+      .modal-content { padding: 1.5rem; }
+    }
+    
+    @media (max-width: 480px) {
+      h2, h3 { font-size: 1.25rem; }
+      .btn { padding: 0.875rem; min-height: 44px; }
+      input, select, textarea { padding: 0.75rem; font-size: 16px; }
+      #toast-container { left: 0.5rem; right: 0.5rem; }
+      .toast { max-width: 100%; }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+      #main-content { padding: 1.25rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* Accesibilidad */
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; 
+      margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); 
+      white-space: nowrap; border-width: 0;
+    }
   </style>
 </head>
 <body>
+  <div id="global-loader" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <div id="global-loader"></div>
-
-  <aside id="sidebar">
-    <div class="brand"><i data-lucide="layers"></i> MicroERP</div>
-    <nav>
-      <div class="nav-btn active" onclick="switchView(event, 'dashboard')"><i data-lucide="layout-dashboard"></i> Dashboard</div>
-      <div class="nav-btn" onclick="switchView(event, 'terceros')"><i data-lucide="users"></i> Terceros</div>
-      <div class="nav-btn" onclick="switchView(event, 'cartera')"><i data-lucide="wallet"></i> Cartera</div>
-      <div class="nav-btn" onclick="switchView(event, 'abonos')"><i data-lucide="coins"></i> Nuevo Abono</div>
+  <aside id="sidebar" role="navigation" aria-label="Navegación principal">
+    <div class="brand"><i data-lucide="layers"></i> <span>MicroERP</span></div>
+    <nav role="menubar">
+      <div class="nav-btn active" role="menuitem" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </div>
+      <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'terceros')" onkeypress="handleKeyboardNav(event, 'terceros')">
+        <i data-lucide="users"></i> Terceros
+      </div>
+      <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'cartera')" onkeypress="handleKeyboardNav(event, 'cartera')">
+        <i data-lucide="wallet"></i> Cartera
+      </div>
+      <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'abonos')" onkeypress="handleKeyboardNav(event, 'abonos')">
+        <i data-lucide="coins"></i> Nuevo Abono
+      </div>
     </nav>
   </aside>
 
-  <main id="app-shell">
+  <main id="app-shell" role="main">
     <div id="main-content">
       
+      <!-- DASHBOARD VIEW -->
       <section id="view-dashboard" class="view active">
-        <h2 style="margin-bottom: 1.5rem;">Resumen Financiero</h2>
+        <h2>Resumen Financiero</h2>
         <div class="stats-grid">
           <div class="card">
-            <div style="color: var(--text-muted); font-size: 0.8rem;">POR COBRAR (CXC)</div>
-            <div class="stat-value" id="dash-cxc">$0</div>
-            <div class="text-danger" style="font-size: 0.85rem;">Vencido: <span id="dash-cxc-venc">$0</span></div>
+            <div style="color: var(--text-muted); font-size: 0.8rem;">Por Cobrar (CxC)</div>
+            <div class="stat-value" id="dash-cxc" aria-live="polite">$0</div>
+            <div style="font-size: 0.85rem;">
+              <span style="color: var(--text-muted);">Vencido:</span>
+              <span id="dash-cxc-venc" style="font-weight: 600;">$0</span>
+            </div>
           </div>
           <div class="card">
-            <div style="color: var(--text-muted); font-size: 0.8rem;">POR PAGAR (CXP)</div>
-            <div class="stat-value" id="dash-cxp">$0</div>
-            <div class="text-warning" style="font-size: 0.85rem;">Vencido: <span id="dash-cxp-venc">$0</span></div>
+            <div style="color: var(--text-muted); font-size: 0.8rem;">Por Pagar (CxP)</div>
+            <div class="stat-value" id="dash-cxp" aria-live="polite">$0</div>
+            <div style="font-size: 0.85rem;">
+              <span style="color: var(--text-muted);">Vencido:</span>
+              <span id="dash-cxp-venc" style="font-weight: 600;">$0</span>
+            </div>
           </div>
         </div>
         <div class="card">
-          <button class="btn btn-primary" onclick="analizarIA()"><i data-lucide="sparkles"></i> Analizar Cartera con IA</button>
-          <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.4;"></div>
+          <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar cartera con inteligencia artificial">
+            <i data-lucide="sparkles"></i> Analizar Cartera con IA
+          </button>
+          <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.5; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;"></div>
         </div>
       </section>
 
+      <!-- TERCEROS VIEW -->
       <section id="view-terceros" class="view">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
           <h2>Terceros</h2>
-          <button class="btn btn-primary" style="width:auto;" onclick="toggleModal('modal-tercero')"><i data-lucide="user-plus"></i></button>
+          <button class="btn btn-primary btn-small" onclick="toggleModal('modal-tercero')" aria-label="Agregar nuevo tercero">
+            <i data-lucide="user-plus"></i> Nuevo
+          </button>
         </div>
         <div class="card table-container">
-          <table>
-            <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite</th><th>Acciones</th></tr></thead>
-            <tbody id="tabla-terceros"></tbody>
+          <table role="table" aria-label="Lista de terceros">
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
+                <th scope="col">Nombre</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Límite</th>
+                <th scope="col">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-terceros" aria-live="polite"></tbody>
           </table>
         </div>
       </section>
 
+      <!-- CARTERA VIEW -->
       <section id="view-cartera" class="view">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-          <h2>Movimientos</h2>
-          <select id="filtro-cartera" style="width:auto; margin:0;" onchange="loadCartera()">
-            <option value="">Todos</option><option value="CxC">CxC</option><option value="CxP">CxP</option>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+          <h2>Movimientos de Cartera</h2>
+          <select id="filtro-cartera" style="width:auto; margin:0; max-width:200px;" onchange="loadCartera()" aria-label="Filtrar por tipo">
+            <option value="">📊 Todos</option>
+            <option value="CxC">💰 Cuentas por Cobrar</option>
+            <option value="CxP">💳 Cuentas por Pagar</option>
           </select>
         </div>
         <div class="card table-container">
-          <table>
-            <thead><tr><th>Fecha</th><th>Tercero</th><th>Saldo</th><th>Estado</th><th>Vencimiento</th></tr></thead>
-            <tbody id="tabla-cartera"></tbody>
+          <table role="table" aria-label="Movimientos de cartera">
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tercero</th>
+                <th scope="col">Saldo</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Vencimiento</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-cartera" aria-live="polite"></tbody>
           </table>
         </div>
       </section>
 
+      <!-- ABONOS VIEW -->
       <section id="view-abonos" class="view">
         <div class="card" style="max-width: 500px; margin: 0 auto;">
-          <h3 style="margin-bottom:1.5rem;">Registrar Pago (FIFO)</h3>
+          <h3>Registrar Pago (Método FIFO)</h3>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+            Complete todos los campos para registrar un nuevo movimiento.
+          </p>
           <form id="form-abono" onsubmit="event.preventDefault(); registrarAbonoUI();">
-            <div style="margin-bottom:1rem;"><label>Tercero</label><select id="abono-tercero" required></select></div>
-            <div style="margin-bottom:1rem;"><label>Tipo</label><select id="abono-tipo"><option value="CxC">Cobro a Cliente</option><option value="CxP">Pago a Proveedor</option></select></div>
-            <div style="margin-bottom:1rem;"><label>Monto</label><input type="number" id="abono-valor" required></div>
-            <div style="margin-bottom:1.5rem;"><label>Referencia</label><input type="text" id="abono-ref" placeholder="Ej: Recibo 001"></div>
-            <button type="submit" class="btn btn-primary">Ejecutar Movimiento</button>
+            
+            <div class="form-group">
+              <label for="abono-tercero">Tercero <span style="color:var(--danger);">*</span></label>
+              <select id="abono-tercero" required aria-required="true" aria-label="Seleccionar tercero">
+                <option value="">⚠️ Seleccione un cliente...</option>
+              </select>
+              <div class="error-message">Por favor seleccione un tercero válido</div>
+            </div>
+
+            <div class="form-group">
+              <label for="abono-tipo">Tipo de Movimiento <span style="color:var(--danger);">*</span></label>
+              <select id="abono-tipo" required aria-label="Tipo de movimiento">
+                <option value="CxC">Cobro a Cliente</option>
+                <option value="CxP">Pago a Proveedor</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="abono-valor">Monto <span style="color:var(--danger);">*</span></label>
+              <input 
+                type="number" 
+                id="abono-valor" 
+                required 
+                aria-required="true"
+                placeholder="0"
+                min="0"
+                step="0.01"
+                aria-label="Ingrese el monto"
+              >
+              <div class="error-message">Ingrese un monto válido (mayor a 0)</div>
+            </div>
+
+            <div class="form-group">
+              <label for="abono-ref">Referencia <span style="color:var(--danger);">*</span></label>
+              <input 
+                type="text" 
+                id="abono-ref" 
+                required 
+                aria-required="true"
+                placeholder="Ej: Recibo 001"
+                maxlength="50"
+                aria-label="Referencia del pago"
+              >
+              <div class="error-message">La referencia es obligatoria (máx. 50 caracteres)</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="btn-submit-abono">
+              <i data-lucide="send"></i> Ejecutar Movimiento
+            </button>
           </form>
         </div>
       </section>
@@ -171,24 +431,81 @@
     </div>
   </main>
 
-  <nav id="bottom-nav">
-    <div class="mobile-nav-btn active" onclick="switchView(event, 'dashboard')"><i data-lucide="home"></i></div>
-    <div class="mobile-nav-btn" onclick="switchView(event, 'terceros')"><i data-lucide="users"></i></div>
-    <div class="mobile-nav-btn" onclick="switchView(event, 'cartera')"><i data-lucide="wallet"></i></div>
-    <div class="mobile-nav-btn" onclick="switchView(event, 'abonos')"><i data-lucide="plus-circle"></i></div>
+  <!-- MOBILE BOTTOM NAV -->
+  <nav id="bottom-nav" role="navigation" aria-label="Navegación móvil">
+    <div class="mobile-nav-btn active" role="button" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')" aria-label="Dashboard">
+      <i data-lucide="home"></i>
+    </div>
+    <div class="mobile-nav-btn" role="button" tabindex="0" onclick="switchView(event, 'terceros')" onkeypress="handleKeyboardNav(event, 'terceros')" aria-label="Terceros">
+      <i data-lucide="users"></i>
+    </div>
+    <div class="mobile-nav-btn" role="button" tabindex="0" onclick="switchView(event, 'cartera')" onkeypress="handleKeyboardNav(event, 'cartera')" aria-label="Cartera">
+      <i data-lucide="wallet"></i>
+    </div>
+    <div class="mobile-nav-btn" role="button" tabindex="0" onclick="switchView(event, 'abonos')" onkeypress="handleKeyboardNav(event, 'abonos')" aria-label="Nuevo pago">
+      <i data-lucide="plus-circle"></i>
+    </div>
   </nav>
 
-  <div id="modal-tercero" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; align-items:center; justify-content:center; padding:1rem;">
-    <div class="card" style="width:100%; max-width:400px;">
-      <h3>Nuevo Tercero</h3>
-      <form id="form-tercero" onsubmit="event.preventDefault(); guardarTerceroUI();" style="margin-top:1rem;">
-        <input type="text" id="t-id" placeholder="ID / NIT" required>
-        <input type="text" id="t-nombre" placeholder="Nombre" required>
-        <select id="t-tipo"><option value="CLIENTE">Cliente</option><option value="PROVEEDOR">Proveedor</option></select>
-        <input type="number" id="t-limite" placeholder="Límite Crédito" value="0">
+  <!-- MODAL: NUEVO TERCERO -->
+  <div id="modal-tercero" class="modal" role="dialog" aria-labelledby="modal-tercero-title" aria-hidden="true">
+    <div class="modal-content">
+      <h3 id="modal-tercero-title">Crear Nuevo Tercero</h3>
+      <form id="form-tercero" onsubmit="event.preventDefault(); guardarTerceroUI();" style="margin-top:1.5rem;">
+        
+        <div class="form-group">
+          <label for="t-id">ID / NIT <span style="color:var(--danger);">*</span></label>
+          <input 
+            type="text" 
+            id="t-id" 
+            required 
+            aria-required="true"
+            placeholder="Ej: 1234567890"
+            maxlength="20"
+            aria-label="ID o NIT del tercero"
+          >
+          <div class="error-message">El ID es obligatorio (máx. 20 caracteres)</div>
+        </div>
+
+        <div class="form-group">
+          <label for="t-nombre">Nombre <span style="color:var(--danger);">*</span></label>
+          <input 
+            type="text" 
+            id="t-nombre" 
+            required 
+            aria-required="true"
+            placeholder="Nombre completo"
+            maxlength="100"
+            aria-label="Nombre del tercero"
+          >
+          <div class="error-message">El nombre es obligatorio (máx. 100 caracteres)</div>
+        </div>
+
+        <div class="form-group">
+          <label for="t-tipo">Tipo <span style="color:var(--danger);">*</span></label>
+          <select id="t-tipo" required aria-label="Tipo de tercero">
+            <option value="CLIENTE">Cliente</option>
+            <option value="PROVEEDOR">Proveedor</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="t-limite">Límite de Crédito</label>
+          <input 
+            type="number" 
+            id="t-limite" 
+            placeholder="0"
+            value="0"
+            min="0"
+            step="0.01"
+            aria-label="Límite de crédito"
+          >
+          <div class="error-message">Ingrese un monto válido</div>
+        </div>
+
         <div style="display:flex; gap:1rem; margin-top:1.5rem;">
-          <button type="button" class="btn btn-outline" onclick="toggleModal('modal-tercero')">Cerrar</button>
-          <button type="submit" class="btn btn-primary">Crear</button>
+          <button type="button" class="btn btn-outline" onclick="toggleModal('modal-tercero')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear Tercero</button>
         </div>
       </form>
     </div>
@@ -196,279 +513,639 @@
 
   <script>
     // ═════════════════════════════════════════════════════════════════════════════════
-    // FRONTEND AUDITED v2.0 — SECURITY + UX IMPROVED
+    // MICROERP FRONTEND v3.0 — REFACTORIZADO SENIOR LEVEL
+    // Mejoras: Manejo de errores global, validación robusta, UX mejorado, Responsividad
     // ═════════════════════════════════════════════════════════════════════════════════
-    
-    lucide.createIcons();
-    let isLoading = false;
-    let TERCEROS_CACHE = [];  // Caché de terceros para lookups rápidos
 
-    // ─ SEGURIDAD: Escape HTML (prevenir XSS) ─
-    function escapeHTML(str) {
-      return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]));
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 1. ESTADO GLOBAL Y CONFIGURACIÓN
+    // ─────────────────────────────────────────────────────────────────────────────────
+    lucide.createIcons();
+    
+    const AppState = {
+      isLoading: false,
+      tercerosCache: [],
+      toastTimeout: 5000,
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 2. SISTEMA DE NOTIFICACIONES (TOASTS)
+    // ─────────────────────────────────────────────────────────────────────────────────
+    
+    /**
+     * Muestra una notificación toast amigable
+     * @param {string} message - Mensaje a mostrar
+     * @param {string} type - 'success', 'error', 'warning', 'info'
+     * @param {number} duration - Duración en ms (default: 5000)
+     */
+    function showToast(message, type = 'info', duration = 5000) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      const icons = {
+        success: '<i data-lucide="check-circle"></i>',
+        error: '<i data-lucide="alert-circle"></i>',
+        warning: '<i data-lucide="alert-triangle"></i>',
+        info: '<i data-lucide="info"></i>',
+      };
+
+      toast.innerHTML = `
+        <div class="toast-icon">${icons[type] || icons.info}</div>
+        <div class="toast-message">${escapeHTML(message)}</div>
+      `;
+      
+      container.appendChild(toast);
+      lucide.createIcons();
+      
+      setTimeout(() => toast.remove(), duration);
     }
 
-    // ─ VALIDACIÓN: Solo números ─
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 3. SEGURIDAD: XSS PREVENTION
+    // ─────────────────────────────────────────────────────────────────────────────────
+    
+    function escapeHTML(str) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      };
+      return String(str).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 4. VALIDACIÓN DE FORMULARIOS
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Valida que un campo no esté vacío
+     */
+    function isNotEmpty(value) {
+      return String(value).trim().length > 0;
+    }
+
+    /**
+     * Valida que sea un número positivo válido
+     */
     function isValidNumber(n) {
       const num = parseFloat(n);
       return !isNaN(num) && num > 0;
     }
 
-    // ─ VALIDACIÓN: Tercero existe ─
-    function terceroExists(id) {
-      return TERCEROS_CACHE.some(t => t.id === id);
+    /**
+     * Valida formato de email (opcional para futuros usos)
+     */
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     }
 
-    // ─ FORMAT: Moneda ─
-    function formatCur(v) {
-      const num = typeof v === 'number' ? v : (v / 100);  // Si es en centavos
-      return new Intl.NumberFormat('es-CO', { 
-        style: 'currency', 
-        currency: 'COP', 
-        maximumFractionDigits: 0 
+    /**
+     * Valida que una fecha sea válida (YYYY-MM-DD)
+     */
+    function isValidDate(dateStr) {
+      const date = new Date(dateStr);
+      return date instanceof Date && !isNaN(date);
+    }
+
+    /**
+     * Muestra/oculta error en un formulario
+     */
+    function setFieldError(fieldId, hasError = false) {
+      const field = document.getElementById(fieldId);
+      if (!field) return;
+      
+      const formGroup = field.closest('.form-group');
+      if (formGroup) {
+        formGroup.classList.toggle('error', hasError);
+      }
+    }
+
+    /**
+     * Valida todos los campos de un formulario
+     */
+    function validateForm(formId) {
+      const form = document.getElementById(formId);
+      if (!form) return false;
+
+      const inputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+      let isValid = true;
+
+      inputs.forEach(input => {
+        const value = input.value.trim();
+        let fieldValid = false;
+
+        if (input.type === 'email') {
+          fieldValid = isValidEmail(value);
+        } else if (input.type === 'number') {
+          fieldValid = isValidNumber(value);
+        } else if (input.type === 'date') {
+          fieldValid = isValidDate(value);
+        } else {
+          fieldValid = isNotEmpty(value);
+        }
+
+        setFieldError(input.id, !fieldValid);
+        if (!fieldValid) isValid = false;
+      });
+
+      return isValid;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 5. CARGA Y ESTADO GLOBAL
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    function showLoader() {
+      if (AppState.isLoading) return;
+      AppState.isLoading = true;
+      document.getElementById('global-loader').classList.add('loading');
+    }
+
+    function hideLoader() {
+      AppState.isLoading = false;
+      document.getElementById('global-loader').classList.remove('loading');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 6. MANEJO GLOBAL DE ERRORES DEL SERVIDOR
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Maneja errores del servidor de forma amigable
+     */
+    function handleServerError(error) {
+      hideLoader();
+      
+      if (!error) {
+        showToast('Error desconocido. Reintente más tarde.', 'error');
+        return;
+      }
+
+      const message = error.message || String(error);
+
+      // Detectar tipos de error comunes y mostrar mensajes amigables
+      if (message.includes('timeout') || message.includes('TimeoutError')) {
+        showToast('⏱️ El sistema está ocupado. Reintente en unos segundos.', 'warning', 6000);
+      } else if (message.includes('BLOQUEO') || message.includes('lock')) {
+        showToast('🔒 El registro está bloqueado. Intente más tarde.', 'warning', 6000);
+      } else if (message.includes('PERMISO') || message.includes('permission')) {
+        showToast('🚫 No tiene permiso para realizar esta acción.', 'error');
+      } else if (message.includes('NOT_FOUND') || message.includes('No existe')) {
+        showToast('❌ El registro no fue encontrado.', 'error');
+      } else if (message.includes('DUPLICATE') || message.includes('existe')) {
+        showToast('⚠️ Este registro ya existe en el sistema.', 'warning');
+      } else {
+        showToast(`❌ Error: ${message}`, 'error');
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 7. UTILIDADES DE FORMATO
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Formatea un número como moneda COP
+     */
+    function formatCur(value) {
+      const num = typeof value === 'number' ? value : parseFloat(value) || 0;
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        maximumFractionDigits: 0
       }).format(num);
     }
 
-    // ─ LOADER ─
-    function showLoader() { 
-      if (isLoading) return; 
-      isLoading = true; 
-      document.getElementById('global-loader').classList.add('loading'); 
-    }
-    function hideLoader() { 
-      isLoading = false; 
-      document.getElementById('global-loader').classList.remove('loading'); 
+    /**
+     * Valida si un tercero existe en caché
+     */
+    function terceroExists(id) {
+      return AppState.tercerosCache.some(t => t.id === String(id));
     }
 
-    // ─ UI: View switcher ─
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 8. NAVEGACIÓN Y VISTAS
+    // ─────────────────────────────────────────────────────────────────────────────────
+
     function switchView(e, viewId) {
+      // Ocultar todas las vistas
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       document.getElementById('view-' + viewId).classList.add('active');
-      document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(b => b.classList.remove('active'));
-      if(e) e.currentTarget.classList.add('active');
 
-      if(viewId === 'dashboard') loadDashboard();
-      if(viewId === 'terceros') loadTerceros();
-      if(viewId === 'cartera') loadCartera();
-      if(viewId === 'abonos') loadSelectTerceros();
+      // Actualizar navegación
+      document.querySelectorAll('.nav-btn, .mobile-nav-btn').forEach(b => b.classList.remove('active'));
+      if (e && e.currentTarget) {
+        e.currentTarget.classList.add('active');
+      }
+
+      // Cargar datos según vista
+      switch (viewId) {
+        case 'dashboard':
+          loadDashboard();
+          break;
+        case 'terceros':
+          loadTerceros();
+          break;
+        case 'cartera':
+          loadCartera();
+          break;
+        case 'abonos':
+          loadSelectTerceros();
+          break;
+      }
+    }
+
+    /**
+     * Navegación con teclado (Enter/Space)
+     */
+    function handleKeyboardNav(e, viewId) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchView(e, viewId);
+      }
     }
 
     function toggleModal(id) {
       const el = document.getElementById(id);
-      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+      if (el) {
+        el.classList.toggle('active');
+        el.setAttribute('aria-hidden', !el.classList.contains('active'));
+        
+        // Limpiar formularios al cerrar
+        if (!el.classList.contains('active')) {
+          const form = el.querySelector('form');
+          if (form) form.reset();
+          el.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+        }
+      }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════════════
-    // API CALLS — DASHBOARD
-    // ═════════════════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 9. API: DASHBOARD
+    // ─────────────────────────────────────────────────────────────────────────────────
 
     function loadDashboard() {
       showLoader();
+      
       google.script.run
-        .withSuccessHandler(data => {
-          document.getElementById('dash-cxc').innerText = formatCur(data.porCobrar);
-          document.getElementById('dash-cxc-venc').innerText = formatCur(data.vencidaCxC);
-          document.getElementById('dash-cxp').innerText = formatCur(data.porPagar);
-          document.getElementById('dash-cxp-venc').innerText = formatCur(data.vencidaCxP);
-          
-          // UX: Alerta si hay deuda vencida
-          if (data.vencidaCxC > 0) {
-            document.getElementById('dash-cxc-venc').style.color = 'var(--danger)';
-            document.getElementById('dash-cxc-venc').style.fontWeight = '800';
-          }
-          
+        .withSuccessHandler((data) => {
           hideLoader();
+          
+          try {
+            document.getElementById('dash-cxc').innerText = formatCur(data.porCobrar || 0);
+            document.getElementById('dash-cxp').innerText = formatCur(data.porPagar || 0);
+
+            const vencidaCxC = data.vencidaCxC || 0;
+            const vencidaCxP = data.vencidaCxP || 0;
+
+            const cxcVencEl = document.getElementById('dash-cxc-venc');
+            cxcVencEl.innerText = formatCur(vencidaCxC);
+            if (vencidaCxC > 0) {
+              cxcVencEl.style.color = 'var(--danger)';
+              cxcVencEl.style.fontWeight = '800';
+            } else {
+              cxcVencEl.style.color = 'inherit';
+            }
+
+            document.getElementById('dash-cxp-venc').innerText = formatCur(vencidaCxP);
+
+            showToast('✅ Dashboard actualizado', 'success', 2000);
+          } catch (err) {
+            console.error('Error al procesar dashboard:', err);
+            showToast('⚠️ Error al procesar datos del dashboard', 'warning');
+          }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          alert("❌ Error Dashboard: " + escapeHTML(err.message)); 
+        .withFailureHandler((err) => {
+          handleServerError(err);
         })
         .getDashboardCartera();
     }
 
-    // ═════════════════════════════════════════════════════════════════════════════════
-    // API CALLS — TERCEROS
-    // ═════════════════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 10. API: TERCEROS
+    // ─────────────────────────────────────────────────────────────────────────────────
 
     function loadTerceros() {
       showLoader();
+
       google.script.run
-        .withSuccessHandler(data => {
-          TERCEROS_CACHE = data;  // Cache para validaciones
-          let html = '';
-          data.forEach(t => {
-            html += `<tr>
-              <td>${escapeHTML(t.id)}</td>
-              <td>${escapeHTML(t.nombre)}</td>
-              <td>${escapeHTML(t.tipo)}</td>
-              <td>${formatCur(t.limite_credito)}</td>
-              <td><button class="btn btn-outline" style="padding:4px 8px; font-size:10px; border-color:var(--danger);" onclick="eliminarTercero('${escapeHTML(t.id)}')">✕ Inactivo</button></td>
-            </tr>`;
-          });
-          document.getElementById('tabla-terceros').innerHTML = html || '<tr><td colspan="5" style="text-align:center;">No hay terceros activos</td></tr>';
+        .withSuccessHandler((data) => {
           hideLoader();
+
+          try {
+            AppState.tercerosCache = Array.isArray(data) ? data : [];
+            const tbody = document.getElementById('tabla-terceros');
+            
+            if (AppState.tercerosCache.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">No hay terceros registrados</td></tr>';
+              return;
+            }
+
+            let html = '';
+            AppState.tercerosCache.forEach((t) => {
+              html += `
+                <tr>
+                  <td><strong>${escapeHTML(t.id || '')}</strong></td>
+                  <td>${escapeHTML(t.nombre || '')}</td>
+                  <td>${escapeHTML(t.tipo || '')}</td>
+                  <td>${formatCur(t.limite_credito || 0)}</td>
+                  <td>
+                    <button class="btn btn-small btn-outline" onclick="alert('Función en desarrollo')" aria-label="Opciones">⋯</button>
+                  </td>
+                </tr>
+              `;
+            });
+            
+            tbody.innerHTML = html;
+            showToast(`✅ ${AppState.tercerosCache.length} terceros cargados`, 'success', 2000);
+          } catch (err) {
+            console.error('Error al procesar terceros:', err);
+            showToast('⚠️ Error al procesar lista de terceros', 'warning');
+          }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          alert("❌ Error Terceros: " + escapeHTML(err.message)); 
+        .withFailureHandler((err) => {
+          handleServerError(err);
         })
         .getTerceros();
     }
 
     function guardarTerceroUI() {
-      showLoader();
+      // Validar formulario
+      if (!validateForm('form-tercero')) {
+        showToast('⚠️ Complete todos los campos requeridos', 'warning');
+        return;
+      }
+
       const id = document.getElementById('t-id').value.trim();
       const nombre = document.getElementById('t-nombre').value.trim();
       const tipo = document.getElementById('t-tipo').value;
       const limite = document.getElementById('t-limite').value.trim();
 
-      // VALIDACIÓN CLIENT-SIDE
-      if (!id) { hideLoader(); alert("⚠️ Falta ID"); return; }
-      if (!nombre) { hideLoader(); alert("⚠️ Falta Nombre"); return; }
-      if (limit && !isValidNumber(limite)) { hideLoader(); alert("⚠️ Límite inválido"); return; }
+      // Validación adicional
+      if (terceroExists(id)) {
+        showToast(`⚠️ El tercero ${escapeHTML(id)} ya existe`, 'warning');
+        return;
+      }
+
+      showLoader();
 
       google.script.run
-        .withSuccessHandler(res => {
+        .withSuccessHandler((res) => {
           hideLoader();
-          if(res.success) {
-            alert("✅ Tercero guardado");
+
+          if (res && res.success) {
+            showToast('✅ Tercero guardado correctamente', 'success');
             document.getElementById('form-tercero').reset();
+            document.querySelectorAll('#form-tercero .form-group').forEach(g => g.classList.remove('error'));
             toggleModal('modal-tercero');
             loadTerceros();
           } else {
-            alert("❌ " + escapeHTML(res.message));
+            showToast(`❌ ${escapeHTML(res?.message || 'Error al guardar')}`, 'error');
           }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          alert("❌ Error: " + escapeHTML(err.message)); 
+        .withFailureHandler((err) => {
+          handleServerError(err);
         })
-        .saveTercero({ id, nombre, tipo, limite_credito: parseFloat(limite) || 0 });
+        .saveTercero({
+          id,
+          nombre,
+          tipo,
+          limite_credito: parseFloat(limite) || 0
+        });
     }
 
-    function eliminarTercero(id) {
-      alert("⚠️ Función en construcción (soft-delete)");
-    }
-
-    // ═════════════════════════════════════════════════════════════════════════════════
-    // API CALLS — CARTERA
-    // ═════════════════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 11. API: CARTERA
+    // ─────────────────────────────────────────────────────────────────────────────────
 
     function loadCartera() {
       showLoader();
       const filtro = document.getElementById('filtro-cartera').value || null;
-      google.script.run
-        .withSuccessHandler(data => {
-          let html = '';
-          data.forEach(c => {
-            // UX: Colorear por estado + mostrar nombre tercero
-            let badgeClass = c.estado.toLowerCase();
-            let rowStyle = '';
-            if (c.estado === 'VENCIDA') rowStyle = 'style="background:rgba(239,68,68,0.1);"';
 
-            html += `<tr ${rowStyle}>
-              <td>${c.fecha}</td>
-              <td>
-                <strong>${escapeHTML(c.nombre_tercero || c.id_tercero)}</strong><br>
-                <small style="color:var(--text-muted);">${escapeHTML(c.id_tercero)}</small>
-              </td>
-              <td style="font-weight:600;">${formatCur(c.saldo)}</td>
-              <td><span class="badge ${badgeClass}">${c.estado}</span></td>
-              <td>${c.fecha_vencimiento}
-                ${c.estado === 'VENCIDA' ? `<br><span style="color:var(--danger); font-size:0.8rem;">📅 ${c.dias_vencido} días</span>` : ''}
-              </td>
-            </tr>`;
-          });
-          document.getElementById('tabla-cartera').innerHTML = html || '<tr><td colspan="5" style="text-align:center;">Sin movimientos</td></tr>';
+      google.script.run
+        .withSuccessHandler((data) => {
           hideLoader();
+
+          try {
+            const tbody = document.getElementById('tabla-cartera');
+            
+            if (!Array.isArray(data) || data.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Sin movimientos en la cartera</td></tr>';
+              return;
+            }
+
+            let html = '';
+            data.forEach((c) => {
+              const estado = (c.estado || '').toLowerCase();
+              const rowStyle = estado === 'vencida' ? 'style="background: rgba(239, 68, 68, 0.1);"' : '';
+              const diasVencido = c.dias_vencido ? `<br><small style="color: var(--danger);">📅 ${c.dias_vencido} días vencido</small>` : '';
+
+              html += `
+                <tr ${rowStyle}>
+                  <td>${escapeHTML(c.fecha || '')}</td>
+                  <td>
+                    <strong>${escapeHTML(c.nombre_tercero || c.id_tercero || '')}</strong><br>
+                    <small style="color: var(--text-muted);">${escapeHTML(c.id_tercero || '')}</small>
+                  </td>
+                  <td style="font-weight: 600;">${formatCur(c.saldo || 0)}</td>
+                  <td><span class="badge ${estado}">${escapeHTML(c.estado || '')}</span></td>
+                  <td>
+                    ${escapeHTML(c.fecha_vencimiento || '')}
+                    ${diasVencido}
+                  </td>
+                </tr>
+              `;
+            });
+
+            tbody.innerHTML = html;
+            showToast(`✅ ${data.length} movimientos cargados`, 'success', 2000);
+          } catch (err) {
+            console.error('Error al procesar cartera:', err);
+            showToast('⚠️ Error al procesar datos de cartera', 'warning');
+          }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          alert("❌ Error Cartera: " + escapeHTML(err.message)); 
+        .withFailureHandler((err) => {
+          handleServerError(err);
         })
         .getCartera(null, filtro);
     }
 
-    // ═════════════════════════════════════════════════════════════════════════════════
-    // API CALLS — ABONOS (Critical: validate before submit)
-    // ═════════════════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 12. API: ABONOS (MOVIMIENTOS)
+    // ─────────────────────────────────────────────────────────────────────────────────
 
     function loadSelectTerceros() {
       showLoader();
+
       google.script.run
-        .withSuccessHandler(data => {
-          TERCEROS_CACHE = data;
-          const sel = document.getElementById('abono-tercero');
-          sel.innerHTML = '<option value="">⚠️ Seleccione cliente...</option>';
-          data.forEach(t => sel.innerHTML += `<option value="${t.id}">${escapeHTML(t.nombre)} (${t.tipo})</option>`);
+        .withSuccessHandler((data) => {
           hideLoader();
+
+          try {
+            AppState.tercerosCache = Array.isArray(data) ? data : [];
+            const select = document.getElementById('abono-tercero');
+            
+            if (!select) return;
+
+            select.innerHTML = '<option value="">⚠️ Seleccione un cliente...</option>';
+            AppState.tercerosCache.forEach((t) => {
+              const opt = document.createElement('option');
+              opt.value = t.id;
+              opt.textContent = `${t.nombre} (${t.tipo})`;
+              select.appendChild(opt);
+            });
+
+            showToast(`✅ ${AppState.tercerosCache.length} clientes disponibles`, 'success', 2000);
+          } catch (err) {
+            console.error('Error al cargar terceros:', err);
+            showToast('⚠️ Error al cargar lista de clientes', 'warning');
+          }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
+        .withFailureHandler((err) => {
+          handleServerError(err);
         })
         .getTerceros();
     }
 
     function registrarAbonoUI() {
-      showLoader();
-      
-      // VALIDACIÓN CLIENT ─ IMPORTANTE
+      // Validar formulario
+      if (!validateForm('form-abono')) {
+        showToast('⚠️ Complete todos los campos requeridos correctamente', 'warning');
+        return;
+      }
+
       const tercero = document.getElementById('abono-tercero').value.trim();
-      const valor = document.getElementById('abono-valor').value.trim();
+      const valor = parseFloat(document.getElementById('abono-valor').value);
       const ref = document.getElementById('abono-ref').value.trim();
       const tipo = document.getElementById('abono-tipo').value;
 
-      if (!tercero) { hideLoader(); alert("⚠️ Seleccione un cliente"); return; }
-      if (!terceroExists(tercero)) { hideLoader(); alert("⚠️ Cliente no encontrado"); return; }
-      if (!isValidNumber(valor)) { hideLoader(); alert("⚠️ Monto debe ser > 0"); return; }
-      if (!ref) { hideLoader(); alert("⚠️ Ingrese referencia (ej: Recibo 001)"); return; }
+      // Validaciones adicionales
+      if (!tercero || !terceroExists(tercero)) {
+        showToast('⚠️ Seleccione un cliente válido', 'warning');
+        return;
+      }
+
+      if (!isValidNumber(valor)) {
+        showToast('⚠️ El monto debe ser mayor a 0', 'warning');
+        return;
+      }
+
+      if (!isNotEmpty(ref)) {
+        showToast('⚠️ Ingrese una referencia', 'warning');
+        return;
+      }
+
+      showLoader();
+
+      // Cambiar icono del botón mientras se procesa
+      const btn = document.getElementById('btn-submit-abono');
+      const originalContent = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span> Procesando...';
+      btn.disabled = true;
 
       google.script.run
-        .withSuccessHandler(res => {
+        .withSuccessHandler((res) => {
           hideLoader();
-          if(res.success) {
-            alert(`✅ Abono procesado: $${formatCur(res.aplicado)}`);
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+
+          if (res && res.success) {
+            const monto = formatCur(res.aplicado || valor);
+            showToast(`✅ ✓ Abono de ${monto} registrado exitosamente`, 'success', 6000);
             document.getElementById('form-abono').reset();
-            switchView(null, 'dashboard');
+            document.querySelectorAll('#form-abono .form-group').forEach(g => g.classList.remove('error'));
+            
+            // Volver al dashboard
+            setTimeout(() => switchView(null, 'dashboard'), 1000);
           } else {
-            alert("❌ " + escapeHTML(res.message));
+            showToast(`❌ ${escapeHTML(res?.message || 'Error al registrar abono')}`, 'error', 6000);
           }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          alert("❌ Error: " + escapeHTML(err.message)); 
+        .withFailureHandler((err) => {
+          hideLoader();
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+          handleServerError(err);
         })
-        .registrarAbono(tercero, parseFloat(valor), ref, tipo);
+        .registrarAbono(tercero, valor, ref, tipo);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 13. API: ANÁLISIS CON IA
+    // ─────────────────────────────────────────────────────────────────────────────────
+
     function analizarIA() {
-      showLoader();
       const resDiv = document.getElementById('ia-result');
+      const btn = document.getElementById('btn-ia');
+      
+      const originalContent = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span> Analizando...';
+      btn.disabled = true;
       resDiv.style.display = 'block';
-      resDiv.innerText = "⏳ Gemini está analizando...";
+      resDiv.innerText = '⏳ Gemini está analizando tu cartera...';
+
+      showLoader();
+
       google.script.run
-        .withSuccessHandler(res => { 
-          hideLoader(); 
-          if (res.success) {
-            resDiv.innerText = res.analisis;
+        .withSuccessHandler((res) => {
+          hideLoader();
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+
+          if (res && res.success) {
+            resDiv.innerHTML = `<div style="line-height: 1.6;">${escapeHTML(res.analisis || 'Sin análisis disponible')}</div>`;
+            showToast('✅ Análisis completado', 'success', 3000);
           } else {
-            resDiv.innerText = "❌ " + escapeHTML(res.message);
+            resDiv.innerHTML = `<strong>❌ Error:</strong> ${escapeHTML(res?.message || 'No se pudo completar el análisis')}`;
+            showToast('❌ Error en análisis de IA', 'error');
           }
         })
-        .withFailureHandler(err => { 
-          hideLoader(); 
-          resDiv.innerText = "❌ Error IA: " + escapeHTML(err.message); 
+        .withFailureHandler((err) => {
+          hideLoader();
+          btn.innerHTML = originalContent;
+          btn.disabled = false;
+          resDiv.innerHTML = `<strong>❌ Error del servidor:</strong> ${escapeHTML(err.message || 'Intente más tarde')}`;
+          handleServerError(err);
         })
         .analizarConGeminiCompleto();
     }
 
-    // ═════════════════════════════════════════════════════════════════════════════════
-    // LIFECYCLE
-    // ═════════════════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // 14. CICLO DE VIDA DE LA APLICACIÓN
+    // ─────────────────────────────────────────────────────────────────────────────────
 
     window.addEventListener('load', () => {
-      loadSelectTerceros();  // Precarga caché de terceros
+      console.log('✅ MicroERP Frontend v3.0 Iniciado');
+      
+      // Precarga de datos
+      loadSelectTerceros();
       loadDashboard();
+      
+      // Cerrar modal al hacer click fuera
+      document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            toggleModal(modal.id);
+          }
+        });
+      });
+
+      // Validación en tiempo real
+      document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('change', () => {
+          const hasError = !isValidNumber(input.value);
+          setFieldError(input.id, hasError);
+        });
+      });
+
+      showToast('👋 Bienvenido a MicroERP Cartera Pro', 'info', 3000);
+    });
+
+    // Cleanup al cerrar
+    window.addEventListener('beforeunload', () => {
+      hideLoader();
     });
   </script>
 </body>
