@@ -22,7 +22,7 @@ function getTerceros(filtroTipo = null) {
     return resultado;
   } catch (e) {
     Logger.log("ERROR getTerceros:" + e.toString());
-    return { success: false, message: e.toString() };
+    throw new Error(e.message || e.toString());
   }
 }
 
@@ -34,7 +34,7 @@ function getCartera(filtroEstado = null, filtroTipo = null) {
     return DOMAIN.getCartera(filtroTipo, filtroEstado);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
-    return { success: false, message: e.toString() };
+    throw new Error(e.message || e.toString());
   }
 }
 
