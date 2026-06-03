@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5, viewport-fit=cover">
-  <meta name="description" content="MicroERP - Sistema de Cartera de Crédito">
-  <meta name="theme-color" content="#0d1117">
-  <title>MicroERP - Cartera Pro</title>
+  <meta name="description" content="MicroERP Terminal - Brutalismo Financiero Refinado">
+  <meta name="theme-color" content="#0A0A0C">
+  <title>MicroERP Terminal - Brutalismo Financiero Refinado</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@500;600;700&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
@@ -79,23 +80,24 @@
   <noscript><link rel="stylesheet" href="styles.css"></noscript>
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <div id="global-loader" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
   <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <aside id="sidebar" role="navigation" aria-label="Navegación principal">
-    <div class="brand"><i data-lucide="truck"></i> <span>MicroERP Auto</span></div>
+    <div class="brand"><i data-lucide="activity"></i> <span>MicroERP Terminal</span></div>
     <nav role="menubar">
       <div class="nav-btn active" role="menuitem" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')">
         <i data-lucide="layout-dashboard"></i> Dashboard
       </div>
       <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'terceros')" onkeypress="handleKeyboardNav(event, 'terceros')">
-        <i data-lucide="users"></i> Terceros
+        <i data-lucide="users"></i> Contrapartes
       </div>
       <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'cartera')" onkeypress="handleKeyboardNav(event, 'cartera')">
-        <i data-lucide="wallet"></i> Cartera
+        <i data-lucide="wallet"></i> Ledger
       </div>
       <div class="nav-btn" role="menuitem" tabindex="0" onclick="switchView(event, 'abonos')" onkeypress="handleKeyboardNav(event, 'abonos')">
-        <i data-lucide="coins"></i> Nuevo Abono
+        <i data-lucide="coins"></i> Liquidaciones
       </div>
     </nav>
   </aside>
@@ -105,7 +107,7 @@
       
       <!-- DASHBOARD VIEW -->
       <section id="view-dashboard" class="view active">
-        <h2>Resumen - Accesorios y Electrónica Automotriz</h2>
+        <h2>Resumen de Mercado</h2>
         <div class="stats-grid">
           <div class="card reveal" style="--order:0">
             <div style="color: var(--text-muted); font-size: 0.8rem;">Por Cobrar (CxC)</div>
@@ -125,8 +127,8 @@
           </div>
         </div>
         <div class="card reveal" style="--order:2">
-          <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar stock y cartera con inteligencia artificial">
-            <i data-lucide="sparkles"></i> Analizar Stock y Ventas (IA)
+          <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar mercado con inteligencia artificial">
+            <i data-lucide="sparkles"></i> Analizar Mercado (IA)
           </button>
           <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.5; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;"></div>
         </div>
@@ -135,9 +137,9 @@
       <!-- TERCEROS VIEW -->
       <section id="view-terceros" class="view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
-          <h2>Terceros</h2>
-          <button class="btn btn-primary btn-small" onclick="toggleModal('modal-tercero')" aria-label="Agregar nuevo tercero">
-            <i data-lucide="user-plus"></i> Nuevo
+          <h2>Contrapartes</h2>
+          <button class="btn btn-primary btn-small" onclick="toggleModal('modal-tercero')" aria-label="Agregar nueva contraparte">
+            <i data-lucide="user-plus"></i> Nueva
           </button>
         </div>
         <div class="card table-container">
@@ -159,7 +161,7 @@
       <!-- CARTERA VIEW -->
       <section id="view-cartera" class="view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
-          <h2>Movimientos de Cartera</h2>
+          <h2>Ledger</h2>
           <select id="filtro-cartera" style="width:auto; margin:0; max-width:200px;" onchange="loadCartera()" aria-label="Filtrar por tipo">
             <option value="">📊 Todos</option>
             <option value="CxC">💰 Cuentas por Cobrar</option>
@@ -185,9 +187,9 @@
       <!-- ABONOS VIEW -->
       <section id="view-abonos" class="view">
         <div class="card" style="max-width: 500px; margin: 0 auto;">
-          <h3>Registrar Pago (Método FIFO)</h3>
+          <h3>Registrar Liquidación</h3>
           <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-            Complete todos los campos para registrar un nuevo movimiento.
+            Complete los campos para registrar una acción de saldo.
           </p>
           <form id="form-abono" onsubmit="event.preventDefault(); registrarAbonoUI();">
             
@@ -1044,7 +1046,7 @@
         });
       });
 
-      showToast('👋 Bienvenido a MicroERP Auto', 'info', 3000);
+      showToast('👋 Bienvenido a MicroERP Terminal', 'info', 3000);
     });
 
     // Cleanup al cerrar
