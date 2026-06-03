@@ -12,7 +12,9 @@ let CACHE = {
   carteraIndex: {},  
   lastRefreshTerceros: 0,
   lastRefreshCartera: 0,
-  CACHE_TTL: 60000,  
+  CACHE_TTL: 300000,  
+  tercerosStale: false,
+  carteraStale: false,
 
   /**
    * Invalida SOLO la caché de terceros
@@ -21,6 +23,7 @@ let CACHE = {
     this.terceros = null;
     this.terceroIndex = {};
     this.lastRefreshTerceros = 0;
+    this.tercerosStale = false;
   },
 
   /**
@@ -30,6 +33,7 @@ let CACHE = {
     this.cartera = null;
     this.carteraIndex = {};
     this.lastRefreshCartera = 0;
+    this.carteraStale = false;
   },
 
   /**
@@ -44,14 +48,14 @@ let CACHE = {
    * Retorna TRUE si caché de terceros es válido
    */
   isTercerosValid() {
-    return (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL && this.terceros !== null;
+    return (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL && this.terceros !== null && !this.tercerosStale;
   },
 
   /**
    * Retorna TRUE si caché de cartera es válido
    */
   isCarteraValid() {
-    return (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL && this.cartera !== null;
+    return (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL && this.cartera !== null && !this.carteraStale;
   },
 
   /**
@@ -63,29 +67,32 @@ let CACHE = {
     }
 
     if (!this.isTercerosValid()) {
-        this._refreshTerceros();
+      this._refreshTerceros();
     }
 
     if (!this.isCarteraValid()) {
-        this._refreshCartera();
+      this._refreshCartera();
     }
   },
 
   _refreshTerceros() {
     const sheetTerceros = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
     try {
-      const dataTerceros = sheetTerceros.getDataRange().getValues();
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
-      this.terceros = [];
-      this.terceroIndex = {};
+      const lastRow = sheetTerceros.getLastRow();
+      const numCols = Math.max(...Object.values(COL_T)) + 1;
+      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(2, 1, lastRow - 1, numCols).getValues();
 
-      for (let i = 1; i < dataTerceros.length; i++) {
+      const newTerceros = [];
+      const newIndex = {};
+      for (let i = 0; i < dataTerceros.length; i++) {
+        const rowIdx = i + 1; // 1-based index relative to data array (sheet row = i+1 + header)
         const id = String(dataTerceros[i][COL_T.id]).trim();
         if (!id) continue;
-        this.terceroIndex[id] = i;  
-        this.terceros.push({
+        newIndex[id] = rowIdx;  
+        newTerceros.push({
           id,
-          rowIndex: i,
+          rowIndex: rowIdx,
           nombre: String(dataTerceros[i][COL_T.nombre] || "").trim(),
           telefono: String(dataTerceros[i][COL_T.telefono] || "").trim(),
           tipo: String(dataTerceros[i][COL_T.tipo] || "CLIENTE").toUpperCase(),
@@ -93,28 +100,37 @@ let CACHE = {
           activo: String(dataTerceros[i][COL_T.activo] || "ACTIVO").toUpperCase() !== "INACTIVO",
         });
       }
+
+      // Commit only on success
+      this.terceros = newTerceros;
+      this.terceroIndex = newIndex;
       this.lastRefreshTerceros = Date.now();
+      this.tercerosStale = false;
     } catch (e) {
       Logger.log("ERROR CACHE._refreshTerceros:" + e.toString());
-      this.terceros = [];
+      // Mantener la caché previa si existe y marcar como stale para visibilidad
+      this.tercerosStale = true;
     }
   },
 
   _refreshCartera() {
     const sheetCartera = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     try {
-      const dataCartera = sheetCartera.getDataRange().getValues();
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
-      this.cartera = [];
-      this.carteraIndex = {};
+      const numCols = Math.max(...Object.values(COL_C)) + 1;
+      const lastRow = sheetCartera.getLastRow();
+      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(2, 1, lastRow - 1, numCols).getValues();
 
-      for (let i = 1; i < dataCartera.length; i++) {
+      const newCartera = [];
+      const newIndex = {};
+      for (let i = 0; i < dataCartera.length; i++) {
+        const rowIdx = i + 1;
         const id = String(dataCartera[i][COL_C.id]).trim();
         if (!id) continue;
-        this.carteraIndex[id] = i;  
-        this.cartera.push({
+        newIndex[id] = rowIdx;
+        newCartera.push({
           id,
-          rowIndex: i,
+          rowIndex: rowIdx,
           fecha: _safeDate(dataCartera[i][COL_C.fecha]),
           id_tercero: String(dataCartera[i][COL_C.id_tercero]).trim(),
           total: _parseMoneda(dataCartera[i][COL_C.total], 0),
@@ -124,10 +140,15 @@ let CACHE = {
           fecha_vencimiento: _safeDate(dataCartera[i][COL_C.fecha_vencimiento]),
         });
       }
+
+      this.cartera = newCartera;
+      this.carteraIndex = newIndex;
       this.lastRefreshCartera = Date.now();
+      this.carteraStale = false;
     } catch (e) {
       Logger.log("ERROR CACHE._refreshCartera:" + e.toString());
-      this.cartera = [];
+      // Mantener la caché previa si existe y marcar como stale
+      this.carteraStale = true;
     }
   },
 

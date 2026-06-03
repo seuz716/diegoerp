@@ -30,8 +30,6 @@ const DOMAIN = {
         LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS");
       }
 
-      // 3. Flush final garantizado 
-      SpreadsheetApp.flush();
       return { success: true, id };
 
     } catch (e) {
@@ -44,37 +42,34 @@ const DOMAIN = {
     }
   },
 
-  getCartera(filtroTipo = null) {
-    const baseCartera = DAO.getCarteraBase();
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  getCartera(filtroTipo = null, filtroEstado = null) {
+    const baseCartera = DAO.getCartera(filtroTipo, filtroEstado);
+    const hoy = _today();
 
     // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
-    CACHE.refresh(); 
+    CACHE.refresh();
     const tercerosMap = new Map();
-    if(CACHE.terceros) {
-        CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
+    if (CACHE.terceros) {
+      CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
     }
 
-    return baseCartera
-      .map(c => {
-        let estado = c.estado;
-        if (estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && _isValidDate(c.fecha_vencimiento)) {
-          const fv = new Date(c.fecha_vencimiento); fv.setHours(0, 0, 0, 0);
-          if (fv < hoy) estado = CARTERA_CONFIG.ESTADOS.VENCIDA;
-        }
+    return baseCartera.map(c => {
+      let estado = c.estado;
+      if (estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && _isValidDate(c.fecha_vencimiento)) {
+        const fv = _safeDate(c.fecha_vencimiento);
+        if (fv.getTime() > 0 && fv.getTime() < hoy.getTime()) estado = CARTERA_CONFIG.ESTADOS.VENCIDA;
+      }
 
-        // Acceso O(1) rápido
-        const tercero = tercerosMap.get(c.id_tercero) || null;
-        return {
-          ...c,
-          estado,
-          nombre_tercero: tercero ? tercero.nombre : "DESCONOCIDO",
-          dias_vencido: (estado === CARTERA_CONFIG.ESTADOS.VENCIDA && _isValidDate(c.fecha_vencimiento))
-            ? Math.floor((hoy - c.fecha_vencimiento) / 86400000)
-            : 0,
-        };
-      })
-      .filter(c => !filtroTipo || c.tipo === filtroTipo);
+      const tercero = tercerosMap.get(c.id_tercero) || null;
+      return {
+        ...c,
+        estado,
+        nombre_tercero: tercero ? tercero.nombre : "DESCONOCIDO",
+        dias_vencido: (estado === CARTERA_CONFIG.ESTADOS.VENCIDA && _isValidDate(c.fecha_vencimiento))
+          ? Math.floor((_today().getTime() - _safeDate(c.fecha_vencimiento).getTime()) / 86400000)
+          : 0,
+      };
+    });
   },
 
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {
@@ -100,8 +95,7 @@ const DOMAIN = {
       const tipoLimpio = tipo === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
       const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
 
-      const pendientes = DAO.getCarteraBase()
-        .filter(c => c.id_tercero === idTerceroLimpio && c.tipo === tipoLimpio && c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && c.saldo > 0)
+      const pendientes = DAO.getCarteraByTerceroAndTipo(idTerceroLimpio, tipoLimpio)
         .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
 
       if (pendientes.length === 0) {
@@ -135,17 +129,15 @@ const DOMAIN = {
         restante -= aplicado;
       }
 
-      // Invalidación DE CACHÉ ANTES de iniciar escritura mitigando la ventana de lectura errónea
-      CACHE.invalidateCartera(); 
-
       if (txPlan.movimientos.length > 0) {
         for (const mov of txPlan.movimientos) { DAO.createMovimiento(mov); }
       }
       DAO.updateCarteraBatch(txPlan.cambios);
-      LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio, { anterior_saldo: totalDeuda }, { nuevo_saldo: totalDeuda - valor, movimientos: txPlan.movimientos.length }, "SUCCESS");
 
-      // Flush final
-      SpreadsheetApp.flush();
+      // Invalidar caché después de todas las escrituras para evitar lecturas parciales.
+      CACHE.invalidateCartera();
+
+      LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio, { anterior_saldo: totalDeuda }, { nuevo_saldo: totalDeuda - valor, movimientos: txPlan.movimientos.length }, "SUCCESS");
 
       return { success: true, aplicado: valor - restante, restante: Math.max(0, restante), movimientos: txPlan.movimientos.length };
 
@@ -185,13 +177,12 @@ const DOMAIN = {
       const record = {
         id: idCartera, fecha: new Date(), id_tercero: idTerceroLimpio, origen_id: String(origenId).trim(),
         total: totalLimpio, saldo: totalLimpio, tipo: tipo, estado: CARTERA_CONFIG.ESTADOS.ABIERTA,
-        fecha_vencimiento: (() => { const d = new Date(); d.setDate(d.getDate() + (parseInt(diasCredito) || 30)); return d; })(),
+        fecha_vencimiento: (() => { const d = _today(); d.setDate(d.getDate() + (parseInt(diasCredito) || 30)); return d; })(),
       };
 
       DAO.createCartera(record);
       LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS");
       
-      SpreadsheetApp.flush();
       return idCartera;
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();

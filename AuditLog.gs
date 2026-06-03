@@ -34,7 +34,6 @@ const LOG_ENGINE = {
         sheetAudit.appendRow(["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado"]);
       }
       sheetAudit.getRange(sheetAudit.getLastRow() + 1, 1, 1, 9).setValues([rowData]);
-      SpreadsheetApp.flush();
       return true;
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE:" + e.toString());

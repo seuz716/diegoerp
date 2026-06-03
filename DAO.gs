@@ -15,42 +15,193 @@ const DAO = {
     return CACHE.getCarteraBase();
   },
 
+  getCartera(filtroTipo = null, filtroEstado = null) {
+    if (!filtroTipo && !filtroEstado) {
+      return this.getCarteraBase();
+    }
+
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+
+    let rowIndexes = null;
+    if (filtroTipo) {
+      rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.tipo, filtroTipo);
+    }
+
+    if (filtroEstado) {
+      const estadoRows = this._findRowIndexesByColumnValue(sheet, COL.estado, filtroEstado);
+      if (rowIndexes === null) {
+        rowIndexes = estadoRows;
+      } else {
+        const estadoSet = new Set(estadoRows);
+        rowIndexes = rowIndexes.filter(row => estadoSet.has(row));
+      }
+    }
+
+    if (!rowIndexes || rowIndexes.length === 0) {
+      return [];
+    }
+
+    return this._fetchCarteraItemsFromRows(sheet, rowIndexes, numCols);
+  },
+
+  getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.id_tercero, idTercero);
+
+    if (!rowIndexes || rowIndexes.length === 0) {
+      return [];
+    }
+
+    return this._fetchCarteraItemsFromRows(sheet, rowIndexes, numCols)
+      .filter(c => c.tipo === tipoLimpio && c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && c.saldo > 0);
+  },
+
+  _findRowIndexesByColumnValue(sheet, colIndex, value) {
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+
+    const range = sheet.getRange(2, colIndex + 1, lastRow - 1, 1);
+    const matches = range.createTextFinder(String(value))
+      .matchEntireCell(true)
+      .useRegularExpression(false)
+      .findAll();
+
+    if (!matches || matches.length === 0) return [];
+    return matches.map(match => match.getRow());
+  },
+
+  _fetchCarteraItemsFromRows(sheet, rowIndexes, numCols) {
+    if (!rowIndexes || rowIndexes.length === 0) return [];
+
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const uniqueRows = Array.from(new Set(rowIndexes)).sort((a, b) => a - b);
+    const groups = [];
+    let start = uniqueRows[0];
+    let end = start;
+
+    for (let i = 1; i < uniqueRows.length; i++) {
+      const row = uniqueRows[i];
+      if (row === end + 1) {
+        end = row;
+      } else {
+        groups.push({ start, end });
+        start = row;
+        end = row;
+      }
+    }
+    groups.push({ start, end });
+
+    const items = [];
+    for (const group of groups) {
+      const values = sheet.getRange(group.start, 1, group.end - group.start + 1, numCols).getValues();
+      for (let i = 0; i < values.length; i++) {
+        items.push(this._rowToCarteraItem(values[i]));
+      }
+    }
+
+    return items;
+  },
+
+  _rowToCarteraItem(row) {
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    return {
+      id: String(row[COL.id] || "").trim(),
+      fecha: _safeDate(row[COL.fecha]),
+      id_tercero: String(row[COL.id_tercero] || "").trim(),
+      origen_id: String(row[COL.origen_id] || "").trim(),
+      total: _parseMoneda(row[COL.total], 0),
+      saldo: _parseMoneda(row[COL.saldo], 0),
+      tipo: String(row[COL.tipo] || "").trim(),
+      estado: String(row[COL.estado] || "").trim(),
+      fecha_vencimiento: _safeDate(row[COL.fecha_vencimiento]),
+    };
+  },
+
   saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-      const rowExisting = CACHE.terceroIndex[id];
-
+      let rowExisting = CACHE.terceroIndex[id];
       const rowData = [id, nombre, "", tipo, limite, activo];
+
+      // Validación directa en hoja para evitar duplicados si la caché está vencida o corrupta.
+      const lastRow = sheet.getLastRow() || 0;
+      if (lastRow > 1) {
+        const rawIds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+        for (let i = 0; i < rawIds.length; i++) {
+          if (String(rawIds[i][0] || "").trim() === id) {
+            rowExisting = i + 1;
+            break;
+          }
+        }
+      }
 
       if (rowExisting) {
         sheet.getRange(rowExisting + 1, 1, 1, 6).setValues([rowData]);
         return { isUpdate: true };
-      } else {
-        const lastRow = sheet.getLastRow() || 0;
-        if (lastRow === 0) {
-          sheet.appendRow(["ID", "Nombre", "Teléfono", "Tipo", "Límite_Crédito", "Activo"]);
-        }
-        sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([rowData]);
-        return { isUpdate: false };
       }
+
+      if (lastRow === 0) {
+        sheet.appendRow(["ID", "Nombre", "Teléfono", "Tipo", "Límite_Crédito", "Activo"]);
+      }
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([rowData]);
+      return { isUpdate: false };
   },
 
   /**
    * ACTUALIZACIÓN OPTIMIZADA - No lee Array entero, evita Timeout.
+   * Agrupa TODOS los cambios en una sola llamada setValues() para minimizar llamadas a la API.
    */
   updateCarteraBatch(cambios) {
     if (!cambios || cambios.length === 0) return true;
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA; // Estas son las columnas 0-based del array interno
 
-    // Solo tocamos las filas específicas, evitando exceder la cuota O(1) de Google por fila.
+    let minRow = Infinity;
+    let maxRow = -Infinity;
+
+    // Identificar las columnas mínimas y máximas afectadas (asumimos que COL.saldo y COL.estado son 0-based)
+    const minColIdx = Math.min(COL.saldo, COL.estado);
+    const maxColIdx = Math.max(COL.saldo, COL.estado);
+    const numColsToProcess = maxColIdx - minColIdx + 1; // Número de columnas en el bloque a leer/escribir
+
+    const rowMap = new Map(); // Para almacenar los cambios por fila y evitar duplicados si hay varios cambios para la misma fila
     for (const cambio of cambios) {
-      if (cambio.rowIndex > 0) {
-         // Índice +1 para filas en GSheets (las columnas son 0-based en array interno pero 1-based en range)
-         sheet.getRange(cambio.rowIndex, COL.saldo + 1, 1, 1).setValue(cambio.saldo);
-         sheet.getRange(cambio.rowIndex, COL.estado + 1, 1, 1).setValue(cambio.estado);
+      if (cambio.rowIndex > 0) { // rowIndex es 1-based del sheet
+        minRow = Math.min(minRow, cambio.rowIndex);
+        maxRow = Math.max(maxRow, cambio.rowIndex);
+        rowMap.set(cambio.rowIndex, cambio); // Guardamos el último cambio para esta fila
       }
     }
+
+    if (minRow === Infinity) return true; // No hay cambios válidos
+
+    const numRowsToProcess = maxRow - minRow + 1;
+
+    // Obtener el rango completo de datos afectados en una sola llamada
+    // minRow es 1-based, minColIdx + 1 es 1-based
+    const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
+    const values = targetRange.getValues(); // Obtener todos los valores del rango en un array 2D (0-based)
+
+    // Aplicar los cambios al array local en memoria
+    for (const [rowIndex, cambio] of rowMap.entries()) {
+      const localRowIndex = rowIndex - minRow; // Convertir el índice de fila de hoja a índice de array local (0-based)
+
+      if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) { // Corrección aquí
+        // Convertir el índice de columna de COL (0-based) a índice de array local (0-based respecto a minColIdx)
+        const localColIndexSaldo = COL.saldo - minColIdx;
+        const localColIndexEstado = COL.estado - minColIdx;
+
+        values[localRowIndex][localColIndexSaldo] = cambio.saldo;
+        values[localRowIndex][localColIndexEstado] = cambio.estado;
+      }
+    }
+
+    // Escribir todos los cambios de vuelta a la hoja en una sola llamada
+    targetRange.setValues(values);
 
     return true;
   },
@@ -81,3 +232,4 @@ const DAO = {
     return true;
   },
 };
+

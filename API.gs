@@ -22,7 +22,7 @@ function getTerceros(filtroTipo = null) {
     return resultado;
   } catch (e) {
     Logger.log("ERROR getTerceros:" + e.toString());
-    return [];
+    return { success: false, message: e.toString() };
   }
 }
 
@@ -31,14 +31,10 @@ function getTerceros(filtroTipo = null) {
  */
 function getCartera(filtroEstado = null, filtroTipo = null) {
   try {
-    const resultado = DOMAIN.getCartera(filtroTipo);
-    if (filtroEstado) {
-      return resultado.filter(c => c.estado === filtroEstado);
-    }
-    return resultado;
+    return DOMAIN.getCartera(filtroTipo, filtroEstado);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
-    return [];
+    return { success: false, message: e.toString() };
   }
 }
 
@@ -55,7 +51,7 @@ function saveTercero(tercero) {
 function getDashboardCartera() {
   try {
     const cartera = DOMAIN.getCartera();
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const hoy = _today();
 
     const cxc = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
     const cxp = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
