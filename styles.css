@@ -1,15 +1,16 @@
 :root {
-  --primary: #a3b1c6;
-  --primary-dark: #64748b;
-  --secondary: #e2e8f0;
-  --bg-dark: #0d1117;
-  --bg-card: rgba(28, 33, 40, 0.85);
-  --glass-border: rgba(163, 177, 198, 0.2);
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --accent-gradient: linear-gradient(135deg, #e2e8f0 0%, #64748b 100%);
+  /* Tema automotriz: azul metálico + naranja de señalización */
+  --primary: #0b3d91; /* azul acero */
+  --primary-dark: #062b66;
+  --secondary: #f8fafc;
+  --bg-dark: #071026; /* deep navy */
+  --bg-card: rgba(12, 18, 28, 0.8);
+  --glass-border: rgba(255, 140, 0, 0.12);
+  --text-main: #f6f8fb;
+  --text-muted: #9fb0d6;
+  --accent-gradient: linear-gradient(135deg, #0b3d91 0%, #ff8c00 100%);
   --danger: #ef4444;
-  --warning: #f59e0b;
+  --warning: #ff8c00;
   --success: #10b981;
   --info: #3b82f6;
 }

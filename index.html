@@ -83,7 +83,7 @@
   <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <aside id="sidebar" role="navigation" aria-label="Navegación principal">
-    <div class="brand"><i data-lucide="layers"></i> <span>MicroERP</span></div>
+    <div class="brand"><i data-lucide="truck"></i> <span>MicroERP Auto</span></div>
     <nav role="menubar">
       <div class="nav-btn active" role="menuitem" tabindex="0" onclick="switchView(event, 'dashboard')" onkeypress="handleKeyboardNav(event, 'dashboard')">
         <i data-lucide="layout-dashboard"></i> Dashboard
@@ -105,7 +105,7 @@
       
       <!-- DASHBOARD VIEW -->
       <section id="view-dashboard" class="view active">
-        <h2>Resumen Financiero</h2>
+        <h2>Resumen - Sector Automotriz</h2>
         <div class="stats-grid">
           <div class="card reveal" style="--order:0">
             <div style="color: var(--text-muted); font-size: 0.8rem;">Por Cobrar (CxC)</div>
@@ -125,8 +125,8 @@
           </div>
         </div>
         <div class="card reveal" style="--order:2">
-          <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar cartera con inteligencia artificial">
-            <i data-lucide="sparkles"></i> Analizar Cartera con IA
+          <button class="btn btn-primary" id="btn-ia" onclick="analizarIA()" aria-label="Analizar flota y cartera con inteligencia artificial">
+            <i data-lucide="sparkles"></i> Analizar Flota y Cartera (IA)
           </button>
           <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.5; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;"></div>
         </div>
@@ -1044,7 +1044,7 @@
         });
       });
 
-      showToast('👋 Bienvenido a MicroERP Cartera Pro', 'info', 3000);
+      showToast('👋 Bienvenido a MicroERP Auto', 'info', 3000);
     });
 
     // Cleanup al cerrar
