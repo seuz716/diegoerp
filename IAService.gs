@@ -22,18 +22,17 @@ const IA_SERVICE = {
   MAX_OUTPUT_TOKENS: 8192,
 
   _getApiKey() {
-    const key = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
-    if (!key) throw new Error("GEMINI_API_KEY no configurada. Ejecuta setupGeminiKey().");
-    return key;
+    return AuthService.getApiKey("GEMINI_API_KEY");
   },
 
   _buildUrl() {
-    return `${this.BASE_URL}${this.MODEL}:generateContent?key=${this._getApiKey()}`;
+    return `${this.BASE_URL}${this.MODEL}:generateContent`;
   },
 
   _buildHeaders() {
     return {
       "Content-Type": "application/json",
+      "x-goog-api-key": this._getApiKey(),
     };
   },
 
@@ -450,12 +449,6 @@ REGLAS DE NEGOCIO:
 - Saldo negativo en inventario o cartera es anomalía automática`;
   },
 
-  /**
-   * Extrae datos relevantes del libro y los serializa para el prompt.
-   * Optimiza tokens: solo columnas útiles, últimos 12 meses.
-   */
-  extractData() {
-
   _callGemini(systemPrompt, userPrompt) {
     const url = this._buildUrl();
 
@@ -650,17 +643,15 @@ function setupGeminiKey(apiKey) {
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("Debes proporcionar una API Key válida. Obtén una en: https://aistudio.google.com/apikey");
   }
-  PropertiesService.getScriptProperties().setProperty("GEMINI_API_KEY", apiKey.trim());
-  console.log("✅ GEMINI_API_KEY configurada correctamente.");
-  return { success: true, message: "API Key configurada. Puedes cerrar esta ventana." };
+  AuthService.setApiKey("GEMINI_API_KEY", apiKey.trim());
+  return { success: true, message: "API Key cifrada y configurada. Puedes cerrar esta ventana." };
 }
 
 /**
  * Removes the Gemini API Key from ScriptProperties.
  */
 function removeGeminiKey() {
-  PropertiesService.getScriptProperties().deleteProperty("GEMINI_API_KEY");
-  console.log("🗑️ GEMINI_API_KEY eliminada.");
+  AuthService.removeApiKey("GEMINI_API_KEY");
   return { success: true, message: "API Key eliminada." };
 }
 
@@ -668,12 +659,13 @@ function removeGeminiKey() {
  * Verifies if the Gemini API Key is configured.
  */
 function verificarConfiguracionIA() {
-  const key = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
   return {
-    configurada: !!key,
-    key_preview: key ? key.slice(0, 6) + "..." + key.slice(-4) : null,
+    configurada,
+    key_preview: null,
     modelo: IA_SERVICE.MODEL,
     cache_ttl_ms: IA_SERVICE.CACHE_TTL_MS,
+    advertencia: configurada ? "La API Key está cifrada. No se muestra preview por seguridad." : null,
   };
 }
 
@@ -683,6 +675,7 @@ function verificarConfiguracionIA() {
  */
 function analizarConGeminiCompleto() {
   try {
+    AuthService.checkAuthorization("VIEWER");
     const resultado = IA_SERVICE.ejecutarAnalisis();
     return resultado;
   } catch (e) {

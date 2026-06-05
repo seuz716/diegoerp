@@ -116,7 +116,8 @@ const DOMAIN = {
   },
 
   getCartera(filtroTipo = null, filtroEstado = null) {
-    const baseCartera = DAO.getCartera(filtroTipo, filtroEstado);
+    const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
+    const baseCartera = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado);
     const hoy = _today();
 
     // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
@@ -126,11 +127,19 @@ const DOMAIN = {
       CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
     }
 
-    return baseCartera.map(c => {
+    const result = baseCartera.map(c => {
       let estado = c.estado;
       if (estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && _isValidDate(c.fecha_vencimiento)) {
         const fv = _safeDate(c.fecha_vencimiento);
-        if (fv.getTime() > 0 && fv.getTime() < hoy.getTime()) estado = CARTERA_CONFIG.ESTADOS.VENCIDA;
+        if (fv.getTime() > 0) {
+          if (fv.getTime() < hoy.getTime()) {
+            estado = CARTERA_CONFIG.ESTADOS.VENCIDA;
+          } else if (estado === CARTERA_CONFIG.ESTADOS.VENCIDA) {
+            estado = c.saldo < c.total
+              ? CARTERA_CONFIG.ESTADOS.PARCIAL
+              : CARTERA_CONFIG.ESTADOS.ABIERTA;
+          }
+        }
       }
 
       const tercero = tercerosMap.get(c.id_tercero) || null;
@@ -143,6 +152,11 @@ const DOMAIN = {
           : 0,
       };
     });
+
+    if (debeFiltrarVencida) {
+      return result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+    }
+    return result;
   },
 
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {

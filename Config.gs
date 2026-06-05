@@ -29,6 +29,14 @@ const CONFIG = {
   STOCK_MINIMO: 5,
 };
 
+const ROLES = {
+  ADMIN: 'ADMIN',
+  OPERATOR: 'OPERATOR',
+  VIEWER: 'VIEWER',
+};
+
+const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
+
 // ─ UTILIDADES BÁSICAS ─
 
 // Cache global para objetos Sheet
@@ -95,4 +103,5 @@ function _safeDate(v) {
 function _formatMoneda(centavos) {
   return (centavos / 100).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 }
+
 

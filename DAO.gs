@@ -16,6 +16,7 @@ const DAO = {
   },
 
   getCartera(filtroTipo = null, filtroEstado = null) {
+    AuthService.checkAuthorization(ROLES.VIEWER);
     if (!filtroTipo && !filtroEstado) {
       return this.getCarteraBase();
     }
@@ -47,6 +48,7 @@ const DAO = {
   },
 
   getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
+    AuthService.checkAuthorization(ROLES.VIEWER);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
@@ -122,6 +124,7 @@ const DAO = {
   },
 
   saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
+      AuthService.checkAuthorization(ROLES.OPERATOR);
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
       const rowData = [id, nombre, "", tipo, limite, activo];
 
@@ -153,6 +156,7 @@ const DAO = {
    * Agrupa TODOS los cambios en una sola llamada setValues() para minimizar llamadas a la API.
    */
   updateCarteraBatch(cambios) {
+    AuthService.checkAuthorization(ROLES.OPERATOR);
     if (!cambios || cambios.length === 0) return true;
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
@@ -205,6 +209,7 @@ const DAO = {
   },
 
   createMovimiento(mov) {
+    AuthService.checkAuthorization(ROLES.OPERATOR);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
     const lastRow = sheet.getLastRow() || 0;
 
@@ -218,6 +223,7 @@ const DAO = {
   },
 
   createCartera(c) {
+    AuthService.checkAuthorization(ROLES.OPERATOR);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const lastRow = sheet.getLastRow() || 0;
 
