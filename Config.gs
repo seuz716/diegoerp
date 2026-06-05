@@ -55,7 +55,7 @@ function _sanitizeId(id) { return String(id || "").trim(); }
 
 function _parseMoneda(v, defaultVal) {
   const n = parseInt(v, 10);
-  return (isNaN(n) ? (typeof defaultVal === 'number' ? defaultVal : NaN) : n);
+  return isNaN(n) ? (defaultVal || 0) : n;
 }
 
 function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }

@@ -1,0 +1,93 @@
+/* Brutalismo Financiero Refinado — Sistema de Diseño ligero */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Playfair+Display:wght@400;700&display=swap');
+
+:root{
+  --bg:#050505;
+  --bg-card:#0f0f0f;
+  --accent:#00ff41; /* verde terminal */
+  --accent-amber:#ffb700;
+  --danger:#ff3333;
+  --border: rgba(255,255,255,0.08);
+  --grid-line: rgba(255,255,255,0.03);
+  --text:#e6e6e6;
+  --muted: rgba(230,230,230,0.6);
+  --mono: 'JetBrains Mono', monospace;
+  --display: 'Playfair Display', serif;
+  --space: 24px;
+  --radius: 2px;
+}
+
+/* Base */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background-color:var(--bg); color:var(--text); font-family:var(--mono); -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale; line-height:1.15; background-image: repeating-linear-gradient(0deg, transparent, transparent 39px, var(--grid-line) 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, var(--grid-line) 40px);
+  background-size: 40px 40px, 40px 40px;
+  background-position: 0 0, 0 0;
+}
+
+/* Focus and accessibility */
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+
+/* Header (Autoritario) */
+.br-header{display:flex; align-items:center; gap:1rem; padding:20px 28px; border-bottom:1px solid var(--border); background:transparent}
+.br-header .brand{font-family:var(--display); font-size:22px; letter-spacing:0.02em; color:var(--text)}
+.br-header .controls{margin-left:auto; display:flex; gap:12px; align-items:center}
+
+/* Card / Panel */
+.br-card{background:var(--bg-card); border:1px solid var(--border); padding:24px; border-radius:var(--radius);}
+.br-card:hover{border-top-color:var(--accent)}
+.br-card--accent-top{position:relative}
+.br-card--accent-top::before{content:''; position:absolute; left:0; top:0; height:3px; width:40px; background:var(--accent)}
+
+/* Metric principal */
+.metric-card{display:flex; flex-direction:column; gap:8px; padding:32px; align-items:flex-start}
+.metric-label{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.12em}
+.metric-number{font-family:var(--mono); font-weight:700; font-size:4.5rem; line-height:1; letter-spacing:-0.02em; text-align:left}
+.metric-suffix{font-size:0.36em; opacity:0.9; margin-left:8px}
+
+/* Small prefixed suffix */
+.metric-topline{display:flex; align-items:baseline; gap:8px}
+
+/* Button */
+.br-btn{display:inline-block; padding:10px 16px; border:1px solid var(--border); background:transparent; color:var(--accent); font-weight:700; text-transform:uppercase; border-radius:var(--radius); cursor:pointer}
+.br-btn:hover{background:var(--accent); color:#000; transition:150ms}
+.br-btn:active{transform:translateY(1px)}
+
+/* Table */
+.br-table{width:100%; border-collapse:collapse; font-size:13px}
+.br-table thead th{color:var(--muted); font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:0.12em; padding:12px 8px; text-align:left}
+.br-table tbody td{padding:12px 8px; border-top:1px solid rgba(255,255,255,0.04)}
+.br-table tbody tr:hover{background:rgba(255,255,255,0.03)}
+
+/* Flash animation for live numbers */
+@keyframes br-flash{0%{background:transparent}50%{background:rgba(0,255,65,0.07)}100%{background:transparent}}
+.br-flash{animation: br-flash 150ms ease-in-out}
+
+/* Stagger reveal */
+.br-stagger > *{opacity:0; transform:translateY(4px)}
+.br-stagger[data-revealed="true"] > *{animation:br-reveal 300ms cubic-bezier(.4,0,.2,1) forwards}
+@keyframes br-reveal{to{opacity:1; transform:none}}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .br-stagger > *{animation:none !important; transform:none !important; opacity:1 !important}
+  .br-btn, .br-card{transition:none}
+}
+
+/* Responsive tweaks */
+@media (max-width:768px){
+  .metric-number{font-size:2.6rem}
+  .br-header{padding:12px}
+}
+
+/* Small utilities */
+.muted{color:var(--muted)}
+.align-right{text-align:right}
+
+/* Ensure semantic elements keep high contrast */
+h1,h2,h3{color:var(--text); font-family:var(--display)}
+
+/* Intentionally no box-shadow, no large radii, no glass blur */

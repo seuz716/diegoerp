@@ -6,21 +6,22 @@
   <title>MicroERP - Cartera Pro</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
     :root {
-      --primary: #a3b1c6;
-      --primary-dark: #64748b;
-      --secondary: #e2e8f0;
-      --bg-dark: #0d1117;
-      --bg-card: rgba(28, 33, 40, 0.85);
-      --glass-border: rgba(163, 177, 198, 0.2);
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --accent-gradient: linear-gradient(135deg, #e2e8f0 0%, #64748b 100%);
-      --danger: #ef4444;
+      --bg: #050505;
+      --bg-card: #0f0f0f;
+      --accent: #00ff41;
+      --accent-amber: #ffb700;
+      --danger: #ff3333;
+      --border: rgba(255,255,255,0.08);
+      --grid-line: rgba(255,255,255,0.03);
+      --text: #e6e6e6;
+      --muted: rgba(230,230,230,0.6);
+      --mono: 'JetBrains Mono', monospace;
+      --display: 'Playfair Display', serif;
       --warning: #f59e0b;
       --success: #10b981;
       --info: #3b82f6;
@@ -29,18 +30,21 @@
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     body {
-      background-color: var(--bg-dark);
-      background-image: radial-gradient(at 0% 0%, rgba(163, 177, 198, 0.05) 0px, transparent 50%);
-      color: var(--text-main);
-      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg);
+      background-image: repeating-linear-gradient(0deg, transparent, transparent 39px, var(--grid-line) 40px), repeating-linear-gradient(90deg, transparent, transparent 39px, var(--grid-line) 40px);
+      background-size: 40px 40px, 40px 40px;
+      color: var(--text);
+      font-family: var(--mono);
       min-height: 100vh;
       display: flex;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* LAYOUT */
     #sidebar {
-      width: 260px; height: 100vh; background: var(--bg-card); backdrop-filter: blur(16px);
-      border-right: 1px solid var(--glass-border); padding: 2rem 1.5rem; position: sticky; top: 0;
+      width: 260px; height: 100vh; background: var(--bg-card);
+      border-right: 1px solid var(--border); padding: 2rem 1.5rem; position: sticky; top: 0;
       display: flex; flex-direction: column; z-index: 100;
     }
 
@@ -49,15 +53,15 @@
 
     /* BLOCKING OVERLAY (loader mejorado) */
     #ui-overlay {
-      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
       display: none; z-index: 1999; align-items: center; justify-content: center;
     }
     #ui-overlay.active { display: flex; }
     #ui-overlay > div {
-      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 16px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
       padding: 2rem; text-align: center;
     }
-    .spinner { width: 40px; height: 40px; border: 3px solid var(--glass-border); border-top-color: var(--primary);
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent);
       border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -66,13 +70,13 @@
       position: fixed; bottom: 2rem; right: 2rem; z-index: 2000; display: flex; flex-direction: column; gap: 1rem;
     }
     .toast {
-      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 12px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
       padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; animation: slideIn 0.3s ease;
-      min-width: 300px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      min-width: 300px;
     }
-    .toast.success { border-left: 4px solid var(--success); }
-    .toast.error { border-left: 4px solid var(--danger); }
-    .toast.info { border-left: 4px solid var(--info); }
+    .toast.success { border-left: 4px solid var(--success); border-top: 1px solid var(--border); }
+    .toast.error { border-left: 4px solid var(--danger); border-top: 1px solid var(--border); }
+    .toast.info { border-left: 4px solid var(--accent); border-top: 1px solid var(--border); }
     @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
     /* CONFIRM DIALOG */
@@ -82,7 +86,7 @@
     }
     #confirm-dialog.active { display: flex; }
     #confirm-dialog .card {
-      background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: 16px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
       padding: 2rem; min-width: 400px;
     }
     #confirm-dialog h3 { margin-bottom: 1rem; }
@@ -91,53 +95,60 @@
 
     /* UI ELEMENTS */
     .brand { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 3rem; font-size: 1.5rem; font-weight: 800;
-      background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      font-family: var(--display); color: var(--text); letter-spacing: 0.02em; }
     
-    .nav-btn { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 12px; color: var(--text-muted);
-      cursor: pointer; transition: 0.3s; border: 1px solid transparent; user-select: none; }
-    .nav-btn:hover { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
-    .nav-btn.active { background: rgba(163, 177, 198, 0.1); border-color: rgba(163, 177, 198, 0.3); color: var(--secondary); }
+    .nav-btn { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 2px; color: var(--muted);
+      cursor: pointer; transition: 150ms; border: 1px solid transparent; user-select: none; }
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); border-color: var(--border); }
+    .nav-btn.active { background: rgba(0, 255, 65, 0.08); border-color: var(--accent); color: var(--accent); }
 
-    .card { background: var(--bg-card); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px;
-      padding: 1.5rem; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); margin-bottom: 1.5rem; }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
+      padding: 1.5rem; margin-bottom: 1.5rem; }
     
     /* STATS */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
     .stat-value { font-size: 1.8rem; font-weight: 800; margin: 0.5rem 0; }
 
     /* TABLES */
-    .table-container { overflow-x: auto; border-radius: 12px; border: 1px solid var(--glass-border); }
-    table { width: 100%; border-collapse: collapse; min-width: 600px; }
-    th { background: rgba(13, 17, 23, 0.8); padding: 1rem; color: var(--text-muted); font-size: 0.8rem;
-      text-transform: uppercase; text-align: left; }
-    td { padding: 1rem; border-top: 1px solid var(--glass-border); }
+    .table-container { overflow-x: auto; border-radius: 2px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; min-width: 600px; font-family: var(--mono); font-size: 13px; }
+    th { background: transparent; padding: 12px 8px; color: var(--muted); font-size: 12px; font-weight: 700;
+      text-transform: uppercase; text-align: left; letter-spacing: 0.12em; border-bottom: 1px solid var(--border); }
+    td { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,0.04); }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
 
     /* BADGES */
-    .badge { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
-    .badge.abierta { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-    .badge.vencida { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-    .badge.cancelada { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-    .badge.parcial { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .badge { padding: 4px 8px; border-radius: 2px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; border: 1px solid; }
+    .badge.abierta { background: rgba(0, 255, 65, 0.1); color: var(--accent); border-color: var(--accent); }
+    .badge.vencida { background: rgba(255, 51, 51, 0.1); color: var(--danger); border-color: var(--danger); }
+    .badge.cancelada { background: rgba(0, 255, 65, 0.1); color: var(--accent); border-color: var(--accent); }
+    .badge.parcial { background: rgba(255, 183, 0, 0.1); color: var(--accent-amber); border-color: var(--accent-amber); }
 
     /* FORMS */
-    input, select { width: 100%; background: rgba(13, 17, 23, 0.5); border: 1px solid var(--glass-border); border-radius: 8px;
-      padding: 0.8rem; color: #fff; margin-top: 0.4rem; outline: none; transition: 0.2s; }
-    input:focus, select:focus { border-color: var(--primary); background: rgba(13, 17, 23, 0.8); }
+    input, select { width: 100%; background: rgba(13, 17, 23, 0.5); border: 1px solid var(--border); border-radius: 2px;
+      padding: 0.8rem; color: var(--text); margin-top: 0.4rem; outline: none; transition: 150ms; font-family: var(--mono); }
+    input:focus, select:focus { border-color: var(--accent); background: rgba(13, 17, 23, 0.8); outline: 2px solid var(--accent); outline-offset: -1px; }
     input.error { border-color: var(--danger); }
 
-    .btn { width: 100%; padding: 1rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer;
-      transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 0.5rem; user-select: none; }
+    .btn { width: 100%; padding: 10px 16px; border-radius: 2px; border: 1px solid var(--border); font-weight: 700; cursor: pointer;
+      transition: 150ms cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; gap: 0.5rem; user-select: none; 
+      font-family: var(--mono); text-transform: uppercase; font-size: 12px; background: transparent; color: var(--accent); }
+    .btn:hover:not(:disabled) { background: var(--accent); color: #000; }
+    .btn:active { transform: translateY(1px); }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: var(--accent-gradient); color: #000; }
-    .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(163, 177, 198, 0.3); }
-    .btn-outline { background: transparent; border: 1px solid var(--glass-border); color: #fff; }
-    .btn-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+    .btn-primary { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+    .btn-primary:hover:not(:disabled) { background: var(--accent); color: #000; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: rgba(255, 51, 51, 0.1); color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: #000; }
 
     /* MODAL */
-    #modal-tercero { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); z-index: 1000;
+    #modal-tercero { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 1000;
       align-items: center; justify-content: center; padding: 1rem; }
     #modal-tercero.active { display: flex; }
-    #modal-tercero .card { width: 100%; max-width: 400px; margin: 0; }
+    #modal-tercero .card { width: 100%; max-width: 400px; margin: 0; border: 1px solid var(--accent); }
+    #modal-tercero h3 { font-family: var(--display); letter-spacing: 0.02em; }
 
     /* VIEWS */
     .view { display: none; animation: fadeIn 0.3s ease; }
@@ -146,7 +157,7 @@
 
     /* MOBILE */
     #bottom-nav { display: none; position: fixed; bottom: 1rem; left: 1rem; right: 1rem; height: 64px;
-      background: rgba(28, 33, 40, 0.95); border-radius: 20px; border: 1px solid var(--glass-border); z-index: 1000;
+      background: var(--bg-card); border-radius: 2px; border: 1px solid var(--border); z-index: 1000;
       justify-content: space-around; align-items: center; }
     @media (max-width: 768px) {
       #sidebar { display: none; }
@@ -156,11 +167,12 @@
     }
 
     /* ACCESSIBILITY */
-    button:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
       clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
   </style>
+  <link rel="stylesheet" href="brutalist.css">
 </head>
 <body>
 
@@ -177,12 +189,12 @@
 
   <!-- CONFIRM DIALOG -->
   <div id="confirm-dialog">
-    <div class="card">
-      <h3 id="confirm-title">¿Confirmar?</h3>
+    <div class="br-card">
+      <h3 id="confirm-title" style="font-family: var(--display); font-size: 1.2rem; letter-spacing: 0.02em;">¿Confirmar?</h3>
       <p id="confirm-message">Esta acción no se puede deshacer.</p>
-      <div class="buttons">
-        <button class="btn btn-outline" id="confirm-cancel">Cancelar</button>
-        <button class="btn btn-primary" id="confirm-ok">Confirmar</button>
+      <div class="buttons" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button class="br-btn" id="confirm-cancel" style="flex: 1; color: var(--muted); border-color: var(--border);">Cancelar</button>
+        <button class="br-btn" id="confirm-ok" style="flex: 1;">Confirmar</button>
       </div>
     </div>
   </div>
@@ -195,40 +207,83 @@
   <main id="app-shell">
     <div id="main-content">
       
+      <!-- BRUTALIST: HEADER + COMPONENTS DE EJEMPLO -->
+      <section aria-label="Brutalist examples" class="br-stagger" data-revealed="true" style="margin-bottom:1.5rem;">
+        <header class="br-header" role="banner">
+          <div class="brand">MICROERP</div>
+          <div class="controls">
+            <button class="br-btn" aria-label="Modo analítico">Analítico</button>
+            <button class="br-btn" aria-label="Exportar">Exportar</button>
+          </div>
+        </header>
+
+        <div style="display:flex; gap:24px; align-items:flex-start; margin-top:18px; flex-wrap:wrap;">
+          <article class="br-card metric-card br-card--accent-top" role="region" aria-labelledby="metric-ventas">
+            <div class="metric-label" id="metric-ventas">VENTAS NETAS</div>
+            <div class="metric-topline">
+              <div class="metric-number" id="metric-ventas-value">$12,450,000<span class="metric-suffix">COP</span></div>
+            </div>
+            <div class="muted">Última actualización: <time datetime="2026-06-04">4 Jun 2026</time></div>
+          </article>
+
+          <div class="br-card" style="min-width:360px;flex:1;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div class="muted" style="font-family:var(--mono); text-transform:uppercase; letter-spacing:0.08em; font-size:12px;">Movimientos recientes</div>
+              <button class="br-btn" aria-label="Ver todo">Ver todo</button>
+            </div>
+            <div class="table-wrapper" style="overflow:auto;">
+              <table class="br-table" role="table" aria-label="Tabla de movimientos recientes">
+                <thead>
+                  <tr><th scope="col">Fecha</th><th scope="col">Tercero</th><th scope="col" class="align-right">Saldo</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>2026-06-03</td><td>ACME S.A.</td><td class="align-right">$3,200,000</td></tr>
+                  <tr><td>2026-06-02</td><td>COMERCIAL XYZ</td><td class="align-right">$1,250,000</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:12px;">
+            <button class="br-btn" id="primary-action" aria-pressed="false">Ejecutar Análisis</button>
+          </div>
+        </div>
+      </section>
+
       <!-- DASHBOARD -->
       <section id="view-dashboard" class="view active">
         <h2 style="margin-bottom: 1.5rem;">Resumen Financiero</h2>
         <div class="stats-grid">
-          <div class="card">
-            <div style="color: var(--text-muted); font-size: 0.8rem;">POR COBRAR (CXC)</div>
-            <div class="stat-value" id="dash-cxc">$0</div>
-            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxc-venc" style="font-weight: 600;">$0</span></div>
+          <div class="br-card">
+            <div style="color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">POR COBRAR (CXC)</div>
+            <div class="stat-value" id="dash-cxc" style="font-family: var(--mono); font-size: 2.8rem; letter-spacing: -0.02em;">$0</div>
+            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxc-venc" style="font-weight: 700;">$0</span></div>
           </div>
-          <div class="card">
-            <div style="color: var(--text-muted); font-size: 0.8rem;">POR PAGAR (CXP)</div>
-            <div class="stat-value" id="dash-cxp">$0</div>
-            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxp-venc" style="font-weight: 600;">$0</span></div>
+          <div class="br-card">
+            <div style="color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;">POR PAGAR (CXP)</div>
+            <div class="stat-value" id="dash-cxp" style="font-family: var(--mono); font-size: 2.8rem; letter-spacing: -0.02em;">$0</div>
+            <div style="font-size: 0.85rem;">Vencido: <span id="dash-cxp-venc" style="font-weight: 700;">$0</span></div>
           </div>
         </div>
-        <div class="card">
-          <button class="btn btn-primary" data-action="analyze-ia">
+        <div class="br-card">
+          <button class="br-btn" data-action="analyze-ia" style="width: 100%; color: var(--text);">
             <i data-lucide="sparkles"></i> Analizar Cartera con IA
           </button>
-          <div id="ia-result" style="margin-top: 1rem; color: var(--secondary); display: none; font-size: 0.9rem; line-height: 1.6;"></div>
+          <div id="ia-result" style="margin-top: 1rem; color: var(--text); display: none; font-size: 0.9rem; line-height: 1.6;"></div>
         </div>
       </section>
 
       <!-- TERCEROS -->
       <section id="view-terceros" class="view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-          <h2>Terceros</h2>
-          <button class="btn btn-primary" style="width:auto;" data-action="new-tercero">
+          <h2 style="font-family: var(--display); font-size: 1.8rem; letter-spacing: 0.02em;">Terceros</h2>
+          <button class="br-btn" style="width:auto;" data-action="new-tercero">
             <i data-lucide="user-plus"></i> Nuevo
           </button>
         </div>
-        <div class="card table-container">
-          <table>
-            <thead><tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite</th><th>Acciones</th></tr></thead>
+        <div class="br-card table-container">
+          <table class="br-table">
+            <thead><tr><th scope="col">ID</th><th scope="col">Nombre</th><th scope="col">Tipo</th><th scope="col">Límite</th><th scope="col">Acciones</th></tr></thead>
             <tbody id="tabla-terceros"></tbody>
           </table>
         </div>
@@ -237,16 +292,16 @@
       <!-- CARTERA -->
       <section id="view-cartera" class="view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
-          <h2>Movimientos</h2>
-          <select id="filtro-cartera" style="width:auto; margin:0;">
+          <h2 style="font-family: var(--display); font-size: 1.8rem; letter-spacing: 0.02em;">Movimientos</h2>
+          <select id="filtro-cartera" style="width:auto; margin:0; width: 180px;">
             <option value="">Todos</option>
             <option value="CxC">CxC</option>
             <option value="CxP">CxP</option>
           </select>
         </div>
-        <div class="card table-container">
-          <table>
-            <thead><tr><th>Fecha</th><th>Cliente/Proveedor</th><th>Saldo</th><th>Estado</th><th>Vencimiento</th></tr></thead>
+        <div class="br-card table-container">
+          <table class="br-table">
+            <thead><tr><th scope="col">Fecha</th><th scope="col">Cliente/Proveedor</th><th scope="col">Saldo</th><th scope="col">Estado</th><th scope="col">Vencimiento</th></tr></thead>
             <tbody id="tabla-cartera"></tbody>
           </table>
         </div>
@@ -254,8 +309,8 @@
 
       <!-- ABONOS -->
       <section id="view-abonos" class="view">
-        <div class="card" style="max-width: 500px; margin: 0 auto;">
-          <h3 style="margin-bottom:1.5rem;">Registrar Pago (FIFO)</h3>
+        <div class="br-card" style="max-width: 500px; margin: 0 auto;">
+          <h3 style="margin-bottom:1.5rem; font-family: var(--display); font-size: 1.4rem; letter-spacing: 0.02em;">Registrar Pago (FIFO)</h3>
           <form id="form-abono">
             <div style="margin-bottom:1rem;">
               <label for="abono-tercero">Cliente</label>
@@ -278,7 +333,7 @@
               <label for="abono-ref">Referencia (Ej: Recibo 001)</label>
               <input type="text" id="abono-ref" maxlength="100" required/>
             </div>
-            <button type="submit" class="btn btn-primary" id="btn-submit-abono">Ejecutar Movimiento</button>
+            <button type="submit" class="br-btn" id="btn-submit-abono" style="width: 100%; color: var(--text);">Ejecutar Movimiento</button>
           </form>
         </div>
       </section>
@@ -291,16 +346,16 @@
 
   <!-- MODAL: Nuevo Tercero -->
   <div id="modal-tercero">
-    <div class="card">
-      <h3>Nuevo Tercero</h3>
+    <div class="br-card">
+      <h3 style="font-family: var(--display); font-size: 1.4rem; letter-spacing: 0.02em; margin-bottom: 1rem;">Nuevo Tercero</h3>
       <form id="form-tercero" style="margin-top:1rem;">
         <input type="text" id="t-id" placeholder="ID / NIT" required maxlength="50"/>
         <input type="text" id="t-nombre" placeholder="Nombre" required maxlength="100"/>
         <select id="t-tipo"><option value="CLIENTE">Cliente</option><option value="PROVEEDOR">Proveedor</option></select>
         <input type="number" id="t-limite" placeholder="Límite Crédito" value="0" min="0"/>
         <div style="display:flex; gap:1rem; margin-top:1.5rem;">
-          <button type="button" class="btn btn-outline" id="btn-close-modal">Cerrar</button>
-          <button type="submit" class="btn btn-primary">Crear</button>
+          <button type="button" class="br-btn" id="btn-close-modal" style="flex: 1; color: var(--muted); border-color: var(--border);">Cancelar</button>
+          <button type="submit" class="br-btn" style="flex: 1;">Crear</button>
         </div>
       </form>
     </div>
@@ -513,7 +568,7 @@
             <td>${escapeHTML(c.fecha)}</td>
             <td>
               <strong>${escapeHTML(c.nombre_tercero || c.id_tercero)}</strong><br>
-              <small style="color:var(--text-muted);">${escapeHTML(c.id_tercero)}</small>
+              <small style="color:var(--muted);">${escapeHTML(c.id_tercero)}</small>
             </td>
             <td style="font-weight:600;">${formatCur(c.saldo)}</td>
             <td><span class="badge ${c.estado.toLowerCase()}">${escapeHTML(c.estado)}</span></td>
