@@ -726,28 +726,190 @@
         .registrarAbono(tercero, parseFloat(valor), ref, tipo);
     }));
 
+    // ═══ RENDER IA ═══
+    function renderIAReport(data) {
+      const a = data.analisis;
+      let html = '';
+
+      // Header
+      html += `<div style="border-bottom:1px solid var(--accent);padding-bottom:0.75rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:1.2rem;font-weight:700;">📊 ${escapeHTML(a.resumen_ejecutivo || '')}</span>
+        <span style="font-size:0.75rem;color:var(--muted);">
+          Confianza: ${a.nivel_confianza_general ?? 'N/A'}%
+          ${data.cache_hit ? '<span style="color:var(--accent-amber);margin-left:8px;">⚡ Cache</span>' : ''}
+          ${data._metadata ? `<span style="color:var(--muted);margin-left:8px;">${(data._metadata.duracion_ms/1000).toFixed(1)}s</span>` : ''}
+        </span>
+      </div>`;
+
+      // Alertas críticas
+      if (a.alertas_criticas && a.alertas_criticas.length > 0) {
+        html += '<div style="margin-bottom:1.5rem;">';
+        html += '<h4 style="color:var(--danger);margin-bottom:0.75rem;font-size:0.9rem;text-transform:uppercase;letter-spacing:0.08em;">🚨 Alertas Críticas</h4>';
+        a.alertas_criticas.forEach(al => {
+          const color = al.impacto === 'ALTO' ? 'var(--danger)' : al.impacto === 'MEDIO' ? 'var(--accent-amber)' : 'var(--accent)';
+          html += `<div style="border-left:3px solid ${color};padding:0.6rem 1rem;margin-bottom:0.5rem;background:rgba(255,255,255,0.03);border-radius:2px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <strong>${escapeHTML(al.titulo)}</strong>
+              <span style="font-size:0.7rem;color:${color};">${al.impacto} · ${al.nivel_confianza ?? ''}%</span>
+            </div>
+            <div style="font-size:0.85rem;margin-top:0.3rem;">${escapeHTML(al.descripcion)}</div>
+            ${al.accion_sugerida ? `<div style="font-size:0.8rem;color:var(--accent);margin-top:0.3rem;">→ ${escapeHTML(al.accion_sugerida)}</div>` : ''}
+          </div>`;
+        });
+        html += '</div>';
+      }
+
+      // Riesgo Cartera
+      if (a.analisis_riesgo_cartera && a.analisis_riesgo_cartera.concentracion_vencida) {
+        html += '<h4 style="margin-bottom:0.75rem;font-size:0.9rem;text-transform:uppercase;letter-spacing:0.08em;">📋 Concentración Cartera Vencida</h4>';
+        html += '<div style="overflow-x:auto;margin-bottom:1.5rem;">';
+        html += '<table style="width:100%;font-size:0.8rem;min-width:400px;"><thead><tr>';
+        html += '<th>Cliente</th><th>Vencido</th><th>% Cartera</th><th>Días Mora</th><th>Recomendación</th>';
+        html += '</tr></thead><tbody>';
+        a.analisis_riesgo_cartera.concentracion_vencida.forEach(c => {
+          html += `<tr>
+            <td><strong>${escapeHTML(c.nombre || c.id_tercero)}</strong></td>
+            <td>${formatCur(c.saldo_vencido)}</td>
+            <td>${c.porcentaje_cartera_vencida?.toFixed(1) ?? ''}%</td>
+            <td>${c.dias_promedio_mora ?? ''}</td>
+            <td style="font-size:0.75rem;">${escapeHTML(c.recomendacion || '')}</td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+      }
+
+      // Proyecciones
+      if (a.analisis_riesgo_cartera && (a.analisis_riesgo_cartera.proyeccion_cobro_30d != null)) {
+        html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.5rem;">';
+        const proy = a.analisis_riesgo_cartera;
+        const mk = (label, val, days) => `<div style="background:rgba(255,255,255,0.03);padding:0.75rem;text-align:center;border-radius:2px;border:1px solid var(--border);">
+          <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;">${label}</div>
+          <div style="font-size:1.1rem;font-weight:700;margin-top:0.3rem;">${formatCur(val)}</div>
+          <div style="font-size:0.65rem;color:var(--muted);">${days}</div>
+        </div>`;
+        html += mk('Próximos 30 días', proy.proyeccion_cobro_30d, 'proyección');
+        html += mk('Próximos 60 días', proy.proyeccion_cobro_60d, 'proyección');
+        html += mk('Próximos 90 días', proy.proyeccion_cobro_90d, 'proyección');
+        html += '</div>';
+      }
+
+      // Segmentación Terceros
+      if (a.segmentacion_terceros) {
+        const seg = a.segmentacion_terceros;
+        let segHtml = '<h4 style="margin-bottom:0.75rem;font-size:0.9rem;text-transform:uppercase;letter-spacing:0.08em;">🏷️ Segmentación de Terceros</h4>';
+        segHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.75rem;margin-bottom:1.5rem;">';
+
+        if (seg.criticos && seg.criticos.length > 0) {
+          segHtml += `<div style="border:1px solid var(--danger);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--danger);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">🔴 Críticos (${seg.criticos.length})</div>
+            ${seg.criticos.map(c => `<div style="font-size:0.8rem;margin-bottom:0.3rem;">• ${escapeHTML(c.nombre)} <span style="color:var(--muted);">${formatCur(c.saldo)}</span></div>`).join('')}
+          </div>`;
+        }
+        if (seg.en_peligro && seg.en_peligro.length > 0) {
+          segHtml += `<div style="border:1px solid var(--accent-amber);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--accent-amber);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">🟡 En Peligro (${seg.en_peligro.length})</div>
+            ${seg.en_peligro.map(c => `<div style="font-size:0.8rem;margin-bottom:0.3rem;">• ${escapeHTML(c.nombre)} <span style="color:var(--muted);">${formatCur(c.saldo)}</span></div>`).join('')}
+          </div>`;
+        }
+        if (seg.oportunidad_upsell && seg.oportunidad_upsell.length > 0) {
+          segHtml += `<div style="border:1px solid var(--accent);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--accent);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">🟢 Upsell (${seg.oportunidad_upsell.length})</div>
+            ${seg.oportunidad_upsell.map(c => `<div style="font-size:0.8rem;margin-bottom:0.3rem;">• ${escapeHTML(c.nombre)}</div>`).join('')}
+          </div>`;
+        }
+        if (seg.estables && seg.estables.length > 0) {
+          segHtml += `<div style="border:1px solid var(--border);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--muted);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">⚪ Estables (${seg.estables.length})</div>
+            <div style="font-size:0.8rem;color:var(--muted);">${seg.estables.map(c => c.nombre).join(', ')}</div>
+          </div>`;
+        }
+        if (seg.proveedores_criticos && seg.proveedores_criticos.length > 0) {
+          segHtml += `<div style="border:1px solid var(--danger);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--danger);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">⚠️ Proveedores Críticos</div>
+            ${seg.proveedores_criticos.map(c => `<div style="font-size:0.8rem;margin-bottom:0.3rem;">• ${escapeHTML(c.nombre)} <span style="color:var(--muted);">${c.concentracion?.toFixed(1) ?? ''}% concentración</span></div>`).join('')}
+          </div>`;
+        }
+        if (seg.inactivos_detectados && seg.inactivos_detectados.length > 0) {
+          segHtml += `<div style="border:1px solid var(--accent-amber);padding:0.75rem;border-radius:2px;">
+            <div style="color:var(--accent-amber);font-weight:700;margin-bottom:0.5rem;font-size:0.8rem;">💤 Inactivos (${seg.inactivos_detectados.length})</div>
+            ${seg.inactivos_detectados.map(c => `<div style="font-size:0.8rem;margin-bottom:0.3rem;">• ${escapeHTML(c.nombre)} · ${c.dias_inactivo ?? ''} días</div>`).join('')}
+          </div>`;
+        }
+
+        segHtml += '</div>';
+        html += segHtml;
+      }
+
+      // Anomalías
+      if (a.anomalias_detectadas && a.anomalias_detectadas.length > 0) {
+        html += '<h4 style="margin-bottom:0.75rem;font-size:0.9rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent-amber);">🔍 Anomalías Detectadas</h4>';
+        a.anomalias_detectadas.forEach(an => {
+          const color = an.severidad === 'ALTA' ? 'var(--danger)' : an.severidad === 'MEDIA' ? 'var(--accent-amber)' : 'var(--muted)';
+          html += `<div style="border-left:3px solid ${color};padding:0.5rem 0.75rem;margin-bottom:0.4rem;background:rgba(255,255,255,0.02);font-size:0.85rem;">
+            <strong>${escapeHTML(an.tipo)}</strong> — ${escapeHTML(an.descripcion)}
+            ${an.valor_detectado ? `<span style="color:var(--muted);font-size:0.75rem;"> ($${formatCur(an.valor_detectado)})</span>` : ''}
+          </div>`;
+        });
+      }
+
+      // Recomendaciones
+      if (a.recomendaciones_accionables && a.recomendaciones_accionables.length > 0) {
+        html += '<h4 style="margin:1.5rem 0 0.75rem;font-size:0.9rem;text-transform:uppercase;letter-spacing:0.08em;">✅ Recomendaciones Accionables</h4>';
+        a.recomendaciones_accionables.forEach(r => {
+          const prioridadColor = r.prioridad === 'ALTA' ? 'var(--danger)' : r.prioridad === 'MEDIA' ? 'var(--accent-amber)' : 'var(--accent)';
+          html += `<div style="display:flex;gap:0.75rem;padding:0.6rem 0;border-top:1px solid rgba(255,255,255,0.04);font-size:0.85rem;">
+            <span style="color:${prioridadColor};font-weight:700;font-size:0.7rem;min-width:50px;">${r.prioridad}</span>
+            <div style="flex:1;">
+              <strong>${escapeHTML(r.accion)}</strong>
+              <div style="color:var(--muted);font-size:0.75rem;">${r.area} ${r.automatizable ? '· 🤖 Automatizable' : ''}</div>
+            </div>
+            ${r.impacto_estimado ? `<span style="color:var(--muted);font-size:0.75rem;text-align:right;max-width:160px;">${escapeHTML(r.impacto_estimado)}</span>` : ''}
+          </div>`;
+        });
+      }
+
+      // Metadata footer
+      if (data._metadata) {
+        html += `<div style="margin-top:1.5rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.65rem;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
+          <span>📊 ${data._metadata.total_terceros ?? '?'} terceros · ${data._metadata.total_cartera ?? '?'} cartera · ${data._metadata.total_movimientos ?? '?'} movs</span>
+          <span>⏱ ${(data._metadata.duracion_ms/1000).toFixed(1)}s</span>
+          <span>🆔 ${data._metadata.hash?.slice(0,8) ?? ''}</span>
+        </div>`;
+      }
+
+      return html;
+    }
+
     // Análisis IA
     async function handleAnalyzeIA() {
       const resDiv = document.getElementById("ia-result");
       resDiv.style.display = "block";
-      resDiv.textContent = "⏳ Gemini está analizando...";
+      resDiv.innerHTML = '<div style="text-align:center;padding:2rem;"><div class="spinner" style="margin:0 auto 1rem;"></div><span style="color:var(--muted);">⏳ Gemini está analizando tu cartera financiera...</span></div>';
 
       showOverlay("Analizando con IA...");
       google.script.run
         .withSuccessHandler(res => {
           hideOverlay();
           if (res.success) {
-            resDiv.textContent = res.analisis;
-            showToast("✓ Análisis completado", "success");
+            resDiv.innerHTML = renderIAReport(res);
+            showToast("✓ Análisis IA completado", "success");
           } else {
-            resDiv.textContent = "❌ " + escapeHTML(res.message);
-            showToast("Error en análisis", "error");
+            resDiv.innerHTML = `<div style="color:var(--danger);padding:1rem;text-align:center;">
+              <div style="font-size:2rem;margin-bottom:0.5rem;">✕</div>
+              <strong>Error en análisis</strong><br>
+              <span style="font-size:0.85rem;color:var(--muted);">${escapeHTML(res.message || 'Intenta de nuevo más tarde')}</span>
+            </div>`;
+            showToast("❌ " + (res.message || "Error en análisis IA"), "error");
           }
         })
         .withFailureHandler(err => {
           hideOverlay();
-          resDiv.textContent = "❌ Error conectando con IA";
-          showToast("Error del sistema", "error");
+          resDiv.innerHTML = `<div style="color:var(--danger);padding:1rem;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:0.5rem;">✕</div>
+            <strong>Error del servidor</strong><br>
+            <span style="font-size:0.85rem;color:var(--muted);">${escapeHTML(err.message || 'Intenta de nuevo más tarde')}</span>
+          </div>`;
+          showToast("❌ Error del sistema al conectar con IA", "error");
           console.error(err);
         })
         .analizarConGeminiCompleto();
