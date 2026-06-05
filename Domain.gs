@@ -3,6 +3,74 @@
  * Resuelve Problemas #3, #4 y #5 
  */
 
+/**
+ * Mecanismo transaccional write-ahead para Apps Script.
+ * Toma snapshot del estado previo de las filas afectadas antes de escribir.
+ * Si ocurre cualquier fallo durante la escritura, revierte completamente:
+ *   - Restaura filas de cartera a sus valores originales (snapshot)
+ *   - Elimina filas de movimientos que se hayan añadido
+ */
+const _Transaction = {
+  create() {
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, active: false };
+
+    return {
+      begin() {
+        ctx.active = true;
+        ctx.carteraSnapshots = [];
+        ctx.movPreRows = 0;
+        ctx.movPostRows = 0;
+      },
+
+      snapshotCarteraRows(rowIndexes) {
+        if (!ctx.active || !rowIndexes || rowIndexes.length === 0) return;
+        const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+        const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+        const unique = [...new Set(rowIndexes)].sort((a, b) => a - b);
+        for (const rowIndex of unique) {
+          const values = sheet.getRange(rowIndex, 1, 1, numCols).getValues()[0];
+          ctx.carteraSnapshots.push({ rowIndex, values });
+        }
+      },
+
+      markMovPreAppend() {
+        if (!ctx.active) return;
+        ctx.movPreRows = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA).getLastRow();
+      },
+
+      markMovPostAppend() {
+        if (!ctx.active) return;
+        ctx.movPostRows = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA).getLastRow();
+      },
+
+      commit() {
+        ctx.active = false;
+        ctx.carteraSnapshots = [];
+        ctx.movPreRows = 0;
+        ctx.movPostRows = 0;
+      },
+
+      rollback() {
+        if (!ctx.active) return;
+        // Restaurar filas de cartera a su estado previo
+        const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+        const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+        for (const snap of ctx.carteraSnapshots) {
+          sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+        }
+        // Eliminar filas de movimientos añadidas durante la transacción
+        if (ctx.movPostRows > ctx.movPreRows) {
+          const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
+          const startRow = ctx.movPreRows + 1;
+          const count = ctx.movPostRows - ctx.movPreRows;
+          movSheet.deleteRows(startRow, count);
+        }
+        ctx.active = false;
+      },
+    };
+  },
+};
+
 const DOMAIN = {
   saveTercero(tercero) {
     let lockAcquired = null;
@@ -11,14 +79,19 @@ const DOMAIN = {
       const id = _sanitizeId(tercero.id).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
       if (!id) return _error("ID de tercero inválido.");
 
-      lockAcquired = LOCK_MANAGER.acquireResourceLock(id); // Lock Granular
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(id);
+
+      const consistency = CACHE.verifyConsistency();
+      if (consistency.mismatched) {
+        Logger.log("DOMAIN: Inconsistencia detectada en caché antes de saveTercero. Forzando recuperación.");
+        CACHE.recoverFromStale();
+      }
 
       const nombre = String(tercero.nombre || "S.N.").trim().slice(0, 100);
       const tipo = ["CLIENTE", "PROVEEDOR"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
-      // 1. Invalidación preventiva: para minimizar gaps de cache.
       CACHE.invalidateTerceros();
 
       // 2. Operaciones Database
@@ -75,6 +148,7 @@ const DOMAIN = {
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {
     let lockAcquired = null;
     const txPlan = { movimientos: [], cambios: [], logEntry: null };
+    const tx = _Transaction.create();
 
     try {
       const idTerceroLimpio = _sanitizeId(idTercero);
@@ -94,6 +168,13 @@ const DOMAIN = {
 
       const tipoLimpio = tipo === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
       const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
+
+      CACHE.refresh();
+      const consistency = CACHE.verifyConsistency();
+      if (consistency.mismatched) {
+        Logger.log("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
+        CACHE.recoverFromStale();
+      }
 
       const pendientes = DAO.getCarteraByTerceroAndTipo(idTerceroLimpio, tipoLimpio)
         .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
@@ -129,10 +210,19 @@ const DOMAIN = {
         restante -= aplicado;
       }
 
+      // ── TRANSACCIÓN: snapshot + escrituras con rollback compensatorio ──
+      tx.begin();
+      tx.snapshotCarteraRows(txPlan.cambios.map(c => c.rowIndex));
+      tx.markMovPreAppend();
+
       if (txPlan.movimientos.length > 0) {
         for (const mov of txPlan.movimientos) { DAO.createMovimiento(mov); }
       }
+      tx.markMovPostAppend();
       DAO.updateCarteraBatch(txPlan.cambios);
+
+      tx.commit();
+      // ── FIN TRANSACCIÓN ──
 
       // Invalidar caché después de todas las escrituras para evitar lecturas parciales.
       CACHE.invalidateCartera();
@@ -142,6 +232,7 @@ const DOMAIN = {
       return { success: true, aplicado: valor - restante, restante: Math.max(0, restante), movimientos: txPlan.movimientos.length };
 
     } catch (e) {
+      tx.rollback();
       LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTercero, {}, { error: e.toString() }, "FAILED");
       return _error(e.message || "Error procesando abono.");
     } finally {
@@ -170,7 +261,13 @@ const DOMAIN = {
         }
       }
 
-      CACHE.invalidateCartera(); // Pre-invalidación
+      const consistency = CACHE.verifyConsistency();
+      if (consistency.mismatched) {
+        Logger.log("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
+        CACHE.recoverFromStale();
+      }
+
+      CACHE.invalidateCartera();
 
       const idCartera = (tipo === CARTERA_CONFIG.TIPOS.CXC ? "CXC" : "CXP") + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
 

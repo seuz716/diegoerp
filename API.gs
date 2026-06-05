@@ -110,3 +110,21 @@ function getDashboardCartera() {
 function getAuditHistory(tabla, idRegistro, limit = 50) {
   return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
 }
+
+/**
+ * API Pública: Obtener estado de la caché (staleness info)
+ */
+function getCacheHealth() {
+  return {
+    staleness: CACHE.getStalenessInfo(),
+    consistency: CACHE.verifyConsistency(),
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * API Pública: Forzar análisis fresco (sin caché de IA)
+ */
+function analizarConGeminiFresco() {
+  return IA_SERVICE.ejecutarAnalisisFresco();
+}

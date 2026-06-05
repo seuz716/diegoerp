@@ -45,8 +45,8 @@ function getTerceros() {
  * @param {string} tipoCartera Tipo de cartera (CxC o CxP).
  * @returns {Object} Resultado de la operación.
  */
-function registrarAbono(idTercero, valorAbono, referencia, tipoCartera) {
+function _registrarAbono(idTercero, valorAbono, referencia, tipoCartera) {
   // TODO: Implementar lógica real de registro de abono
-  console.warn("registrarAbono: Función no implementada completamente. Retornando éxito simulado.");
+  console.warn("_registrarAbono: Función no implementada completamente. Retornando éxito simulado.");
   return { success: true, message: "Abono registrado (simulado)" };
 }

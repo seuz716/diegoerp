@@ -123,18 +123,16 @@ const DAO = {
 
   saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-      let rowExisting = CACHE.terceroIndex[id];
       const rowData = [id, nombre, "", tipo, limite, activo];
 
-      // Validación directa en hoja para evitar duplicados si la caché está vencida o corrupta.
-      const lastRow = sheet.getLastRow() || 0;
-      if (lastRow > 1) {
-        const rawIds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-        for (let i = 0; i < rawIds.length; i++) {
-          if (String(rawIds[i][0] || "").trim() === id) {
-            rowExisting = i + 1;
-            break;
-          }
+      const cachedRow = CACHE.terceroIndex[id];
+      let rowExisting = null;
+      if (cachedRow) {
+        rowExisting = cachedRow;
+      } else if (sheet.getLastRow() > 1) {
+        const match = this._findRowIndexesByColumnValue(sheet, CARTERA_CONFIG.COLUMNS.TERCEROS.id, id);
+        if (match.length > 0) {
+          rowExisting = match[0] - 1;
         }
       }
 
@@ -143,7 +141,7 @@ const DAO = {
         return { isUpdate: true };
       }
 
-      if (lastRow === 0) {
+      if (sheet.getLastRow() === 0) {
         sheet.appendRow(["ID", "Nombre", "Teléfono", "Tipo", "Límite_Crédito", "Activo"]);
       }
       sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([rowData]);

@@ -12,9 +12,19 @@ let CACHE = {
   carteraIndex: {},  
   lastRefreshTerceros: 0,
   lastRefreshCartera: 0,
-  CACHE_TTL: 300000,  
+  CACHE_TTL: 300000,
+  MAX_STALE_MS: 900000,
+  MAX_CONSECUTIVE_FAILURES: 3,
   tercerosStale: false,
   carteraStale: false,
+  tercerosStaleStart: 0,
+  carteraStaleStart: 0,
+  tercerosFailCount: 0,
+  carteraFailCount: 0,
+  tercerosCircuitOpen: false,
+  carteraCircuitOpen: false,
+  lastChecksumTerceros: "",
+  lastChecksumCartera: "",
 
   /**
    * Invalida SOLO la caché de terceros
@@ -24,16 +34,21 @@ let CACHE = {
     this.terceroIndex = {};
     this.lastRefreshTerceros = 0;
     this.tercerosStale = false;
+    this.tercerosStaleStart = 0;
+    this.tercerosFailCount = 0;
+    this.tercerosCircuitOpen = false;
+    this.lastChecksumTerceros = "";
   },
 
-  /**
-   * Invalida SOLO la caché de cartera
-   */
   invalidateCartera() {
     this.cartera = null;
     this.carteraIndex = {};
     this.lastRefreshCartera = 0;
     this.carteraStale = false;
+    this.carteraStaleStart = 0;
+    this.carteraFailCount = 0;
+    this.carteraCircuitOpen = false;
+    this.lastChecksumCartera = "";
   },
 
   /**
@@ -44,18 +59,26 @@ let CACHE = {
     this.invalidateCartera();
   },
 
-  /**
-   * Retorna TRUE si caché de terceros es válido
-   */
   isTercerosValid() {
-    return (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL && this.terceros !== null && !this.tercerosStale;
+    if (this.tercerosCircuitOpen) return false;
+    if (this.tercerosStale) {
+      if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
+        return false;
+      }
+      return false;
+    }
+    return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
   },
 
-  /**
-   * Retorna TRUE si caché de cartera es válido
-   */
   isCarteraValid() {
-    return (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL && this.cartera !== null && !this.carteraStale;
+    if (this.carteraCircuitOpen) return false;
+    if (this.carteraStale) {
+      if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
+        return false;
+      }
+      return false;
+    }
+    return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
   },
 
   /**
@@ -75,6 +98,70 @@ let CACHE = {
     }
   },
 
+  recoverFromStale() {
+    Logger.log("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
+    this.invalidate();
+    this.tercerosCircuitOpen = false;
+    this.carteraCircuitOpen = false;
+    this._refreshTerceros();
+    this._refreshCartera();
+    const restored = !this.tercerosStale || !this.carteraStale;
+    Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored);
+    return restored;
+  },
+
+  verifyConsistency() {
+    const result = { terceros: true, cartera: true, mismatched: false };
+    if (this.terceros && this.terceros.length > 0) {
+      const currentChecksum = this._computeChecksum(this.terceros);
+      if (this.lastChecksumTerceros && this.lastChecksumTerceros !== currentChecksum) {
+        result.terceros = false;
+        result.mismatched = true;
+      }
+    }
+    if (this.cartera && this.cartera.length > 0) {
+      const currentChecksum = this._computeChecksum(this.cartera);
+      if (this.lastChecksumCartera && this.lastChecksumCartera !== currentChecksum) {
+        result.cartera = false;
+        result.mismatched = true;
+      }
+    }
+    return result;
+  },
+
+  getStalenessInfo() {
+    return {
+      terceros: {
+        valid: this.isTercerosValid(),
+        age: this.lastRefreshTerceros > 0 ? Date.now() - this.lastRefreshTerceros : -1,
+        stale: this.tercerosStale,
+        staleDuration: this.tercerosStale && this.tercerosStaleStart > 0 ? Date.now() - this.tercerosStaleStart : 0,
+        maxStaleMs: this.MAX_STALE_MS,
+        failCount: this.tercerosFailCount,
+        circuitOpen: this.tercerosCircuitOpen,
+        count: this.terceros ? this.terceros.length : 0,
+      },
+      cartera: {
+        valid: this.isCarteraValid(),
+        age: this.lastRefreshCartera > 0 ? Date.now() - this.lastRefreshCartera : -1,
+        stale: this.carteraStale,
+        staleDuration: this.carteraStale && this.carteraStaleStart > 0 ? Date.now() - this.carteraStaleStart : 0,
+        maxStaleMs: this.MAX_STALE_MS,
+        failCount: this.carteraFailCount,
+        circuitOpen: this.carteraCircuitOpen,
+        count: this.cartera ? this.cartera.length : 0,
+      },
+      ttl: this.CACHE_TTL,
+    };
+  },
+
+  _computeChecksum(data) {
+    if (!data || data.length === 0) return "";
+    const concat = data.map(r => r.id + "|" + (r.saldo !== undefined ? r.saldo : "") + "|" + (r.estado || "")).join(",");
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, concat)
+      .map(b => ("0" + (b & 0xFF).toString(16)).slice(-2)).join("");
+  },
+
   _refreshTerceros() {
     const sheetTerceros = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
     try {
@@ -86,7 +173,7 @@ let CACHE = {
       const newTerceros = [];
       const newIndex = {};
       for (let i = 0; i < dataTerceros.length; i++) {
-        const rowIdx = i + 1; // 1-based index relative to data array (sheet row = i+1 + header)
+        const rowIdx = i + 1;
         const id = String(dataTerceros[i][COL_T.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;  
@@ -101,15 +188,29 @@ let CACHE = {
         });
       }
 
-      // Commit only on success
       this.terceros = newTerceros;
       this.terceroIndex = newIndex;
       this.lastRefreshTerceros = Date.now();
       this.tercerosStale = false;
+      this.tercerosStaleStart = 0;
+      this.tercerosFailCount = 0;
+      this.tercerosCircuitOpen = false;
+      this.lastChecksumTerceros = this._computeChecksum(newTerceros);
     } catch (e) {
-      Logger.log("ERROR CACHE._refreshTerceros:" + e.toString());
-      // Mantener la caché previa si existe y marcar como stale para visibilidad
+      this.tercerosFailCount++;
+      Logger.log("ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
+      if (this.terceros === null) {
+        this.tercerosStale = false;
+        return;
+      }
       this.tercerosStale = true;
+      if (this.tercerosStaleStart === 0) {
+        this.tercerosStaleStart = Date.now();
+      }
+      if (this.tercerosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
+        this.tercerosCircuitOpen = true;
+        Logger.log("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
+      }
     }
   },
 
@@ -145,10 +246,25 @@ let CACHE = {
       this.carteraIndex = newIndex;
       this.lastRefreshCartera = Date.now();
       this.carteraStale = false;
+      this.carteraStaleStart = 0;
+      this.carteraFailCount = 0;
+      this.carteraCircuitOpen = false;
+      this.lastChecksumCartera = this._computeChecksum(newCartera);
     } catch (e) {
-      Logger.log("ERROR CACHE._refreshCartera:" + e.toString());
-      // Mantener la caché previa si existe y marcar como stale
+      this.carteraFailCount++;
+      Logger.log("ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
+      if (this.cartera === null) {
+        this.carteraStale = false;
+        return;
+      }
       this.carteraStale = true;
+      if (this.carteraStaleStart === 0) {
+        this.carteraStaleStart = Date.now();
+      }
+      if (this.carteraFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
+        this.carteraCircuitOpen = true;
+        Logger.log("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
+      }
     }
   },
 
