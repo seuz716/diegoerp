@@ -416,6 +416,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <div class="nav-item" data-view="abonos">
       <span style="font-size:9px;opacity:.6">◇</span> Pagos
     </div>
+    <div class="nav-item" data-view="ventas">
+      <span style="font-size:9px;opacity:.6">◇</span> Ventas
+    </div>
   </nav>
 
   <div class="sidebar-footer">
@@ -614,29 +617,85 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite crédito</th><th></th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td class="td-mono td-muted">900.123.456-7</td>
-            <td style="font-weight:500">Distribuciones López</td>
-            <td><span class="badge badge-open">Cliente</span></td>
-            <td class="td-mono">$2.000.000</td>
-            <td><button class="btn btn-sm" style="font-size:8px">···</button></td>
-          </tr>
-          <tr>
-            <td class="td-mono td-muted">800.456.789-1</td>
-            <td style="font-weight:500">Ferretería del Norte</td>
-            <td><span class="badge badge-open">Cliente</span></td>
-            <td class="td-mono">$1.500.000</td>
-            <td><button class="btn btn-sm" style="font-size:8px">···</button></td>
-          </tr>
-          <tr>
-            <td class="td-mono td-muted">700.111.222-4</td>
-            <td style="font-weight:500">Proveedora Nacional</td>
-            <td><span class="badge" style="color:var(--muted);border-color:var(--border)">Proveedor</span></td>
-            <td class="td-mono">$0</td>
-            <td><button class="btn btn-sm" style="font-size:8px">···</button></td>
-          </tr>
+          <tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">Cargando terceros...</td></tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- VENTAS -->
+  <section id="view-ventas" class="view">
+    <div class="page-header">
+      <h1 class="page-title">Registrar <em>venta</em></h1>
+    </div>
+
+    <div style="border:1px solid var(--border);background:var(--bg-1);">
+      <div style="padding:24px;">
+        <div style="font-size:15px;font-family:var(--display);color:var(--text);margin-bottom:4px;">Nueva venta</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+          Registra ventas al contado o a crédito. Los productos se cargan desde la hoja "Productos".
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Tipo de venta</label>
+          <select class="form-field" id="venta-tipo">
+            <option value="CONTADO">Contado</option>
+            <option value="CxC">Crédito</option>
+          </select>
+        </div>
+
+        <div class="form-row" id="venta-tercero-row" style="display:none;">
+          <label class="form-label">Cliente (para crédito)</label>
+          <select class="form-field" id="venta-cliente">
+            <option value="">Seleccione un cliente...</option>
+          </select>
+        </div>
+
+        <div class="form-row" id="venta-dias-row" style="display:none;">
+          <label class="form-label">Días de crédito</label>
+          <input type="number" class="form-field" id="venta-dias" value="30" min="1" max="365">
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <label class="form-label" style="margin-bottom:0;">Productos</label>
+            <button class="btn btn-sm btn-accent" id="btn-agregar-producto">+ Agregar producto</button>
+          </div>
+          <div id="venta-productos">
+            <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 100px 120px 40px;gap:8px;margin-bottom:8px;align-items:end;">
+              <div>
+                <label class="form-label">Producto</label>
+                <select class="form-field venta-producto-select" style="font-size:11px;">
+                  <option value="">Seleccionar...</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Cantidad</label>
+                <input type="number" class="form-field venta-cantidad" value="1" min="1" style="font-size:11px;">
+              </div>
+              <div>
+                <label class="form-label">Precio</label>
+                <input type="number" class="form-field venta-precio" value="0" min="0" style="font-size:11px;">
+              </div>
+              <div style="display:flex;align-items:end;padding-bottom:4px;">
+                <button class="btn btn-sm btn-remove-producto" style="font-size:9px;padding:6px 8px;border-color:var(--red);color:var(--red);">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="text-align:right;padding:12px 0;border-top:1px solid var(--border);margin-bottom:16px;">
+          <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);">Total: </span>
+          <span id="venta-total" style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--accent);">$0</span>
+        </div>
+
+        <div id="venta-error" class="error-banner" style="margin-bottom:12px"></div>
+        <div id="venta-success" style="display:none;padding:12px 16px;margin-bottom:12px;border:1px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-size:11px;letter-spacing:0.04em;"></div>
+
+        <button class="btn btn-accent" id="btn-registrar-venta" style="width:100%;justify-content:center;padding:12px;">
+          → Registrar venta
+        </button>
+      </div>
     </div>
   </section>
 
@@ -702,6 +761,8 @@ App.api = {
   analizarConGeminiFresco: function () { return callServer('analizarConGeminiFresco'); },
   getAuditHistory: function (tabla, idRegistro, limit) { return callServer('getAuditHistory', tabla, idRegistro, limit); },
   getUserInfo: function () { return callServer('getUserInfo'); },
+  procesarVenta: function (carrito, opciones) { return callServer('procesarVenta', carrito, opciones); },
+  getProductos: function () { return callServer('getProductos'); },
 };
 
 App.formatearMoneda = function (centavos) {
@@ -1127,6 +1188,175 @@ function guardarTercero() {
   });
 }
 
+/* ── VENTAS ── */
+var productosCache = [];
+
+function cargarVentas() {
+  productosCache = [];
+  cargarVentasProductos();
+  cargarVentasTerceros();
+  document.getElementById('venta-tipo').value = 'CONTADO';
+  document.getElementById('venta-tercero-row').style.display = 'none';
+  document.getElementById('venta-dias-row').style.display = 'none';
+  document.getElementById('venta-error').classList.remove('show');
+  document.getElementById('venta-success').style.display = 'none';
+  var container = document.getElementById('venta-productos');
+  container.innerHTML = '';
+  agregarFilaProducto();
+  calcularTotalVenta();
+}
+
+function cargarVentasProductos() {
+  App.api.getProductos().then(function (data) {
+    productosCache = data || [];
+    var selects = document.querySelectorAll('.venta-producto-select');
+    selects.forEach(function (sel) {
+      llenarSelectProductos(sel);
+    });
+  }).catch(function () {});
+}
+
+function llenarSelectProductos(sel) {
+  var current = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar...</option>';
+  productosCache.forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.nombre + ' (' + p.id + ')';
+    opt.dataset.precio = p.precio;
+    sel.appendChild(opt);
+  });
+  if (current) sel.value = current;
+}
+
+function cargarVentasTerceros() {
+  var select = document.getElementById('venta-cliente');
+  select.innerHTML = '<option value="">Seleccione un cliente...</option>';
+  App.api.getTerceros(null).then(function (data) {
+    if (data && data.length) {
+      data.forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+        select.appendChild(opt);
+      });
+    }
+  }).catch(function () {});
+}
+
+function agregarFilaProducto() {
+  var container = document.getElementById('venta-productos');
+  var template = document.querySelector('.venta-producto-row');
+  var row = template.cloneNode(true);
+  var selects = row.querySelectorAll('.venta-producto-select, .venta-cantidad, .venta-precio');
+  selects.forEach(function (el) {
+    if (el.tagName === 'SELECT') el.value = '';
+    else if (el.classList.contains('venta-cantidad')) el.value = '1';
+    else if (el.classList.contains('venta-precio')) el.value = '0';
+  });
+  llenarSelectProductos(row.querySelector('.venta-producto-select'));
+  container.appendChild(row);
+  row.querySelector('.venta-producto-select').addEventListener('change', function () {
+    var opt = this.options[this.selectedIndex];
+    var precioInput = this.closest('.venta-producto-row').querySelector('.venta-precio');
+    if (opt && opt.dataset.precio) {
+      precioInput.value = opt.dataset.precio;
+    }
+    calcularTotalVenta();
+  });
+  row.querySelector('.venta-cantidad').addEventListener('input', calcularTotalVenta);
+  row.querySelector('.venta-precio').addEventListener('input', calcularTotalVenta);
+  row.querySelector('.btn-remove-producto').addEventListener('click', function () {
+    if (container.querySelectorAll('.venta-producto-row').length > 1) {
+      row.remove();
+      calcularTotalVenta();
+    }
+  });
+  calcularTotalVenta();
+}
+
+function calcularTotalVenta() {
+  var total = 0;
+  document.querySelectorAll('.venta-producto-row').forEach(function (row) {
+    var cant = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
+    var precio = parseInt(row.querySelector('.venta-precio').value, 10) || 0;
+    total += cant * precio;
+  });
+  document.getElementById('venta-total').textContent = App.formatearMoneda(total * 100);
+}
+
+function registrarVenta() {
+  var btn = document.getElementById('btn-registrar-venta');
+  var errorEl = document.getElementById('venta-error');
+  var successEl = document.getElementById('venta-success');
+  errorEl.classList.remove('show');
+  errorEl.textContent = '';
+  successEl.style.display = 'none';
+
+  var tipo = document.getElementById('venta-tipo').value;
+  var idTercero = document.getElementById('venta-cliente').value;
+  var diasCredito = parseInt(document.getElementById('venta-dias').value, 10) || 30;
+
+  var carrito = [];
+  document.querySelectorAll('.venta-producto-row').forEach(function (row) {
+    var id = row.querySelector('.venta-producto-select').value;
+    var cantidad = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
+    var precio = parseInt(row.querySelector('.venta-precio').value, 10) || 0;
+    if (id && cantidad > 0) {
+      carrito.push({ id: id, cantidad: cantidad, precio: precio });
+    }
+  });
+
+  if (carrito.length === 0) {
+    errorEl.textContent = 'Agregue al menos un producto al carrito.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  if (tipo === 'CxC' && !idTercero) {
+    errorEl.textContent = 'Seleccione un cliente para ventas a crédito.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '→ Procesando...';
+
+  App.api.procesarVenta(carrito, { tipo: tipo, idTercero: idTercero || null, diasCredito: diasCredito })
+    .then(function (r) {
+      btn.disabled = false;
+      btn.textContent = '→ Registrar venta';
+      if (r && r.success === false) {
+        errorEl.textContent = r.message || 'Error al registrar venta.';
+        errorEl.classList.add('show');
+      } else {
+        successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'Crédito' : 'Contado');
+        successEl.style.display = 'block';
+        var container = document.getElementById('venta-productos');
+        container.innerHTML = '';
+        agregarFilaProducto();
+        calcularTotalVenta();
+        document.getElementById('venta-cliente').value = '';
+        cargarDashboard();
+        cargarCartera();
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = '→ Registrar venta';
+      errorEl.textContent = err.message || err || 'Error al registrar venta.';
+      errorEl.classList.add('show');
+    });
+}
+
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'venta-tipo') {
+    var isCredito = e.target.value === 'CxC';
+    document.getElementById('venta-tercero-row').style.display = isCredito ? 'block' : 'none';
+    document.getElementById('venta-dias-row').style.display = isCredito ? 'block' : 'none';
+  }
+});
+
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
     document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
@@ -1140,6 +1370,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (viewId === 'cartera') cargarCartera();
       if (viewId === 'terceros') cargarTerceros();
       if (viewId === 'abonos') cargarAbonoSelect();
+      if (viewId === 'ventas') cargarVentas();
     }
   });
 });
@@ -1179,6 +1410,8 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
 
   document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
+  document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
+  document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
 });
 </script>
 </body>

@@ -146,3 +146,39 @@ function getUserInfo() {
   const role = AuthService.getUserRole(email);
   return { email: email, role: role };
 }
+
+/**
+ * API Pública: Procesar venta (contado o crédito)
+ */
+function procesarVenta(carrito, opciones) {
+  AuthService.checkPermission("registrar_venta");
+  return procesarVentaV2(carrito, opciones);
+}
+
+/**
+ * API Pública: Obtener productos desde la hoja Productos
+ */
+function getProductos() {
+  try {
+    AuthService.checkPermission("revisar_inventario");
+    const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+    const data = sheet.getDataRange().getValues();
+    const COL = CONFIG.COLUMNS.PRODUCTOS;
+    const productos = [];
+    for (let i = 1; i < data.length; i++) {
+      const id = String(data[i][COL.id] || "").trim();
+      const nombre = String(data[i][COL.nombre] || "").trim();
+      if (!id || !nombre) continue;
+      productos.push({
+        id: id,
+        nombre: nombre,
+        stock: parseInt(data[i][COL.stock]) || 0,
+        precio: parseFloat(data[i][COL.precio]) || 0,
+      });
+    }
+    return productos;
+  } catch (e) {
+    Logger.log("ERROR getProductos: " + e.toString());
+    return [];
+  }
+}
