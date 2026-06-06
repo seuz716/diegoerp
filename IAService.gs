@@ -335,8 +335,8 @@ ${JSON.stringify(movimientosComprimidos)}`;
     return prompt;
   },
 
-  extractData() {
-    CACHE.refresh(true);
+  extractData(forceRefresh = false) {
+    CACHE.refresh(forceRefresh);
 
     const hoy = _today();
     const doceMesesAtras = new Date(hoy);
@@ -644,7 +644,7 @@ REGLAS DE NEGOCIO:
   ejecutarAnalisis(forceFresh = false) {
     const startTime = Date.now();
 
-    const data = this.extractData();
+    const data = this.extractData(forceFresh);
 
     if (data.cartera.length === 0 && data.terceros.length === 0) {
       return {

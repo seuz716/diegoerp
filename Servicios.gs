@@ -35,6 +35,8 @@ function procesarVentaV2(carrito, opciones) {
     }
   }
 
+  const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+
   if (esCredito && idTercero) {
     CACHE.refresh();
     const tercero = CACHE.getTerceroRAW(idTercero);
@@ -43,21 +45,13 @@ function procesarVentaV2(carrito, opciones) {
     }
     if (tercero.limite_credito > 0) {
       const saldoActual = CACHE.getSaldoTercero(idTercero);
-      const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
       if ((saldoActual + totalVenta) > tercero.limite_credito) {
         return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
       }
     }
   }
 
-  const lock = LockService.getScriptLock();
   try {
-    if (!lock.tryLock(10000)) {
-      return _error("No se pudo adquirir el lock para procesar la venta.");
-    }
-
-    const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
-
     if (esCredito && idTercero) {
       const diasCredito = opciones.diasCredito || 30;
       DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
@@ -75,8 +69,6 @@ function procesarVentaV2(carrito, opciones) {
     LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idTercero || "CONTADO",
       {}, { error: e.message || e.toString() }, "FAILED");
     return _error(e.message || "Error procesando venta.");
-  } finally {
-    lock.releaseLock();
   }
 }
 

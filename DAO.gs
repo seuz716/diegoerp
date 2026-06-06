@@ -139,7 +139,7 @@ const DAO = {
     *    sheet.getRange() — el rowIndex cacheado apunta a una fila que
    *    ya no corresponde, causando una sobreescritura incorrecta.
    */
-  saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
+  saveTerceroImpl(tercero, id, nombre, telefono, tipo, limite, activo) {
     const MAX_RETRIES = 2;
     for (let retries = 0; retries <= MAX_RETRIES; retries++) {
       try {
@@ -151,7 +151,7 @@ const DAO = {
         }
 
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-        const rowData = [id, nombre, tercero.telefono || "", tipo, limite, activo];
+        const rowData = [id, nombre, telefono, tipo, limite, activo];
         const cachedRow = CACHE.terceroIndex[id];
 
         if (cachedRow) {
@@ -219,12 +219,7 @@ const DAO = {
 
     if (minRow === Infinity) return true;
 
-    const tx = _Transaction.create();
-    tx.begin();
-
     try {
-      tx.snapshotCarteraRows([...rowMap.keys()]);
-
       const numRowsToProcess = maxRow - minRow + 1;
       const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
       const values = targetRange.getValues();
@@ -244,10 +239,8 @@ const DAO = {
       }
 
       targetRange.setValues(values);
-      tx.commit();
       return true;
     } catch (e) {
-      tx.rollback();
       Logger.log("ERROR updateCarteraBatch: " + e.toString());
       throw e;
     }

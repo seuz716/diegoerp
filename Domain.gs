@@ -81,19 +81,14 @@ const DOMAIN = {
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(id);
 
-      const consistency = CACHE.verifyConsistency();
-      if (consistency.mismatched) {
-        Logger.log("DOMAIN: Inconsistencia detectada en caché antes de saveTercero. Forzando recuperación.");
-        CACHE.recoverFromStale();
-      }
-
       const nombre = String(tercero.nombre || "S.N.").trim().slice(0, 100);
+      const telefono = String(tercero.telefono || "").trim().slice(0, 20);
       const tipo = ["CLIENTE", "PROVEEDOR"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
       // 2. Operaciones Database — la caché debe estar poblada para que DAO valide unicidad
-      const resultado = DAO.saveTerceroImpl(tercero, id, nombre, tipo, limite, activo);
+      const resultado = DAO.saveTerceroImpl(tercero, id, nombre, telefono, tipo, limite, activo);
 
       CACHE.invalidateTerceros();
 
@@ -115,7 +110,7 @@ const DOMAIN = {
     }
   },
 
-  getCartera(filtroEstado = null, filtroTipo = null) {
+  getCartera(filtroTipo = null, filtroEstado = null) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
     const baseCartera = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado);
     const hoy = _today();

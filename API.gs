@@ -31,10 +31,10 @@ function getTerceros(filtroTipo = null) {
 /**
  * API Pública: Obtener cartera con filtros
  */
-function getCartera(filtroEstado = null, filtroTipo = null) {
+function getCartera(filtroTipo = null, filtroEstado = null) {
   try {
     AuthService.checkPermission("ver_cartera");
-    return DOMAIN.getCartera(filtroEstado, filtroTipo);
+    return DOMAIN.getCartera(filtroTipo, filtroEstado);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
     throw new Error(e.message || e.toString());
@@ -97,15 +97,8 @@ function getDashboardCartera() {
       totalObligaciones: cxc.length + cxp.length,
     };
   } catch (e) {
-    Logger.log("ERROR getDashboardCartera:" + e.toString());
-    return {
-      porCobrar: 0,
-      porPagar: 0,
-      vencidaCxC: 0,
-      vencidaCxP: 0,
-      alertas: [],
-      totalObligaciones: 0,
-    };
+    console.error("ERROR getDashboardCartera:" + e.toString());
+    throw new Error(e.message || e.toString());
   }
 }
 

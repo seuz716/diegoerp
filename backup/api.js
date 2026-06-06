@@ -1,6 +1,8 @@
 /**
- * api.js — Frontend communication layer for Google Apps Script backend.
- * Centralizes all google.script.run calls, data transformations, and UI state.
+ * api.js — BACKUP / NO-USAR
+ * Este archivo NO está siendo cargado por index_v3_SaaS.html.
+ * La aplicación usa las definiciones inline en <script> del HTML.
+ * Mantenido solo como referencia histórica.
  */
 
 var App = App || {};

@@ -377,6 +377,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 }
 @keyframes lr-spin{to{transform:rotate(360deg)}}
 
+/* ── TOAST ── */
+#toast-container{position:fixed;bottom:80px;right:16px;z-index:3000;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+.toast{pointer-events:auto;padding:12px 16px;border-left:3px solid var(--accent);background:var(--bg-1);color:var(--fg);font-size:11px;letter-spacing:0.04em;box-shadow:0 4px 12px rgba(0,0,0,0.3);animation:toast-in .3s ease forwards;max-width:360px;}
+.toast.error{border-left-color:var(--red);}
+.toast.success{border-left-color:var(--accent);}
+@keyframes toast-in{from{opacity:0;transform:translateX(40px);}to{opacity:1;transform:translateX(0);}}
+@keyframes toast-out{from{opacity:1;transform:translateX(0);}to{opacity:0;transform:translateX(40px);}}
+
 /* ── EMPTY STATE ── */
 .empty-state{
   text-align:center;padding:32px 16px;
@@ -711,7 +719,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
             <label class="form-label" style="margin-bottom:0;">Productos</label>
             <button class="btn btn-sm btn-accent" id="btn-agregar-producto">+ Agregar producto</button>
           </div>
-          <div id="venta-productos">
+          <div id="venta-productos"></div>
+
+          <template id="row-template">
             <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 100px 120px 40px;gap:8px;margin-bottom:8px;align-items:end;">
               <div>
                 <label class="form-label">Producto</label>
@@ -731,7 +741,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
                 <button class="btn btn-sm btn-remove-producto" style="font-size:9px;padding:6px 8px;border-color:var(--red);color:var(--red);">✕</button>
               </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <div style="text-align:right;padding:12px 0;border-top:1px solid var(--border);margin-bottom:16px;">
@@ -797,6 +807,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   <div class="nav-item" data-view="ventas">◇</div>
 </nav>
 
+<div id="toast-container"></div>
+
 <script>
 'use strict';
 var App = App || {};
@@ -813,7 +825,7 @@ function callServer(funcName) {
 
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
-  getCartera: function (filtroEstado, filtroTipo) { return callServer('getCartera', filtroEstado, filtroTipo); },
+  getCartera: function (filtroTipo, filtroEstado) { return callServer('getCartera', filtroTipo, filtroEstado); },
   getTerceros: function (filtroTipo) { return callServer('getTerceros', filtroTipo); },
   registrarAbono: function (idTercero, valorAbono, referencia, tipo) { return callServer('registrarAbono', idTercero, valorAbono, referencia, tipo); },
   saveTercero: function (tercero) { return callServer('saveTercero', tercero); },
@@ -828,6 +840,8 @@ App.formatearMoneda = function (centavos) {
   if (centavos == null || isNaN(centavos)) return '$0';
   return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 };
+
+App.toCents = function (amount) { return Math.round(parseFloat(amount) * 100); };
 
 App.formatearFecha = function (dateObj) {
   if (!dateObj) return '\u2014';
@@ -874,7 +888,7 @@ function mostrarVacio(contenedor, mensaje) {
 App.data = {
   dashboard: null, cartera: null, terceros: null,
   refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
-  refreshCartera: function (filtroEstado, filtroTipo) { var self = this; return App.api.getCartera(filtroEstado, filtroTipo).then(function (d) { self.cartera = d; return d; }); },
+  refreshCartera: function (filtroTipo, filtroEstado) { var self = this; return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) { self.cartera = d; return d; }); },
   refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
 };
 
@@ -888,6 +902,19 @@ function showError(msg) {
   var banner = document.getElementById('error-banner');
   banner.textContent = msg;
   banner.classList.add('show');
+}
+
+function showToast(msg, type) {
+  type = type || 'error';
+  var container = document.getElementById('toast-container');
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(function () {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+  }, 5000);
 }
 
 function cargarDashboard() {
@@ -1061,7 +1088,7 @@ function cargarCartera() {
   if (App.data.cartera && !filtroTipo && !filtroEstado) {
     promise = Promise.resolve(App.data.cartera);
   } else {
-    promise = App.api.getCartera(filtroEstado, filtroTipo);
+    promise = App.api.getCartera(filtroTipo, filtroEstado);
   }
 
   promise
@@ -1130,7 +1157,10 @@ function cargarAbonoSelect() {
         });
       }
     })
-    .catch(function () {});
+    .catch(function (err) {
+      console.error('Error cargando terceros en abono:', err);
+      showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+    });
 }
 
 function ejecutarAbono() {
@@ -1141,19 +1171,19 @@ function ejecutarAbono() {
 
   var idTercero = document.getElementById('abono-cliente').value;
   var tipo = document.getElementById('abono-tipo').value;
-  var monto = parseInt(document.getElementById('abono-monto').value, 10);
+  var montoInput = document.getElementById('abono-monto').value;
+  var centavos = App.toCents(montoInput);
   var referencia = document.getElementById('abono-referencia').value.trim();
 
   if (!idTercero) { errorEl.textContent = 'Seleccione un cliente.'; errorEl.classList.add('show'); return; }
-  if (!monto || monto < 1) { errorEl.textContent = 'Ingrese un monto válido.'; errorEl.classList.add('show'); return; }
+  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
-  if (!confirm('¿Confirmar el registro de este movimiento?\nMonto: ' + App.formatearMoneda(monto * 100) + '\nTipo: ' + tipo)) { return; }
+  if (!confirm('¿Confirmar el registro de este movimiento?\nMonto: ' + App.formatearMoneda(centavos) + '\nTipo: ' + tipo)) { return; }
 
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
-  var centavos = monto * 100;
   App.api.registrarAbono(idTercero, centavos, referencia, tipo)
     .then(function (r) {
       btn.disabled = false;
@@ -1169,6 +1199,8 @@ function ejecutarAbono() {
         successEl.style.display = 'block';
         setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
         document.getElementById('abono-cliente').value = '';
+        App.data.dashboard = null;
+        App.data.cartera = null;
         cargarDashboard();
         cargarCartera();
       }
@@ -1245,7 +1277,7 @@ function guardarTercero() {
   var errorEl = document.getElementById('tercero-error');
   var nombre = document.getElementById('tercero-nombre').value.trim();
   var tipo = document.getElementById('tercero-tipo').value;
-  var limite = parseInt(document.getElementById('tercero-limite').value, 10) || 0;
+  var limite = App.toCents(document.getElementById('tercero-limite').value);
   var telefono = document.getElementById('tercero-telefono').value.trim();
   var activo = document.getElementById('tercero-activo').checked;
 
@@ -1286,9 +1318,9 @@ function guardarTercero() {
 /* ── VENTAS ── */
 App.productosCache = [];
 
-function cargarVentas() {
+async function cargarVentas() {
   App.productosCache = [];
-  cargarVentasProductos();
+  await cargarVentasProductos();
   cargarVentasTerceros();
   document.getElementById('venta-tipo').value = 'CONTADO';
   document.getElementById('venta-tercero-row').style.display = 'none';
@@ -1302,13 +1334,16 @@ function cargarVentas() {
 }
 
 function cargarVentasProductos() {
-  App.api.getProductos().then(function (data) {
+  return App.api.getProductos().then(function (data) {
     App.productosCache = data || [];
     var selects = document.querySelectorAll('.venta-producto-select');
     selects.forEach(function (sel) {
       llenarSelectProductos(sel);
     });
-  }).catch(function () {});
+  }).catch(function (err) {
+    console.error('Error cargando productos:', err);
+    showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+  });
 }
 
 function llenarSelectProductos(sel) {
@@ -1336,13 +1371,18 @@ function cargarVentasTerceros() {
         select.appendChild(opt);
       });
     }
-  }).catch(function () {});
+  }).catch(function (err) {
+    console.error('Error cargando terceros en ventas:', err);
+    showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+  });
 }
 
 function agregarFilaProducto() {
   var container = document.getElementById('venta-productos');
-  var template = document.querySelector('.venta-producto-row');
-  var row = template.cloneNode(true);
+  var template = document.getElementById('row-template');
+  var fragment = template.content.cloneNode(true);
+  container.appendChild(fragment);
+  var row = container.lastElementChild;
   var selects = row.querySelectorAll('.venta-producto-select, .venta-cantidad, .venta-precio');
   selects.forEach(function (el) {
     if (el.tagName === 'SELECT') el.value = '';
@@ -1350,7 +1390,6 @@ function agregarFilaProducto() {
     else if (el.classList.contains('venta-precio')) el.value = '0';
   });
   llenarSelectProductos(row.querySelector('.venta-producto-select'));
-  container.appendChild(row);
   row.querySelector('.venta-producto-select').addEventListener('change', function () {
     var opt = this.options[this.selectedIndex];
     var precioInput = this.closest('.venta-producto-row').querySelector('.venta-precio');
@@ -1374,7 +1413,7 @@ function calcularTotalVenta() {
   var total = 0;
   document.querySelectorAll('.venta-producto-row').forEach(function (row) {
     var cant = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
-    var precio = parseInt(row.querySelector('.venta-precio').value, 10) || 0;
+    var precio = parseFloat(row.querySelector('.venta-precio').value) || 0;
     total += cant * precio;
   });
   document.getElementById('venta-total').textContent = App.formatearMoneda(total * 100);
@@ -1396,7 +1435,7 @@ function registrarVenta() {
   document.querySelectorAll('.venta-producto-row').forEach(function (row) {
     var id = row.querySelector('.venta-producto-select').value;
     var cantidad = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
-    var precio = parseInt(row.querySelector('.venta-precio').value, 10) || 0;
+    var precio = App.toCents(row.querySelector('.venta-precio').value);
     if (id && cantidad > 0) {
       carrito.push({ id: id, cantidad: cantidad, precio: precio });
     }
@@ -1430,11 +1469,14 @@ function registrarVenta() {
       } else {
         successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'Crédito' : 'Contado');
         successEl.style.display = 'block';
+        setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
         var container = document.getElementById('venta-productos');
         container.innerHTML = '';
         agregarFilaProducto();
         calcularTotalVenta();
         document.getElementById('venta-cliente').value = '';
+        App.data.dashboard = null;
+        App.data.cartera = null;
         cargarDashboard();
         cargarCartera();
       }
@@ -1486,7 +1528,8 @@ function cargarUserInfo() {
         userEl.innerHTML = '<div class="user-error">Sesión no disponible</div>';
       }
     })
-    .catch(function () {
+    .catch(function (err) {
+      console.error('Error cargando info de usuario:', err);
       userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
     });
 }

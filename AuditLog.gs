@@ -2,6 +2,8 @@
  * LAYER 2: LOGGING ENGINE — AUDITORÍA INMUTABLE
  */
 
+const MAX_LOG_ROWS = 5000;
+
 const LOG_ENGINE = {
   /**
    * Registra cambio en hoja.
@@ -10,7 +12,6 @@ const LOG_ENGINE = {
   logEvent(operacion, tabla, idRegistro, datosPrevios, datosNuevos, estado = "SUCCESS") {
     try {
       const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
-      if (!sheetAudit) return false;
 
       const usuario = Session.getActiveUser().getEmail();
       const timestamp = new Date();
@@ -34,6 +35,14 @@ const LOG_ENGINE = {
         sheetAudit.appendRow(["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado"]);
       }
       sheetAudit.getRange(sheetAudit.getLastRow() + 1, 1, 1, 9).setValues([rowData]);
+
+      // Purge: si excede MAX_LOG_ROWS + margen, eliminar las filas más viejas
+      const totalRows = sheetAudit.getLastRow();
+      if (totalRows > MAX_LOG_ROWS + 100) {
+        const rowsToDelete = totalRows - MAX_LOG_ROWS;
+        sheetAudit.deleteRows(2, rowsToDelete);
+      }
+
       return true;
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE:" + e.toString());

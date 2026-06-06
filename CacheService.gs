@@ -160,6 +160,10 @@ let CACHE = {
       if (kind === 'cartera') {
         item.saldo = _parseMoneda(row[columns.saldo], 0);
         item.estado = String(row[columns.estado] || "").trim();
+        item.fecha = _safeDate(row[columns.fecha]);
+        item.total = _parseMoneda(row[columns.total], 0);
+      } else {
+        item.nombre = String(row[columns.nombre] || "").trim();
       }
       items.push(item);
     }
@@ -201,7 +205,15 @@ let CACHE = {
 
   _computeChecksum(data) {
     if (!data || data.length === 0) return "";
-    const concat = data.map(r => r.id + "|" + (r.saldo !== undefined ? r.saldo : "") + "|" + (r.estado || "")).join(",");
+    const concat = data.map(r => {
+      const parts = [r.id];
+      if (r.nombre !== undefined) parts.push(r.nombre);
+      if (r.saldo !== undefined) parts.push(r.saldo);
+      if (r.estado !== undefined) parts.push(r.estado);
+      if (r.fecha !== undefined) parts.push(r.fecha instanceof Date ? String(r.fecha.getTime()) : String(r.fecha));
+      if (r.total !== undefined) parts.push(r.total);
+      return parts.join("|");
+    }).join(",");
     return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, concat)
       .map(b => ("0" + (b & 0xFF).toString(16)).slice(-2)).join("");
   },
