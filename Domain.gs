@@ -10,7 +10,7 @@
  *   - Restaura filas de cartera a sus valores originales (snapshot)
  *   - Elimina filas de movimientos que se hayan añadido
  */
-const _Transaction = {
+var _Transaction = {
   create() {
     const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, active: false };
 
@@ -92,10 +92,10 @@ const DOMAIN = {
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
-      CACHE.invalidateTerceros();
-
-      // 2. Operaciones Database
+      // 2. Operaciones Database — la caché debe estar poblada para que DAO valide unicidad
       const resultado = DAO.saveTerceroImpl(tercero, id, nombre, tipo, limite, activo);
+
+      CACHE.invalidateTerceros();
 
       if (resultado.isUpdate) {
         LOG_ENGINE.logEvent("UPDATE_TERCERO", "TERCEROS", id, { nombre: "*" }, { nombre }, "SUCCESS");
@@ -251,6 +251,21 @@ const DOMAIN = {
       return _error(e.message || "Error procesando abono.");
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();
+    }
+  },
+
+  actualizarCarteraBatch(cambios) {
+    const tx = _Transaction.create();
+    tx.begin();
+    try {
+      tx.snapshotCarteraRows((cambios || []).map(c => c.rowIndex).filter(i => i > 0));
+      DAO.updateCarteraBatch(cambios);
+      tx.commit();
+      return true;
+    } catch (e) {
+      tx.rollback();
+      Logger.log("ERROR DOMAIN.actualizarCarteraBatch: " + e.toString());
+      throw e;
     }
   },
 

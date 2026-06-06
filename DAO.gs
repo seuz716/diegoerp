@@ -128,19 +128,14 @@ const DAO = {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
       const rowData = [id, nombre, "", tipo, limite, activo];
 
-      const cachedRow = CACHE.terceroIndex[id];
-      let rowExisting = null;
-      if (cachedRow) {
-        rowExisting = cachedRow;
-      } else if (sheet.getLastRow() > 1) {
-        const match = this._findRowIndexesByColumnValue(sheet, CARTERA_CONFIG.COLUMNS.TERCEROS.id, id);
-        if (match.length > 0) {
-          rowExisting = match[0] - 1;
-        }
+      if (!CACHE.terceros || Object.keys(CACHE.terceroIndex).length === 0) {
+        throw new Error("CACHE.terceroIndex no está inicializado. Debe refrescar la caché antes de validar IDs únicos.");
       }
 
-      if (rowExisting) {
-        sheet.getRange(rowExisting + 1, 1, 1, 6).setValues([rowData]);
+      const cachedRow = CACHE.terceroIndex[id];
+
+      if (cachedRow) {
+        sheet.getRange(cachedRow + 1, 1, 1, 6).setValues([rowData]);
         return { isUpdate: true };
       }
 
@@ -160,52 +155,54 @@ const DAO = {
     if (!cambios || cambios.length === 0) return true;
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    const COL = CARTERA_CONFIG.COLUMNS.CARTERA; // Estas son las columnas 0-based del array interno
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
 
     let minRow = Infinity;
     let maxRow = -Infinity;
 
-    // Identificar las columnas mínimas y máximas afectadas (asumimos que COL.saldo y COL.estado son 0-based)
     const minColIdx = Math.min(COL.saldo, COL.estado);
     const maxColIdx = Math.max(COL.saldo, COL.estado);
-    const numColsToProcess = maxColIdx - minColIdx + 1; // Número de columnas en el bloque a leer/escribir
+    const numColsToProcess = maxColIdx - minColIdx + 1;
 
-    const rowMap = new Map(); // Para almacenar los cambios por fila y evitar duplicados si hay varios cambios para la misma fila
+    const rowMap = new Map();
     for (const cambio of cambios) {
-      if (cambio.rowIndex > 0) { // rowIndex es 1-based del sheet
+      if (cambio.rowIndex > 0) {
         minRow = Math.min(minRow, cambio.rowIndex);
         maxRow = Math.max(maxRow, cambio.rowIndex);
-        rowMap.set(cambio.rowIndex, cambio); // Guardamos el último cambio para esta fila
+        rowMap.set(cambio.rowIndex, cambio);
       }
     }
 
-    if (minRow === Infinity) return true; // No hay cambios válidos
+    if (minRow === Infinity) return true;
 
-    const numRowsToProcess = maxRow - minRow + 1;
+    const tx = _Transaction.create();
+    tx.begin();
 
-    // Obtener el rango completo de datos afectados en una sola llamada
-    // minRow es 1-based, minColIdx + 1 es 1-based
-    const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
-    const values = targetRange.getValues(); // Obtener todos los valores del rango en un array 2D (0-based)
+    try {
+      tx.snapshotCarteraRows([...rowMap.keys()]);
 
-    // Aplicar los cambios al array local en memoria
-    for (const [rowIndex, cambio] of rowMap.entries()) {
-      const localRowIndex = rowIndex - minRow; // Convertir el índice de fila de hoja a índice de array local (0-based)
+      const numRowsToProcess = maxRow - minRow + 1;
+      const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
+      const values = targetRange.getValues();
 
-      if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) { // Corrección aquí
-        // Convertir el índice de columna de COL (0-based) a índice de array local (0-based respecto a minColIdx)
-        const localColIndexSaldo = COL.saldo - minColIdx;
-        const localColIndexEstado = COL.estado - minColIdx;
-
-        values[localRowIndex][localColIndexSaldo] = cambio.saldo;
-        values[localRowIndex][localColIndexEstado] = cambio.estado;
+      for (const [rowIndex, cambio] of rowMap.entries()) {
+        const localRowIndex = rowIndex - minRow;
+        if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) {
+          const localColIndexSaldo = COL.saldo - minColIdx;
+          const localColIndexEstado = COL.estado - minColIdx;
+          values[localRowIndex][localColIndexSaldo] = cambio.saldo;
+          values[localRowIndex][localColIndexEstado] = cambio.estado;
+        }
       }
+
+      targetRange.setValues(values);
+      tx.commit();
+      return true;
+    } catch (e) {
+      tx.rollback();
+      Logger.log("ERROR updateCarteraBatch: " + e.toString());
+      throw e;
     }
-
-    // Escribir todos los cambios de vuelta a la hoja en una sola llamada
-    targetRange.setValues(values);
-
-    return true;
   },
 
   createMovimiento(mov) {

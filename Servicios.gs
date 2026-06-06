@@ -66,7 +66,7 @@ function actualizarVencimientos() {
   }
 
   if (cambios.length > 0) {
-    DAO.updateCarteraBatch(cambios);
+    DOMAIN.actualizarCarteraBatch(cambios);
     LOG_ENGINE.logEvent("VENCIMIENTOS_ACTUALIZADOS", "CARTERA", "BATCH",
       {}, { marcados, revertidos }, "SUCCESS");
   }
@@ -131,8 +131,8 @@ function getTerceros() {
  * @param {string} tipoCartera Tipo de cartera (CxC o CxP).
  * @returns {Object} Resultado de la operación.
  */
-function _registrarAbono(idTercero, valorAbono, referencia, tipoCartera) {
+function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera) {
   // TODO: Implementar lógica real de registro de abono
-  console.warn("_registrarAbono: Función no implementada completamente. Retornando éxito simulado.");
+  console.warn("_registrarAbonoServicio: Función no implementada completamente. Retornando éxito simulado.");
   return { success: true, message: "Abono registrado (simulado)" };
 }
