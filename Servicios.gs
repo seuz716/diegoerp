@@ -10,9 +10,74 @@
  * @returns {Object} Resultado de la operación.
  */
 function procesarVentaV2(carrito, opciones) {
-  // TODO: Implementar lógica real de procesamiento de venta
-  console.warn("procesarVentaV2: Función no implementada completamente. Retornando éxito simulado.");
-  return { success: true, message: "Venta procesada (simulado)" };
+  AuthService.checkPermission("registrar_venta");
+
+  if (!carrito || !Array.isArray(carrito) || carrito.length === 0) {
+    return _error("El carrito no puede estar vacío.");
+  }
+  if (!opciones || typeof opciones !== 'object') {
+    return _error("Opciones de venta inválidas.");
+  }
+  if (!opciones.tipo) {
+    return _error("El tipo de venta es requerido.");
+  }
+
+  const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
+  const idTercero = _sanitizeId(opciones.idTercero || "");
+
+  if (esCredito && !idTercero) {
+    return _error("ID de tercero es requerido para ventas a crédito.");
+  }
+
+  for (const item of carrito) {
+    if (!item.id || !item.cantidad || item.cantidad <= 0) {
+      return _error(`Producto inválido en el carrito: ${item.id || "sin ID"}.`);
+    }
+  }
+
+  if (esCredito && idTercero) {
+    CACHE.refresh();
+    const tercero = CACHE.getTerceroRAW(idTercero);
+    if (!tercero) {
+      return _error(`Tercero ${idTercero} no encontrado.`);
+    }
+    if (tercero.limite_credito > 0) {
+      const saldoActual = CACHE.getSaldoTercero(idTercero);
+      const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+      if ((saldoActual + totalVenta) > tercero.limite_credito) {
+        return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+      }
+    }
+  }
+
+  const lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(10000)) {
+      return _error("No se pudo adquirir el lock para procesar la venta.");
+    }
+
+    const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+
+    if (esCredito && idTercero) {
+      const diasCredito = opciones.diasCredito || 30;
+      DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
+    }
+
+    LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
+      { items: carrito.length },
+      { total: totalVenta, tipo: opciones.tipo },
+      "SUCCESS"
+    );
+
+    return { success: true, total: totalVenta, tipo: opciones.tipo, idTercero: idTercero || null };
+
+  } catch (e) {
+    LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idTercero || "CONTADO",
+      {}, { error: e.message || e.toString() }, "FAILED");
+    return _error(e.message || "Error procesando venta.");
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -23,55 +88,95 @@ function procesarVentaV2(carrito, opciones) {
  * @returns {Object} { success, marcados, revertidos, timestamp }
  */
 function actualizarVencimientos() {
-  const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-  const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
-  const numCols = Math.max(...Object.values(COL)) + 1;
-  const lastRow = sheet.getLastRow();
+  AuthService.checkPermission("ejecutar_mantenimiento");
 
-  if (lastRow < 2) return { success: true, marcados: 0, revertidos: 0, timestamp: new Date().toISOString() };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_LOCK", "CARTERA", "BATCH",
+      {}, { error: "No se pudo adquirir el lock" }, "FAILED");
+    return _error("No se pudo adquirir el lock para actualizar vencimientos.");
+  }
 
-  const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-  const hoy = _today();
-  const cambios = [];
-  let marcados = 0;
-  let revertidos = 0;
+  try {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const lastRow = sheet.getLastRow();
 
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const estadoActual = String(row[COL.estado] || "").trim();
+    if (lastRow < 2) return { success: true, marcados: 0, revertidos: 0, errores: 0, timestamp: new Date().toISOString() };
 
-    if (estadoActual === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const hoy = _today();
+    const cambios = [];
+    let marcados = 0;
+    let revertidos = 0;
+    let errores = 0;
+    const UMBRAL_ERRORES = 5;
 
-    const fv = _safeDate(row[COL.fecha_vencimiento]);
-    if (fv.getTime() <= 0) continue;
+    for (let i = 0; i < data.length; i++) {
+      if (errores >= UMBRAL_ERRORES) {
+        LOG_ENGINE.logEvent("VENCIMIENTOS_ABORTADOS", "CARTERA", "BATCH",
+          { procesados: i },
+          { error: `Umbral de ${UMBRAL_ERRORES} errores superado.` },
+          "FAILED");
+        return _error(`Actualización abortada: se superó el umbral de ${UMBRAL_ERRORES} errores.`);
+      }
 
-    const estaVencido = fv.getTime() < hoy.getTime();
+      const row = data[i];
+      const estadoActual = String(row[COL.estado] || "").trim();
 
-    if (estaVencido && estadoActual !== CARTERA_CONFIG.ESTADOS.VENCIDA) {
-      cambios.push({
-        rowIndex: i + 2,
-        saldo: _parseMoneda(row[COL.saldo], 0),
-        estado: CARTERA_CONFIG.ESTADOS.VENCIDA,
-      });
-      marcados++;
-    } else if (!estaVencido && estadoActual === CARTERA_CONFIG.ESTADOS.VENCIDA) {
-      const total = _parseMoneda(row[COL.total], 0);
-      const saldo = _parseMoneda(row[COL.saldo], 0);
-      const nuevoEstado = saldo < total
-        ? CARTERA_CONFIG.ESTADOS.PARCIAL
-        : CARTERA_CONFIG.ESTADOS.ABIERTA;
-      cambios.push({ rowIndex: i + 2, saldo, estado: nuevoEstado });
-      revertidos++;
+      if (estadoActual === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
+
+      const fv = _safeDate(row[COL.fecha_vencimiento]);
+      if (fv.getTime() <= 0) {
+        errores++;
+        continue;
+      }
+
+      const estaVencido = fv.getTime() < hoy.getTime();
+
+      if (estaVencido && estadoActual !== CARTERA_CONFIG.ESTADOS.VENCIDA) {
+        cambios.push({
+          rowIndex: i + 2,
+          saldo: _parseMoneda(row[COL.saldo], 0),
+          estado: CARTERA_CONFIG.ESTADOS.VENCIDA,
+          vencida_timestamp: Utilities.formatDate(new Date(), _getTimeZone(), "yyyy-MM-dd HH:mm:ss"),
+        });
+        marcados++;
+      } else if (!estaVencido && estadoActual === CARTERA_CONFIG.ESTADOS.VENCIDA) {
+        const total = _parseMoneda(row[COL.total], 0);
+        const saldo = _parseMoneda(row[COL.saldo], 0);
+        const nuevoEstado = saldo < total
+          ? CARTERA_CONFIG.ESTADOS.PARCIAL
+          : CARTERA_CONFIG.ESTADOS.ABIERTA;
+        cambios.push({ rowIndex: i + 2, saldo, estado: nuevoEstado, vencida_timestamp: null });
+        revertidos++;
+      }
     }
-  }
 
-  if (cambios.length > 0) {
-    DOMAIN.actualizarCarteraBatch(cambios);
-    LOG_ENGINE.logEvent("VENCIMIENTOS_ACTUALIZADOS", "CARTERA", "BATCH",
-      {}, { marcados, revertidos }, "SUCCESS");
-  }
+    if (cambios.length > 0) {
+      try {
+        DOMAIN.actualizarCarteraBatch(cambios);
+      } catch (e) {
+        errores++;
+        LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_BATCH", "CARTERA", "BATCH",
+          {}, { error: e.message || e.toString() }, "FAILED");
+        if (errores >= UMBRAL_ERRORES) {
+          return _error(`Actualización abortada tras error en escritura batch.`);
+        }
+      }
 
-  return { success: true, marcados, revertidos, timestamp: new Date().toISOString() };
+      LOG_ENGINE.logEvent("VENCIMIENTOS_ACTUALIZADOS", "CARTERA", "BATCH",
+        {}, { marcados, revertidos, errores }, errores > 0 ? "WARNING" : "SUCCESS");
+    }
+
+    CACHE.invalidateTerceros();
+
+    return { success: true, marcados, revertidos, errores, timestamp: new Date().toISOString() };
+
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -79,6 +184,7 @@ function actualizarVencimientos() {
  * Ejecutar UNA vez desde el editor de Apps Script.
  */
 function crearTriggerVencimientos() {
+  AuthService.checkPermission("configurar_sistema");
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(t => {
     if (t.getHandlerFunction() === "actualizarVencimientos") {
@@ -97,9 +203,33 @@ function crearTriggerVencimientos() {
 }
 
 /**
+ * Instala el trigger diario de vencimientos SOLO si no existe.
+ * A diferencia de crearTriggerVencimientos(), es idempotente.
+ */
+function instalarTriggerVencimientos() {
+  AuthService.checkPermission("configurar_sistema");
+  const triggers = ScriptApp.getProjectTriggers();
+  const exists = triggers.some(t => t.getHandlerFunction() === "actualizarVencimientos");
+  if (exists) {
+    return { success: true, message: "Trigger de vencimientos ya instalado." };
+  }
+
+  ScriptApp.newTrigger("actualizarVencimientos")
+    .timeBased()
+    .everyDays(1)
+    .atHour(2)
+    .create();
+
+  const msg = "Trigger diario instalado para actualizarVencimientos() a las 2:00 AM";
+  Logger.log(msg);
+  return { success: true, message: msg };
+}
+
+/**
  * Elimina todos los triggers de actualizarVencimientos.
  */
 function eliminarTriggerVencimientos() {
+  AuthService.checkPermission("configurar_sistema");
   const triggers = ScriptApp.getProjectTriggers();
   let count = 0;
   triggers.forEach(t => {
@@ -112,15 +242,47 @@ function eliminarTriggerVencimientos() {
 }
 
 /**
- * Obtiene una lista de todos los terceros.
- * @returns {Array<Object>} Lista de terceros.
+ * Obtiene una lista de terceros con soporte de caché y filtros opcionales.
+ * @param {Object} [filtros={}] Filtros opcionales (tipo, busqueda, activo).
+ * @returns {Array<Object>} Lista de terceros mapeada sin índices numéricos.
  */
-function getTerceros() {
-  // TODO: Implementar lógica real para obtener terceros del DAO/CACHE
-  console.warn("getTerceros: Función no implementada completamente. Retornando array vacío simulado.");
-  // Para que el test_crearTercero pase el mock global getTerceros se usa en el test
-  // Esta implementación real debería buscar en el CACHE o DAO.
-  return []; 
+function obtenerTerceros(filtros = {}) {
+  AuthService.checkPermission("ver_terceros");
+
+  CACHE.refresh();
+
+  let resultados = CACHE.terceros || [];
+
+  if (filtros.tipo) {
+    const tipoFiltro = String(filtros.tipo).toUpperCase();
+    resultados = resultados.filter(t => t.tipo === tipoFiltro);
+  }
+
+  if (filtros.busqueda) {
+    const busqueda = String(filtros.busqueda).toLowerCase();
+    resultados = resultados.filter(t =>
+      t.id.toLowerCase().includes(busqueda) ||
+      t.nombre.toLowerCase().includes(busqueda)
+    );
+  }
+
+  if (filtros.activo !== false) {
+    resultados = resultados.filter(t => t.activo);
+  }
+
+  return resultados.map(t => ({
+    id: t.id,
+    nombre: t.nombre || "S.N.",
+    telefono: t.telefono || "",
+    tipo: t.tipo,
+    limite_credito: t.limite_credito,
+    activo: t.activo,
+  }));
+}
+
+/** @deprecated Usar obtenerTerceros(). */
+function getTerceros(filtros) {
+  return obtenerTerceros(filtros);
 }
 
 /**
@@ -132,7 +294,44 @@ function getTerceros() {
  * @returns {Object} Resultado de la operación.
  */
 function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera) {
-  // TODO: Implementar lógica real de registro de abono
-  console.warn("_registrarAbonoServicio: Función no implementada completamente. Retornando éxito simulado.");
-  return { success: true, message: "Abono registrado (simulado)" };
+  AuthService.checkPermission("registrar_abono");
+
+  try {
+    // FASE 1: VALIDACIÓN
+    const idTerceroLimpio = _sanitizeId(idTercero);
+    if (!idTerceroLimpio) return _error("ID de tercero inválido.");
+
+    const valor = _parseMoneda(valorAbono, NaN);
+    if (isNaN(valor) || valor <= 0) return _error("El monto del abono debe ser mayor a 0.");
+
+    if (!_isValidDate(new Date())) return _error("Fecha del sistema inválida.");
+
+    const tercero = DAO.getTerceroById(idTerceroLimpio);
+    if (!tercero) return _error(`Tercero ${idTerceroLimpio} no existe.`);
+
+    const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
+    const tipoLimpio = tipoCartera === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
+
+    LOG_ENGINE.logEvent("ABONO_VALIDADO", "CARTERA", idTerceroLimpio,
+      {}, { valor, referencia: refLimpia, tipo: tipoLimpio }, "SUCCESS");
+
+    // FASE 2: ESCRITURA
+    const resultado = DOMAIN.registrarAbonoAtomic(idTerceroLimpio, valor, refLimpia, tipoLimpio);
+    if (!resultado || !resultado.success) {
+      return resultado || _error("Error al registrar abono en dominio.");
+    }
+
+    // FASE 3: CONFIRMACIÓN
+    LOG_ENGINE.logEvent("ABONO_CONFIRMADO", "CARTERA", idTerceroLimpio,
+      { valor, referencia: refLimpia },
+      { aplicado: resultado.aplicado, restante: resultado.restante, movimientos: resultado.movimientos },
+      "SUCCESS");
+
+    return { success: true, aplicado: resultado.aplicado, restante: resultado.restante };
+
+  } catch (e) {
+    LOG_ENGINE.logEvent("ERROR_ABONO_SERVICIO", "CARTERA", idTercero,
+      {}, { error: e.message || e.toString() }, "FAILED");
+    return _error(e.message || "Error registrando abono.");
+  }
 }

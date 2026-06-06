@@ -16,7 +16,6 @@ const DAO = {
   },
 
   getCartera(filtroTipo = null, filtroEstado = null) {
-    AuthService.checkAuthorization(ROLES.VIEWER);
     if (!filtroTipo && !filtroEstado) {
       return this.getCarteraBase();
     }
@@ -48,7 +47,6 @@ const DAO = {
   },
 
   getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
-    AuthService.checkAuthorization(ROLES.VIEWER);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
@@ -120,11 +118,14 @@ const DAO = {
       tipo: String(row[COL.tipo] || "").trim(),
       estado: String(row[COL.estado] || "").trim(),
       fecha_vencimiento: _safeDate(row[COL.fecha_vencimiento]),
+      vencida_timestamp: row[COL.vencida_timestamp] || null,
     };
   },
 
   saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
-      AuthService.checkAuthorization(ROLES.OPERATOR);
+      if (!CACHE.ensureIntegrity('terceros')) {
+        throw new Error("Integridad de caché de terceros comprometida. Se ejecutó recoverFromStale().");
+      }
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
       const rowData = [id, nombre, "", tipo, limite, activo];
 
@@ -151,8 +152,10 @@ const DAO = {
    * Agrupa TODOS los cambios en una sola llamada setValues() para minimizar llamadas a la API.
    */
   updateCarteraBatch(cambios) {
-    AuthService.checkAuthorization(ROLES.OPERATOR);
     if (!cambios || cambios.length === 0) return true;
+    if (!CACHE.ensureIntegrity('cartera')) {
+      throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
+    }
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
@@ -160,8 +163,9 @@ const DAO = {
     let minRow = Infinity;
     let maxRow = -Infinity;
 
+    const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
     const minColIdx = Math.min(COL.saldo, COL.estado);
-    const maxColIdx = Math.max(COL.saldo, COL.estado);
+    const maxColIdx = Math.max(COL.saldo, COL.estado, hasVencidaTs ? COL.vencida_timestamp : COL.estado);
     const numColsToProcess = maxColIdx - minColIdx + 1;
 
     const rowMap = new Map();
@@ -192,6 +196,10 @@ const DAO = {
           const localColIndexEstado = COL.estado - minColIdx;
           values[localRowIndex][localColIndexSaldo] = cambio.saldo;
           values[localRowIndex][localColIndexEstado] = cambio.estado;
+          if (cambio.vencida_timestamp !== undefined) {
+            const localColIndexTs = COL.vencida_timestamp - minColIdx;
+            values[localRowIndex][localColIndexTs] = cambio.vencida_timestamp;
+          }
         }
       }
 
@@ -206,7 +214,9 @@ const DAO = {
   },
 
   createMovimiento(mov) {
-    AuthService.checkAuthorization(ROLES.OPERATOR);
+    if (!CACHE.ensureIntegrity('cartera')) {
+      throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
+    }
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
     const lastRow = sheet.getLastRow() || 0;
 
@@ -220,16 +230,18 @@ const DAO = {
   },
 
   createCartera(c) {
-    AuthService.checkAuthorization(ROLES.OPERATOR);
+    if (!CACHE.ensureIntegrity('cartera')) {
+      throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
+    }
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const lastRow = sheet.getLastRow() || 0;
 
     if (lastRow === 0) {
-      sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento"]);
+      sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp"]);
     }
 
-    const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento];
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 9).setValues([rowData]);
+    const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null];
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 10).setValues([rowData]);
     return true;
   },
 };

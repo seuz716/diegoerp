@@ -20,6 +20,8 @@ const IA_SERVICE = {
   CACHE_TTL_MS: 3600000,
   MAX_INPUT_TOKENS: 90000,
   MAX_OUTPUT_TOKENS: 8192,
+  MAX_SAMPLE_SIZE: 500,
+  MIN_CATEGORY_SAMPLE: 30,
 
   _getApiKey() {
     return AuthService.getApiKey("GEMINI_API_KEY");
@@ -99,42 +101,41 @@ const IA_SERVICE = {
   },
 
   /**
-   * ESTRATEGIA DE MUESTREO INTELIGENTE (Evita sesgo por truncamiento)
+   * ESTRATEGIA DE MUESTREO INTELIGENTE v2
    * 
-   * Problema: .slice(0, 500) pierde contexto crítico (mora antigua, outliers, patrones)
-   * Solución: Stratified sampling + importance weighting + temporal coverage
+   * Problema: Cortes fijos (.slice) ignoran mora antigua, outliers y patrones
+   * Solución: Stratified sampling por antigüedad real + Weighted Random Sampling
    * 
-   * Garantiza representatividad de:
-   * - Estados (ABIERTA, VENCIDA, CANCELADA) proporcionalmente
-   * - Montos (incluye outliers altos)
-   * - Temporal (primeros, últimos, uniformemente distribuidos)
-   * - Riesgo (mora reciente y vencimientos próximos prioritarios)
+   * Garantiza:
+   * - Segmentación por días reales de mora (no por estado textual)
+   * - Asignación proporcional por estrato (con piso 1 para representación)
+   * - Weighted random sampling: outliers y mora alta entran con mayor probabilidad
+   * - Sin sesgo determinista: mantiene varianza de casos normales
    */
   _calculateImportanceScore(item, hoy) {
     let score = 0;
 
     const saldo = Math.abs(item.saldo || item.valor || 0);
-    score += Math.log(Math.max(saldo, 1)) * 2; // Logarítmico: favorece montos grandes
+    score += Math.log(Math.max(saldo, 1)) * 2;
 
-    // Mora reciente = máxima urgencia
+    // Mora = urgencia (null/0/negativo se ignoran)
     if (item.dias_vencido && item.dias_vencido > 0) {
-      score += Math.min(item.dias_vencido * 5, 100); // Máx 100 puntos por edad
+      score += Math.min(item.dias_vencido * 5, 100);
     }
 
-    // Vencimiento próximo en <15 días = riesgo alto
+    // Vencimiento próximo < 15 días = riesgo
     if (item.fecha_vencimiento) {
       const fVenc = new Date(item.fecha_vencimiento);
       if (fVenc <= hoy) {
-        score += 50; // Vencido reciente
+        score += 50;
       } else {
         const diasAVencer = Math.ceil((fVenc.getTime() - hoy.getTime()) / 86400000);
         if (diasAVencer > 0 && diasAVencer <= 15) {
-          score += Math.max(40 - diasAVencer * 2, 10); // 10-40 puntos
+          score += Math.max(40 - diasAVencer * 2, 10);
         }
       }
     }
 
-    // Estado VENCIDA = riesgo elevado
     if (item.estado === "VENCIDA") score += 30;
     if (item.estado === "ABIERTA") score += 10;
     if (item.estado === "CANCELADA") score += 1;
@@ -142,51 +143,113 @@ const IA_SERVICE = {
     return score;
   },
 
-  _stratifiedSample(items, hoy, maxItems = 500) {
-    if (items.length <= maxItems) return items;
-
-    // Dividir por estado para muestreo estratificado
-    const byState = {
-      "VENCIDA": [],
-      "ABIERTA": [],
-      "CANCELADA": [],
-      "OTRO": []
+  _segmentByAge(items) {
+    const buckets = {
+      SIN_FECHA: [],
+      SIN_VENCER: [],
+      MORA_1_30: [],
+      MORA_31_90: [],
+      MORA_91_180: [],
+      MORA_180_PLUS: [],
     };
 
     items.forEach(item => {
-      const state = item.estado || "OTRO";
-      const key = byState[state] ? state : "OTRO";
-      byState[key].push(item);
+      const d = item.dias_vencido;
+      if (d === null || d === undefined) {
+        buckets.SIN_FECHA.push(item);
+      } else if (d <= 0) {
+        buckets.SIN_VENCER.push(item);
+      } else if (d <= 30) {
+        buckets.MORA_1_30.push(item);
+      } else if (d <= 90) {
+        buckets.MORA_31_90.push(item);
+      } else if (d <= 180) {
+        buckets.MORA_91_180.push(item);
+      } else {
+        buckets.MORA_180_PLUS.push(item);
+      }
     });
 
-    // Calcular aloc ación proporcional (mínimo 1 por estrato si existe)
-    const strata = Object.entries(byState).filter(([_, items]) => items.length > 0);
-    const allocPerStrata = Math.max(1, Math.floor(maxItems / strata.length));
+    return Object.fromEntries(
+      Object.entries(buckets).filter(([_, v]) => v.length > 0)
+    );
+  },
 
-    const sampled = [];
+  _weightedRandomSample(items, hoy, n) {
+    if (n >= items.length) return items;
+    if (n <= 0) return [];
 
-    for (const [state, stateItems] of strata) {
-      if (stateItems.length === 0) continue;
+    const weights = items.map(item => this._calculateImportanceScore(item, hoy) + 1);
+    const pool = items.map((item, i) => ({ item, weight: weights[i] }));
+    const result = [];
 
-      // Ordenar por importance score (descendente)
-      stateItems.sort((a, b) => this._calculateImportanceScore(b, hoy) - this._calculateImportanceScore(a, hoy));
+    for (let k = 0; k < n && pool.length > 0; k++) {
+      const totalWeight = pool.reduce((s, x) => s + x.weight, 0);
+      let r = Math.random() * totalWeight;
+      let i = 0;
+      while (r > pool[i].weight) {
+        r -= pool[i].weight;
+        i++;
+      }
+      result.push(pool[i].item);
+      pool.splice(i, 1);
+    }
 
-      // Tomar top-N por importance + distribuir temporalmente el resto
-      const topImportance = Math.ceil(allocPerStrata * 0.4); // 40% por importance
-      const temporal = Math.floor(allocPerStrata * 0.6);     // 60% temporal distribution
+    return result;
+  },
 
-      sampled.push(...stateItems.slice(0, topImportance));
+  _stratifiedSample(items, hoy, maxItems = 500) {
+    if (items.length <= maxItems) return items;
 
-      if (stateItems.length > topImportance && temporal > 0) {
-        const remainingItems = stateItems.slice(topImportance);
-        const step = Math.max(1, Math.floor(remainingItems.length / temporal));
-        for (let i = 0; i < remainingItems.length && sampled.length < maxItems; i += step) {
-          sampled.push(remainingItems[i]);
+    const buckets = this._segmentByAge(items);
+    const entries = Object.entries(buckets);
+    const totalItems = items.length;
+
+    // Fase 1: piso de 1 por estrato para garantizar representación
+    const allocation = {};
+    let allocated = 0;
+    const activeBuckets = [];
+
+    for (const [key, group] of entries) {
+      const floor = Math.min(1, group.length);
+      allocation[key] = floor;
+      allocated += floor;
+      activeBuckets.push({ key, group, available: group.length - floor });
+    }
+
+    // Fase 2: distribuir remanente proporcionalmente
+    const remaining = Math.max(0, maxItems - allocated);
+    const totalAvailable = activeBuckets.reduce((s, b) => s + b.available, 0);
+
+    if (remaining > 0 && totalAvailable > 0) {
+      let distributed = 0;
+      for (let i = 0; i < activeBuckets.length; i++) {
+        const b = activeBuckets[i];
+        if (b.available <= 0) continue;
+
+        if (i === activeBuckets.length - 1) {
+          const extra = Math.min(b.available, remaining - distributed);
+          allocation[b.key] += extra;
+          distributed += extra;
+        } else {
+          const extra = Math.min(b.available, Math.round(remaining * b.available / totalAvailable));
+          allocation[b.key] += extra;
+          distributed += extra;
         }
       }
     }
 
-    return sampled.slice(0, maxItems);
+    // Fase 3: muestreo ponderado por bucket
+    const result = [];
+    for (const [key, group] of entries) {
+      const n = allocation[key];
+      if (n > 0) {
+        const sampled = this._weightedRandomSample(group, hoy, n);
+        result.push(...sampled);
+      }
+    }
+
+    return result.slice(0, maxItems);
   },
 
   _compressForTokens(data, maxRecords = 500) {
@@ -215,28 +278,58 @@ ${JSON.stringify(data.terceros.slice(0, 150))}
 
 `;
 
-    // Muestreo inteligente: garantiza representatividad sin truncamiento ingenuo
-    const carteraMuestreada = this._stratifiedSample(data.cartera, hoy, 400);
-    const movimientosMuestreados = this._stratifiedSample(data.movimientos, hoy, 200);
+    // Split dinámico: piso asegurado por categoría + prorrateo del remanente
+    const MIN = this.MIN_CATEGORY_SAMPLE;
+    const MAX = this.MAX_SAMPLE_SIZE;
+    const totalBoth = data.cartera.length + data.movimientos.length;
+
+    const floorCartera = Math.min(data.cartera.length, MIN);
+    const floorMovimientos = Math.min(data.movimientos.length, MIN);
+    const remaining = Math.max(0, MAX - floorCartera - floorMovimientos);
+    let extraCartera = 0;
+    let extraMovimientos = 0;
+
+    if (remaining > 0 && totalBoth > 0) {
+      const ratio = data.cartera.length / totalBoth;
+      extraCartera = Math.round(remaining * ratio);
+      extraMovimientos = remaining - extraCartera;
+    }
+
+    let carteraLimit = Math.min(data.cartera.length, floorCartera + extraCartera);
+    let movimientosLimit = Math.min(data.movimientos.length, floorMovimientos + extraMovimientos);
+
+    // Redistribuir si una categoría no pudo absorber su asignación
+    const used = carteraLimit + movimientosLimit;
+    if (used < MAX) {
+      const unused = MAX - used;
+      if (data.cartera.length > carteraLimit) {
+        carteraLimit = Math.min(data.cartera.length, carteraLimit + unused);
+      } else if (data.movimientos.length > movimientosLimit) {
+        movimientosLimit = Math.min(data.movimientos.length, movimientosLimit + unused);
+      }
+    }
+
+    const carteraMuestreada = this._stratifiedSample(data.cartera, hoy, carteraLimit);
+    const movimientosMuestreados = this._stratifiedSample(data.movimientos, hoy, movimientosLimit);
 
     const carteraComprimida = this._compressForTokens(carteraMuestreada);
     const movimientosComprimidos = this._compressForTokens(movimientosMuestreados);
 
     const prompt = `${summary}
-CARTERA (${carteraMuestreada.length}/${data.cartera.length} muestreados por importancia + cobertura temporal):
+CARTERA (${carteraMuestreada.length}/${data.cartera.length} muestreados — segmentados por antigüedad + weighted random sampling):
 ${JSON.stringify(carteraComprimida)}
 
 MOVIMIENTOS (${movimientosMuestreados.length}/${data.movimientos.length} muestreados):
 ${JSON.stringify(movimientosComprimidos)}`;
 
-    if (data.cartera.length > 400 || data.movimientos.length > 200) {
+    if (data.cartera.length > carteraLimit || data.movimientos.length > movimientosLimit) {
       return `${prompt}
 
-⚠️ NOTA METODOLÓGICA: Muestreo estratificado aplicado.
-- Cartera: Segmentada por estado (VENCIDA/ABIERTA/CANCELADA), priorizadas por mora + montos altos + cobertura temporal uniforme
-- Movimientos: Misma estrategia de representatividad
-- Garantiza: Sin sesgo por truncamiento. Patrones de mora, outliers y temporalidad preservados.
-- Tu análisis cubre comportamiento real del 100% de datos, no un corte arbitrario.`;
+⚠️ NOTA METODOLÓGICA: Muestreo estratificado con weighted random sampling.
+- Segmentación por antigüedad real (días de mora: SIN_VENCER / MORA_1-30 / 31-90 / 91-180 / 180+)
+- Asignación proporcional + piso de representación por estrato
+- Weighted random sampling: mora alta y outliers priorizados probabilísticamente
+- Sin sesgo por truncamiento. Tu análisis cubre el comportamiento real del portafolio completo.`;
     }
     return prompt;
   },
@@ -268,8 +361,9 @@ ${JSON.stringify(movimientosComprimidos)}`;
         estado: c.estado,
         fecha_vencimiento: c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0
           ? Utilities.formatDate(c.fecha_vencimiento, _getTimeZone(), "yyyy-MM-dd") : null,
-        dias_vencido: c.estado === "VENCIDA" && c.fecha_vencimiento
-          ? Math.floor((hoy.getTime() - c.fecha_vencimiento.getTime()) / 86400000) : 0,
+        dias_vencido: c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0
+          ? Math.floor((hoy.getTime() - c.fecha_vencimiento.getTime()) / 86400000) : null,
+        vencida_timestamp: c.vencida_timestamp || null,
       }));
 
     const sheetMov = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
@@ -640,17 +734,19 @@ class IAError extends Error {
  * Run ONCE from the Apps Script editor.
  */
 function setupGeminiKey(apiKey) {
+  AuthService.checkPermission("configurar_ia");
   if (!apiKey || apiKey.trim() === "") {
     throw new Error("Debes proporcionar una API Key válida. Obtén una en: https://aistudio.google.com/apikey");
   }
   AuthService.setApiKey("GEMINI_API_KEY", apiKey.trim());
-  return { success: true, message: "API Key cifrada y configurada. Puedes cerrar esta ventana." };
+  return { success: true, message: "API Key configurada en PropertiesService. Puedes cerrar esta ventana." };
 }
 
 /**
  * Removes the Gemini API Key from ScriptProperties.
  */
 function removeGeminiKey() {
+  AuthService.checkPermission("configurar_ia");
   AuthService.removeApiKey("GEMINI_API_KEY");
   return { success: true, message: "API Key eliminada." };
 }
@@ -659,13 +755,14 @@ function removeGeminiKey() {
  * Verifies if the Gemini API Key is configured.
  */
 function verificarConfiguracionIA() {
+  AuthService.checkPermission("ver_configuracion");
   const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
   return {
     configurada,
     key_preview: null,
     modelo: IA_SERVICE.MODEL,
     cache_ttl_ms: IA_SERVICE.CACHE_TTL_MS,
-    advertencia: configurada ? "La API Key está cifrada. No se muestra preview por seguridad." : null,
+    advertencia: configurada ? "API Key configurada. No se muestra preview por seguridad." : null,
   };
 }
 
@@ -675,7 +772,7 @@ function verificarConfiguracionIA() {
  */
 function analizarConGeminiCompleto() {
   try {
-    AuthService.checkAuthorization("VIEWER");
+    AuthService.checkPermission("ver_analisis_ia");
     const resultado = IA_SERVICE.ejecutarAnalisis();
     return resultado;
   } catch (e) {

@@ -7,6 +7,7 @@
  * API Pública: Registrar abono
  */
 function registrarAbono(idTercero, valorAbono, referencia, tipo) {
+  AuthService.checkPermission("registrar_abono");
   return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
 }
 
@@ -15,7 +16,7 @@ function registrarAbono(idTercero, valorAbono, referencia, tipo) {
  */
 function getTerceros(filtroTipo = null) {
   try {
-    AuthService.checkAuthorization("VIEWER");
+    AuthService.checkPermission("ver_terceros");
     const resultado = CACHE.getTerceros();
     if (filtroTipo) {
       return resultado.filter(t => t.tipo === filtroTipo.toUpperCase());
@@ -32,6 +33,7 @@ function getTerceros(filtroTipo = null) {
  */
 function getCartera(filtroEstado = null, filtroTipo = null) {
   try {
+    AuthService.checkPermission("ver_cartera");
     return DOMAIN.getCartera(filtroTipo, filtroEstado);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
@@ -43,6 +45,7 @@ function getCartera(filtroEstado = null, filtroTipo = null) {
  * API Pública: Guardar tercero
  */
 function saveTercero(tercero) {
+  AuthService.checkPermission("guardar_tercero");
   return DOMAIN.saveTercero(tercero);
 }
 
@@ -51,7 +54,7 @@ function saveTercero(tercero) {
  */
 function getDashboardCartera() {
   try {
-    AuthService.checkAuthorization("VIEWER");
+    AuthService.checkPermission("ver_dashboard");
     const cartera = DOMAIN.getCartera();
     const hoy = _today();
 
@@ -110,7 +113,7 @@ function getDashboardCartera() {
  * API Pública: Obtener historial de auditoría
  */
 function getAuditHistory(tabla, idRegistro, limit = 50) {
-  AuthService.checkAuthorization("VIEWER");
+  AuthService.checkPermission("ver_auditoria");
   return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
 }
 
@@ -118,7 +121,7 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
  * API Pública: Obtener estado de la caché (staleness info)
  */
 function getCacheHealth() {
-  AuthService.checkAuthorization("ADMIN");
+  AuthService.checkPermission("ver_cache");
   return {
     staleness: CACHE.getStalenessInfo(),
     consistency: CACHE.verifyConsistency(),
@@ -130,6 +133,6 @@ function getCacheHealth() {
  * API Pública: Forzar análisis fresco (sin caché de IA)
  */
 function analizarConGeminiFresco() {
-  AuthService.checkAuthorization("OPERATOR");
+  AuthService.checkPermission("analizar_ia");
   return IA_SERVICE.ejecutarAnalisisFresco();
 }

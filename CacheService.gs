@@ -129,6 +129,48 @@ let CACHE = {
     return result;
   },
 
+  /**
+   * Verifica integridad de la caché contra la hoja de cálculo usando SHA-256.
+   * Lee la hoja, reconstruye la estructura de datos, computa el checksum
+   * y lo compara con el registrado al cargar la caché. Si no coinciden,
+   * ejecuta recoverFromStale() para recargar desde la fuente.
+   * @param {'terceros'|'cartera'} kind Tipo de datos a verificar.
+   * @returns {boolean} true si los datos están íntegros, false si se recuperó.
+   */
+  ensureIntegrity(kind) {
+    const storedChecksum = kind === 'terceros' ? this.lastChecksumTerceros : this.lastChecksumCartera;
+    if (!storedChecksum) return true;
+
+    const sheet = getSheet(
+      kind === 'terceros' ? CARTERA_CONFIG.SHEETS.TERCEROS : CARTERA_CONFIG.SHEETS.CARTERA
+    );
+    const columns = kind === 'terceros' ? CARTERA_CONFIG.COLUMNS.TERCEROS : CARTERA_CONFIG.COLUMNS.CARTERA;
+    const lastRow = sheet.getLastRow();
+    const numCols = Math.max(...Object.values(columns)) + 1;
+    const data = lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+    const items = [];
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const id = String(row[columns.id] || "").trim();
+      if (!id) continue;
+      const item = { id };
+      if (kind === 'cartera') {
+        item.saldo = _parseMoneda(row[columns.saldo], 0);
+        item.estado = String(row[columns.estado] || "").trim();
+      }
+      items.push(item);
+    }
+
+    const currentChecksum = this._computeChecksum(items);
+    if (currentChecksum !== storedChecksum) {
+      Logger.log("CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
+      this.recoverFromStale();
+      return false;
+    }
+    return true;
+  },
+
   getStalenessInfo() {
     return {
       terceros: {
@@ -239,6 +281,7 @@ let CACHE = {
           tipo: String(dataCartera[i][COL_C.tipo] || "CxC").trim(),
           estado: String(dataCartera[i][COL_C.estado] || "ABIERTA").trim(),
           fecha_vencimiento: _safeDate(dataCartera[i][COL_C.fecha_vencimiento]),
+          vencida_timestamp: dataCartera[i][COL_C.vencida_timestamp] || null,
         });
       }
 

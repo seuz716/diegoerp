@@ -1,79 +1,47 @@
-const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
+const PERMISSION_ROLES = {
+  ver_terceros: ROLES.VIEWER,
+  ver_cartera: ROLES.VIEWER,
+  ver_dashboard: ROLES.VIEWER,
+  ver_auditoria: ROLES.VIEWER,
+  ver_analisis_ia: ROLES.VIEWER,
+  ver_configuracion: ROLES.VIEWER,
+  registrar_abono: ROLES.OPERATOR,
+  guardar_tercero: ROLES.OPERATOR,
+  analizar_ia: ROLES.OPERATOR,
+  revisar_inventario: ROLES.OPERATOR,
+  enviar_alertas: ROLES.OPERATOR,
+  registrar_venta: ROLES.OPERATOR,
+  ver_cache: ROLES.ADMIN,
+  configurar_ia: ROLES.ADMIN,
+  ejecutar_mantenimiento: ROLES.ADMIN,
+  configurar_sistema: ROLES.ADMIN,
+  administrar: ROLES.ADMIN,
+};
 
 const AuthService = {
-  _getMasterKey() {
-    const props = PropertiesService.getScriptProperties();
-    let key = props.getProperty("_AUTH_MASTER_KEY");
-    if (!key) {
-      key = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
-      props.setProperty("_AUTH_MASTER_KEY", key);
-    }
-    return key;
-  },
-
-  _encryptValue(plaintext) {
-    if (!plaintext) return null;
-    const masterKey = this._getMasterKey();
-    const iv = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
-    const kdf = Utilities.computeHmacSha256Signature(iv, masterKey);
-    const plainBytes = Utilities.newBlob(plaintext).getBytes();
-    const cipherBytes = plainBytes.map((b, i) => {
-      const x = (b ^ (kdf[i % kdf.length] & 0xFF)) & 0xFF;
-      return x > 127 ? x - 256 : x;
-    });
-    return iv + ":" + Utilities.base64Encode(Utilities.newBlob(cipherBytes));
-  },
-
-  _decryptValue(ciphertext) {
-    if (!ciphertext || typeof ciphertext !== "string") return null;
-    const sep = ciphertext.indexOf(":");
-    if (sep < 1) return null;
-    const iv = ciphertext.substring(0, sep);
-    const b64 = ciphertext.substring(sep + 1);
-    try {
-      const cipherBytes = Utilities.base64Decode(b64);
-      const masterKey = this._getMasterKey();
-      const kdf = Utilities.computeHmacSha256Signature(iv, masterKey);
-      const plainBytes = cipherBytes.map((b, i) => {
-        const x = (b ^ (kdf[i % kdf.length] & 0xFF)) & 0xFF;
-        return x > 127 ? x - 256 : x;
-      });
-      return Utilities.newBlob(plainBytes).getDataAsString();
-    } catch (e) {
-      console.error("ERROR_DECRYPT: Fallo al descifrar valor: " + e.message);
-      return null;
-    }
-  },
-
   setApiKey(keyName, value) {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
-    const encrypted = this._encryptValue(value.trim());
-    PropertiesService.getScriptProperties().setProperty("_ENC_" + keyName, encrypted);
-    console.log("API Key '" + keyName + "' almacenada de forma cifrada.");
+    PropertiesService.getScriptProperties().setProperty("API_KEY_" + keyName, value.trim());
+    console.log("API Key '" + keyName + "' almacenada en PropertiesService.");
     return true;
   },
 
   getApiKey(keyName) {
-    const encrypted = PropertiesService.getScriptProperties().getProperty("_ENC_" + keyName);
-    if (!encrypted) {
-      console.error("ERROR_SEGURIDAD: API Key cifrada '" + keyName + "' no encontrada en ScriptProperties.");
+    const value = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
+    if (!value) {
+      console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada en ScriptProperties.");
       throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada.");
     }
-    const decrypted = this._decryptValue(encrypted);
-    if (!decrypted) {
-      PropertiesService.getScriptProperties().deleteProperty("_ENC_" + keyName);
-      throw new Error("Error de descifrado: API Key '" + keyName + "' corrupta. Reconfigura la key.");
-    }
-    return decrypted;
+    return value;
   },
 
   removeApiKey(keyName) {
-    PropertiesService.getScriptProperties().deleteProperty("_ENC_" + keyName);
-    console.log("API Key cifrada '" + keyName + "' eliminada.");
+    PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
+    console.log("API Key '" + keyName + "' eliminada.");
   },
 
   hasApiKey(keyName) {
-    return !!PropertiesService.getScriptProperties().getProperty("_ENC_" + keyName);
+    return !!PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
   },
 
   _getCurrentUser() {
@@ -91,48 +59,35 @@ const AuthService = {
   getUserRole(email) {
     if (!email) return null;
     const props = PropertiesService.getScriptProperties();
-    const normalized = email.toLowerCase().trim();
-    for (const role of ["ADMIN", "OPERATOR", "VIEWER"]) {
-      const prop = props.getProperty("AUTHORIZED_USERS_" + role);
-      if (!prop) continue;
-      const emails = prop.split(",").map(e => e.trim().toLowerCase());
-      if (emails.includes(normalized)) return role;
+    const raw = props.getProperty("AUTHORIZED_USERS");
+    if (!raw) return null;
+    try {
+      const roleMap = JSON.parse(raw);
+      const normalized = email.toLowerCase().trim();
+      return roleMap[normalized] || null;
+    } catch (e) {
+      console.error("ERROR: El JSON de AUTHORIZED_USERS está corrupto: " + e.message);
+      return null;
     }
-    return null;
   },
 
-  isAuthorized(requiredRole) {
+  checkPermission(accion) {
     const userEmail = this._getCurrentUser();
     if (!userEmail) {
-      console.error("ERROR_AUTORIZACION: No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");
-      return false;
+      throw new Error("No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");
+    }
+    const requiredRole = PERMISSION_ROLES[accion];
+    if (!requiredRole) {
+      throw new Error("Acción desconocida: '" + accion + "'. Revisa la configuración de PERMISSION_ROLES.");
+    }
+    const userRole = this.getUserRole(userEmail);
+    if (!userRole) {
+      throw new Error("Acceso denegado. El usuario '" + userEmail + "' no tiene ningún rol asignado para la acción '" + accion + "'.");
     }
     const requiredLevel = ROLE_HIERARCHY[requiredRole];
-    if (!requiredLevel) {
-      console.warn("ADVERTENCIA_SEGURIDAD: Rol desconocido '" + requiredRole + "'");
-      return false;
-    }
-    const props = PropertiesService.getScriptProperties();
-    const normalized = userEmail.toLowerCase().trim();
-    for (const [role, level] of Object.entries(ROLE_HIERARCHY)) {
-      if (level < requiredLevel) continue;
-      const prop = props.getProperty("AUTHORIZED_USERS_" + role);
-      if (!prop) continue;
-      const emails = prop.split(",").map(e => e.trim().toLowerCase());
-      if (emails.includes(normalized)) return true;
-    }
-    console.warn("ACCESO_DENEGADO: '" + userEmail + "' intentó operación rol='" + requiredRole + "' sin autorización.");
-    return false;
-  },
-
-  checkAuthorization(requiredRole) {
-    if (!this.isAuthorized(requiredRole)) {
-      const userEmail = this._getCurrentUser() || "unknown";
-      throw new Error("Acceso denegado. Se requiere rol " + requiredRole + " para esta operación. Usuario: " + userEmail);
+    const userLevel = ROLE_HIERARCHY[userRole];
+    if (userLevel < requiredLevel) {
+      throw new Error("Acceso denegado. Se requiere rol '" + requiredRole + "' para la acción '" + accion + "'. Tu rol: '" + userRole + "'.");
     }
   },
-
-  requireAdmin() { this.checkAuthorization("ADMIN"); },
-  requireOperator() { this.checkAuthorization("OPERATOR"); },
-  requireViewer() { this.checkAuthorization("VIEWER"); },
 };

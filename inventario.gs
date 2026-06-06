@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────
 
 function revisarInventario() {
+  AuthService.checkPermission("revisar_inventario");
   try {
     const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
     const data = sheet.getDataRange().getValues();
@@ -120,6 +121,7 @@ function onEdit(e) {
  * Ejecutar manualmente UNA vez desde el editor
  */
 function crearTriggerInventario() {
+  AuthService.checkPermission("configurar_sistema");
   // Eliminar triggers existentes para evitar duplicados
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(t => {
@@ -143,6 +145,7 @@ function crearTriggerInventario() {
  * Elimina todos los triggers de revisión de inventario
  */
 function eliminarTriggerInventario() {
+  AuthService.checkPermission("configurar_sistema");
   const triggers = ScriptApp.getProjectTriggers();
   let count = 0;
   triggers.forEach(t => {
@@ -164,6 +167,7 @@ function eliminarTriggerInventario() {
  * @param {Object} resultado - Resultado de revisarInventario()
  */
 function enviarAlertasInventario(resultado) {
+  AuthService.checkPermission("enviar_alertas");
   try {
     if (!resultado || !resultado.success || !resultado.alertas?.length) return false;
     
