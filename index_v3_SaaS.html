@@ -772,18 +772,6 @@ function showError(msg) {
   setTimeout(function () { banner.classList.remove('show'); }, 6000);
 }
 
-function mostrarLoader(el) {
-  el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">Cargando...</div>';
-}
-
-function mostrarVacio(el, msg) {
-  el.textContent = msg || 'Sin datos';
-}
-
-function mostrarError(el, msg) {
-  el.innerHTML = '<div class="error-banner show">' + escapeHtml(msg || 'Error') + '</div>';
-}
-
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
   view.classList.add('is-loading');

@@ -56,7 +56,7 @@ function getDashboardCartera() {
   try {
     AuthService.checkPermission("ver_dashboard");
     const cartera = DOMAIN.getCartera();
-    const hoy = _today();
+    // const hoy = _today(); // disponible para filtrar por fecha si se necesita
 
     const cxc = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
     const cxp = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
