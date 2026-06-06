@@ -256,32 +256,42 @@ const DAO = {
     if (!CACHE.ensureIntegrity('cartera')) {
       throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
     }
-    const sheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
-    const lastRow = sheet.getLastRow() || 0;
+    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    try {
+      const sheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
+      const lastRow = sheet.getLastRow() || 0;
 
-    if (lastRow === 0) {
-      sheet.appendRow(["ID", "Fecha", "ID_Cartera", "ID_Tercero", "Valor", "Tipo_Mov", "Referencia"]);
+      if (lastRow === 0) {
+        sheet.appendRow(["ID", "Fecha", "ID_Cartera", "ID_Tercero", "Valor", "Tipo_Mov", "Referencia"]);
+      }
+
+      const rowData = [mov.id, mov.fecha, mov.id_cartera, mov.id_tercero, mov.valor, mov.tipo_mov, mov.referencia];
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 7).setValues([rowData]);
+      return true;
+    } finally {
+      if (lock) lock.releaseLock();
     }
-
-    const rowData = [mov.id, mov.fecha, mov.id_cartera, mov.id_tercero, mov.valor, mov.tipo_mov, mov.referencia];
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 7).setValues([rowData]);
-    return true;
   },
 
   createCartera(c) {
     if (!CACHE.ensureIntegrity('cartera')) {
       throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
     }
-    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    const lastRow = sheet.getLastRow() || 0;
+    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    try {
+      const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+      const lastRow = sheet.getLastRow() || 0;
 
-    if (lastRow === 0) {
-      sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp"]);
+      if (lastRow === 0) {
+        sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp"]);
+      }
+
+      const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null];
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 10).setValues([rowData]);
+      return true;
+    } finally {
+      if (lock) lock.releaseLock();
     }
-
-    const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null];
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 10).setValues([rowData]);
-    return true;
   },
 };
 

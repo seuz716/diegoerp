@@ -59,32 +59,44 @@ function procesarVentaV2(carrito, opciones) {
     }
   }
 
-  const errorStock = _validarStockCarrito(carritoConsolidado);
-  if (errorStock) return _error(errorStock);
-
-  const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
-
-  if (esCredito && idTercero) {
-    CACHE.refresh();
-    const tercero = CACHE.getTerceroRAW(idTercero);
-    if (!tercero) {
-      return _error(`Tercero ${idTercero} no encontrado.`);
-    }
-    if (tercero.limite_credito > 0) {
-      const saldoActual = CACHE.getSaldoTercero(idTercero);
-      if ((saldoActual + totalVenta) > tercero.limite_credito) {
-        return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
-      }
-    }
-  }
+  // Adquirir bloqueo global de venta para evitar oversells concurrentes y proteger checks de stock
+  const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+  let inventarioDescontado = false;
 
   try {
+    const errorStock = _validarStockCarrito(carritoConsolidado);
+    if (errorStock) {
+      if (lock) lock.releaseLock();
+      return _error(errorStock);
+    }
+
+    const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+
+    if (esCredito && idTercero) {
+      CACHE.refresh();
+      const tercero = CACHE.getTerceroRAW(idTercero);
+      if (!tercero) {
+        if (lock) lock.releaseLock();
+        return _error(`Tercero ${idTercero} no encontrado.`);
+      }
+      if (tercero.limite_credito > 0) {
+        const saldoActual = CACHE.getSaldoTercero(idTercero);
+        if ((saldoActual + totalVenta) > tercero.limite_credito) {
+          if (lock) lock.releaseLock();
+          return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+        }
+      }
+    }
+
+    // 1. Ejecutar descuento de inventario
+    _descontarInventario(carritoConsolidado);
+    inventarioDescontado = true;
+
+    // 2. Intentar crear registro en Cartera
     if (esCredito && idTercero) {
       const diasCredito = opciones.diasCredito || 30;
       DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
     }
-
-    _descontarInventario(carritoConsolidado);
 
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
       { items: carritoConsolidado.length },
@@ -95,9 +107,21 @@ function procesarVentaV2(carrito, opciones) {
     return { success: true, total: totalVenta, tipo: opciones.tipo, idTercero: idTercero || null };
 
   } catch (e) {
+    // Si descontamos inventario pero falló la creación de cartera, revertimos el stock
+    if (inventarioDescontado) {
+      try {
+        _revertirDescuentoInventario(carritoConsolidado);
+      } catch (revertErr) {
+        console.error("CRITICAL: Falló reversión de descuento de inventario: " + revertErr.toString());
+      }
+    }
     LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idTercero || "CONTADO",
       {}, { error: e.message || e.toString() }, "FAILED");
     return _error(e.message || "Error procesando venta.");
+  } finally {
+    if (lock) {
+      lock.releaseLock();
+    }
   }
 }
 
@@ -354,6 +378,28 @@ function _descontarInventario(carrito) {
       if (String(data[i][COL.id] || "").trim() === id) {
         const stockActual = Number(data[i][COL.stock]) || 0;
         const nuevoStock = Math.max(0, stockActual - cantidad);
+        sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
+        data[i][COL.stock] = nuevoStock;
+        break;
+      }
+    }
+  }
+}
+
+function _revertirDescuentoInventario(carrito) {
+  const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+  const data = sheet.getDataRange().getValues();
+  const COL = CONFIG.COLUMNS.PRODUCTOS;
+
+  for (const item of carrito) {
+    const id = String(item.id || "").trim();
+    const cantidad = Number(item.cantidad) || 0;
+    if (!id || cantidad <= 0) continue;
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][COL.id] || "").trim() === id) {
+        const stockActual = Number(data[i][COL.stock]) || 0;
+        const nuevoStock = stockActual + cantidad;
         sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
         data[i][COL.stock] = nuevoStock;
         break;
