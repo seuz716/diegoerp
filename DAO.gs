@@ -122,29 +122,68 @@ const DAO = {
     };
   },
 
+  /**
+   * Escenarios donde el self-healing puede fallar incluso con este parche:
+   * 1. Circuit breaker abierto — _refreshTerceros() falla y el caché no
+   *    se puede restaurar; todos los reintentos lanzarán el mismo error.
+   * 2. Hoja de cálculo (sheet) inaccesible o con datos corruptos —
+   *    ensureIntegrity detecta checksum mismatch tras refresh y activa
+   *    recoverFromStale(), que a su vez falla si la hoja origen no responde.
+   * 3. Race condition entre ejecuciones GAS distintas — el lock
+   *    _refreshingTerceros solo protege dentro de una misma ejecución;
+   *    dos usuarios en paralelo pueden disparar _refreshTerceros()
+   *    independientes, duplicando lecturas a la hoja (sin corrupción
+   *    de datos, pero con mayor latencia y consumo de cuota API).
+   * 4. La fila fue insertada por otra ejecución entre el refresh y el
+    *    sheet.getRange() — el rowIndex cacheado apunta a una fila que
+   *    ya no corresponde, causando una sobreescritura incorrecta.
+   */
   saveTerceroImpl(tercero, id, nombre, tipo, limite, activo) {
-      if (!CACHE.ensureIntegrity('terceros')) {
-        throw new Error("Integridad de caché de terceros comprometida. Se ejecutó recoverFromStale().");
-      }
-      const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-      const rowData = [id, nombre, "", tipo, limite, activo];
+    const MAX_RETRIES = 2;
+    for (let retries = 0; retries <= MAX_RETRIES; retries++) {
+      try {
+        if (!CACHE.ensureIntegrity('terceros')) {
+          throw new Error("Integridad de caché de terceros comprometida.");
+        }
+        if (!CACHE.terceros || Object.keys(CACHE.terceroIndex).length === 0) {
+          throw new Error("CACHE.terceroIndex no está inicializado.");
+        }
 
-      if (!CACHE.terceros || Object.keys(CACHE.terceroIndex).length === 0) {
-        throw new Error("CACHE.terceroIndex no está inicializado. Debe refrescar la caché antes de validar IDs únicos.");
-      }
+        const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+        const rowData = [id, nombre, "", tipo, limite, activo];
+        const cachedRow = CACHE.terceroIndex[id];
 
-      const cachedRow = CACHE.terceroIndex[id];
+        if (cachedRow) {
+          sheet.getRange(cachedRow + 1, 1, 1, 6).setValues([rowData]);
+          return { isUpdate: true };
+        }
 
-      if (cachedRow) {
-        sheet.getRange(cachedRow + 1, 1, 1, 6).setValues([rowData]);
-        return { isUpdate: true };
-      }
+        if (sheet.getLastRow() === 0) {
+          sheet.appendRow(["ID", "Nombre", "Teléfono", "Tipo", "Límite_Crédito", "Activo"]);
+        }
+        sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([rowData]);
+        return { isUpdate: false };
+      } catch (e) {
+        if (retries >= MAX_RETRIES) throw e;
 
-      if (sheet.getLastRow() === 0) {
-        sheet.appendRow(["ID", "Nombre", "Teléfono", "Tipo", "Límite_Crédito", "Activo"]);
+        const isIntegrityError = e.message.indexOf("Integridad") !== -1;
+        const isCacheInitError = e.message.indexOf("no está inicializado") !== -1;
+
+        if (isIntegrityError) {
+          CACHE.recoverFromStale();
+        } else if (isCacheInitError) {
+          if (!CACHE._refreshingTerceros) {
+            CACHE._refreshTerceros();
+          }
+          if (!CACHE.terceros || Object.keys(CACHE.terceroIndex).length === 0) {
+            CACHE.invalidateTerceros();
+            CACHE.refresh();
+          }
+        } else {
+          throw e;
+        }
       }
-      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([rowData]);
-      return { isUpdate: false };
+    }
   },
 
   /**

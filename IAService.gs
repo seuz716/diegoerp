@@ -22,8 +22,9 @@ const IA_SERVICE = {
   MAX_OUTPUT_TOKENS: 8192,
   MAX_SAMPLE_SIZE: 500,
   MIN_CATEGORY_SAMPLE: 30,
-
   _getApiKey() {
+    const fromProxy = PROXY_SECRET_SERVICE.resolveSecret("GEMINI_API_KEY");
+    if (fromProxy) return fromProxy;
     return AuthService.getApiKey("GEMINI_API_KEY");
   },
 

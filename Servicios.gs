@@ -286,52 +286,12 @@ function getTerceros(filtros) {
 }
 
 /**
- * Registra un abono a la cartera de un tercero.
- * @param {string} idTercero ID del tercero.
- * @param {number} valorAbono Valor del abono.
- * @param {string} referencia Referencia del abono.
- * @param {string} tipoCartera Tipo de cartera (CxC o CxP).
- * @returns {Object} Resultado de la operación.
+ * @deprecated Usar DOMAIN.registrarAbonoAtomic() directamente.
+ * Capa eliminada: toda validación vive en Domain.gs. Se mantiene
+ * como alias por compatibilidad; nuevos callers deben llamar a
+ * DOMAIN.registrarAbonoAtomic() o API.registrarAbono().
  */
 function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera) {
   AuthService.checkPermission("registrar_abono");
-
-  try {
-    // FASE 1: VALIDACIÓN
-    const idTerceroLimpio = _sanitizeId(idTercero);
-    if (!idTerceroLimpio) return _error("ID de tercero inválido.");
-
-    const valor = _parseMoneda(valorAbono, NaN);
-    if (isNaN(valor) || valor <= 0) return _error("El monto del abono debe ser mayor a 0.");
-
-    if (!_isValidDate(new Date())) return _error("Fecha del sistema inválida.");
-
-    const tercero = DAO.getTerceroById(idTerceroLimpio);
-    if (!tercero) return _error(`Tercero ${idTerceroLimpio} no existe.`);
-
-    const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
-    const tipoLimpio = tipoCartera === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
-
-    LOG_ENGINE.logEvent("ABONO_VALIDADO", "CARTERA", idTerceroLimpio,
-      {}, { valor, referencia: refLimpia, tipo: tipoLimpio }, "SUCCESS");
-
-    // FASE 2: ESCRITURA
-    const resultado = DOMAIN.registrarAbonoAtomic(idTerceroLimpio, valor, refLimpia, tipoLimpio);
-    if (!resultado || !resultado.success) {
-      return resultado || _error("Error al registrar abono en dominio.");
-    }
-
-    // FASE 3: CONFIRMACIÓN
-    LOG_ENGINE.logEvent("ABONO_CONFIRMADO", "CARTERA", idTerceroLimpio,
-      { valor, referencia: refLimpia },
-      { aplicado: resultado.aplicado, restante: resultado.restante, movimientos: resultado.movimientos },
-      "SUCCESS");
-
-    return { success: true, aplicado: resultado.aplicado, restante: resultado.restante };
-
-  } catch (e) {
-    LOG_ENGINE.logEvent("ERROR_ABONO_SERVICIO", "CARTERA", idTercero,
-      {}, { error: e.message || e.toString() }, "FAILED");
-    return _error(e.message || "Error registrando abono.");
-  }
+  return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipoCartera);
 }

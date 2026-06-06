@@ -25,6 +25,8 @@ let CACHE = {
   carteraCircuitOpen: false,
   lastChecksumTerceros: "",
   lastChecksumCartera: "",
+  _refreshingTerceros: false,
+  _refreshingCartera: false,
 
   /**
    * Invalida SOLO la caché de terceros
@@ -205,6 +207,11 @@ let CACHE = {
   },
 
   _refreshTerceros() {
+    if (this._refreshingTerceros) {
+      Logger.log("CACHE: _refreshTerceros ya en progreso, saltando llamada redundante");
+      return;
+    }
+    this._refreshingTerceros = true;
     const sheetTerceros = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
     try {
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
@@ -253,10 +260,17 @@ let CACHE = {
         this.tercerosCircuitOpen = true;
         Logger.log("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
       }
+    } finally {
+      this._refreshingTerceros = false;
     }
   },
 
   _refreshCartera() {
+    if (this._refreshingCartera) {
+      Logger.log("CACHE: _refreshCartera ya en progreso, saltando llamada redundante");
+      return;
+    }
+    this._refreshingCartera = true;
     const sheetCartera = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     try {
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
@@ -308,6 +322,8 @@ let CACHE = {
         this.carteraCircuitOpen = true;
         Logger.log("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
       }
+    } finally {
+      this._refreshingCartera = false;
     }
   },
 
