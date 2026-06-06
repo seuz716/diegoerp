@@ -46,6 +46,10 @@ App.api = {
   getAuditHistory: function (tabla, idRegistro, limit) {
     return callServer('getAuditHistory', tabla, idRegistro, limit);
   },
+
+  getUserInfo: function () {
+    return callServer('getUserInfo');
+  },
 };
 
 // ── Data transformations ──
@@ -76,6 +80,32 @@ App.mapearEstadoCartera = function (estado) {
   };
   return map[estado] || { label: estado || '—', cls: 'badge-done' };
 };
+
+// ── UI Helpers ──
+
+function mostrarLoader(contenedor) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'loader-brutal';
+  div.textContent = 'Cargando';
+  contenedor.appendChild(div);
+}
+
+function mostrarError(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'error-banner show';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
+
+function mostrarVacio(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'empty-state';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
 
 App.mapearTipoTercero = function (tipo) {
   var map = {

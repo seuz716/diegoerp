@@ -136,3 +136,13 @@ function analizarConGeminiFresco() {
   AuthService.checkPermission("analizar_ia");
   return IA_SERVICE.ejecutarAnalisisFresco();
 }
+
+/**
+ * API Pública: Obtener información del usuario actual (email y rol)
+ */
+function getUserInfo() {
+  AuthService.checkPermission("ver_dashboard");
+  const email = Session.getActiveUser().getEmail();
+  const role = AuthService.getUserRole(email);
+  return { email: email, role: role };
+}

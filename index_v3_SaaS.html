@@ -72,6 +72,22 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   font-size:9px;color:var(--muted-2);
   letter-spacing:0.06em;
 }
+.sidebar-user{
+  margin-bottom:10px;
+  padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+}
+.sidebar-user .user-email{
+  font-size:10px;color:var(--text);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sidebar-user .user-role{
+  font-size:8px;color:var(--accent);text-transform:uppercase;
+  letter-spacing:0.12em;margin-top:3px;
+}
+.sidebar-user .user-error{
+  font-size:9px;color:var(--red);
+}
 
 /* ── MAIN ── */
 #app{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -186,6 +202,77 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .ia-title{
   font-size:9px;text-transform:uppercase;letter-spacing:0.14em;color:var(--muted);margin-bottom:16px;
 }
+.ia-results{
+  border:1px solid var(--border);
+  background:var(--bg-1);
+  padding:20px;
+  margin-bottom:1px;
+  font-size:12px;
+  line-height:1.6;
+}
+.ia-results .ir-section{
+  margin-bottom:18px;
+}
+.ia-results .ir-section:last-child{
+  margin-bottom:0;
+}
+.ia-results .ir-label{
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:0.14em;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+.ia-results .ir-value{
+  color:var(--text);
+}
+.ia-results .ir-badge{
+  display:inline-block;
+  padding:2px 8px;
+  font-size:9px;
+  font-weight:500;
+  border:1px solid var(--accent-border);
+  color:var(--accent);
+  margin-bottom:8px;
+}
+.ia-results .ir-alert-item,
+.ia-results .ir-ano-item,
+.ia-results .ir-rec-item{
+  padding:10px 12px;
+  border-left:2px solid var(--red);
+  background:var(--bg-2);
+  margin-bottom:6px;
+  font-size:11px;
+}
+.ia-results .ir-rec-item{
+  border-left-color:var(--accent);
+}
+.ia-results .ir-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.ia-results .ir-grid-item{
+  background:var(--bg-2);
+  padding:12px;
+  font-size:11px;
+}
+.ia-results .ir-grid-item .ir-glabel{
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+.ia-results .ir-grid-item .ir-gvalue{
+  color:var(--text);
+  font-weight:500;
+}
+.ia-results .ir-sep{
+  height:1px;
+  background:var(--border);
+  margin:18px 0;
+}
 .btn{
   display:inline-flex;align-items:center;gap:8px;
   padding:9px 16px;
@@ -270,6 +357,29 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .error-banner{display:none;padding:12px 16px;margin-bottom:16px;border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:11px;letter-spacing:0.04em;}
 .error-banner.show{display:block;}
 
+/* ── LOADER BRUTAL ── */
+.loader-brutal{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  padding:48px 24px;
+  color:var(--muted);
+  font-size:10px;text-transform:uppercase;letter-spacing:0.14em;
+}
+.loader-brutal::before{
+  content:'';
+  width:14px;height:14px;
+  border:2px solid var(--border);
+  border-top-color:var(--accent);
+  border-right-color:var(--accent);
+  animation:lr-spin .7s linear infinite;
+}
+@keyframes lr-spin{to{transform:rotate(360deg)}}
+
+/* ── EMPTY STATE ── */
+.empty-state{
+  text-align:center;padding:32px 16px;
+  color:var(--muted);font-size:11px;
+}
+
 /* ── MODAL ── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:3000;align-items:center;justify-content:center;padding:1rem;}
 .modal-overlay.active{display:flex;}
@@ -309,6 +419,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   </nav>
 
   <div class="sidebar-footer">
+    <div class="sidebar-user" id="sidebar-user">
+      <div class="user-email">Cargando sesión...</div>
+    </div>
     Gemini 2.5 Flash · IA activa<br>
     © 2026 César A. Abadía
   </div>
@@ -393,11 +506,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <!-- IA Panel -->
     <div class="ia-panel" style="margin-top:1px">
       <div class="ia-title">Análisis de inteligencia artificial</div>
-      <button class="btn btn-accent">◈ Ejecutar análisis completo</button>
+      <button class="btn btn-accent" id="btn-analizar-completo">◈ Ejecutar análisis completo</button>
       <div style="margin-top:16px;font-size:11px;color:var(--muted);line-height:1.6;">
         El análisis detecta patrones de mora, proyecta flujos a 90 días e identifica clientes en riesgo de impago. Usa el modelo Gemini 2.5 Flash con datos en tiempo real.
       </div>
     </div>
+
+    <div id="ia-results" class="ia-results" style="display:none"></div>
   </section>
 
   <!-- CARTERA -->
@@ -455,32 +570,32 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
         <div class="form-row">
           <label class="form-label">Cliente</label>
-          <select class="form-field">
+          <select class="form-field" id="abono-cliente">
             <option value="">Seleccione un cliente...</option>
-            <option>Distribuciones López (Cliente)</option>
-            <option>Ferretería del Norte (Cliente)</option>
           </select>
         </div>
 
         <div class="form-row">
           <label class="form-label">Tipo de movimiento</label>
-          <select class="form-field">
-            <option>Cobro a Cliente (CxC)</option>
-            <option>Pago a Proveedor (CxP)</option>
+          <select class="form-field" id="abono-tipo">
+            <option value="CxC">Cobro a Cliente (CxC)</option>
+            <option value="CxP">Pago a Proveedor (CxP)</option>
           </select>
         </div>
 
         <div class="form-row">
           <label class="form-label">Monto</label>
-          <input type="number" class="form-field" placeholder="0" min="1">
+          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="1">
         </div>
 
         <div class="form-row" style="margin-bottom:24px">
           <label class="form-label">Referencia</label>
-          <input type="text" class="form-field" placeholder="Ej: Recibo 001" maxlength="100">
+          <input type="text" class="form-field" id="abono-referencia" placeholder="Ej: Recibo 001" maxlength="100">
         </div>
 
-        <button class="btn btn-accent" style="width:100%;justify-content:center;padding:12px;">
+        <div id="abono-error" class="error-banner" style="margin-bottom:12px"></div>
+
+        <button class="btn btn-accent" id="btn-ejecutar-abono" style="width:100%;justify-content:center;padding:12px;">
           → Ejecutar movimiento
         </button>
       </div>
@@ -565,7 +680,84 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 </div>
 </main>
 
-<script src="api.js"></script>
+<script>
+var App = App || {};
+
+function callServer(funcName) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(function (error) { reject(error.message || error); })
+      [funcName].apply(null, args);
+  });
+}
+
+App.api = {
+  getDashboard: function () { return callServer('getDashboardCartera'); },
+  getCartera: function (filtroEstado, filtroTipo) { return callServer('getCartera', filtroEstado, filtroTipo); },
+  getTerceros: function (filtroTipo) { return callServer('getTerceros', filtroTipo); },
+  registrarAbono: function (idTercero, valorAbono, referencia, tipo) { return callServer('registrarAbono', idTercero, valorAbono, referencia, tipo); },
+  saveTercero: function (tercero) { return callServer('saveTercero', tercero); },
+  analizarConGeminiFresco: function () { return callServer('analizarConGeminiFresco'); },
+  getAuditHistory: function (tabla, idRegistro, limit) { return callServer('getAuditHistory', tabla, idRegistro, limit); },
+  getUserInfo: function () { return callServer('getUserInfo'); },
+};
+
+App.formatearMoneda = function (centavos) {
+  if (centavos == null || isNaN(centavos)) return '$0';
+  return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+};
+
+App.formatearFecha = function (dateObj) {
+  if (!dateObj) return '\u2014';
+  var d = dateObj instanceof Date ? dateObj : new Date(dateObj);
+  if (isNaN(d.getTime())) return '\u2014';
+  var meses = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
+  return d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
+};
+
+App.mapearEstadoCartera = function (estado) {
+  var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-open' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
+  return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
+};
+
+App.mapearTipoTercero = function (tipo) {
+  var map = { CLIENTE: { label: 'Cliente', cls: 'badge-open' }, PROVEEDOR: { label: 'Proveedor', cls: '' }, AMBOS: { label: 'Ambos', cls: 'badge-open' } };
+  return map[tipo] || { label: tipo || '\u2014', cls: 'badge-done' };
+};
+
+function mostrarLoader(contenedor) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'loader-brutal';
+  div.textContent = 'Cargando';
+  contenedor.appendChild(div);
+}
+
+function mostrarError(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'error-banner show';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
+
+function mostrarVacio(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'empty-state';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
+
+App.data = {
+  dashboard: null, cartera: null, terceros: null,
+  refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
+  refreshCartera: function (filtroEstado, filtroTipo) { var self = this; return App.api.getCartera(filtroEstado, filtroTipo).then(function (d) { self.cartera = d; return d; }); },
+  refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
+};
+</script>
 <script>
 function escapeHtml(str) {
   var div = document.createElement('div');
@@ -580,9 +772,24 @@ function showError(msg) {
   setTimeout(function () { banner.classList.remove('show'); }, 6000);
 }
 
+function mostrarLoader(el) {
+  el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">Cargando...</div>';
+}
+
+function mostrarVacio(el, msg) {
+  el.textContent = msg || 'Sin datos';
+}
+
+function mostrarError(el, msg) {
+  el.innerHTML = '<div class="error-banner show">' + escapeHtml(msg || 'Error') + '</div>';
+}
+
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
   view.classList.add('is-loading');
+
+  var alertsBody = document.getElementById('alerts-body');
+  mostrarLoader(alertsBody);
 
   App.api.getDashboard()
     .then(function (data) {
@@ -598,7 +805,7 @@ function cargarDashboard() {
       var container = document.getElementById('alerts-body');
       container.innerHTML = '';
       if (data.alertas.length === 0) {
-        container.innerHTML = '<div class="alert-row" style="justify-content:center;color:var(--muted);padding:20px 18px">Sin alertas</div>';
+        mostrarVacio(container, 'Sin alertas');
       } else {
         data.alertas.forEach(function (a, i) {
           var row = document.createElement('div');
@@ -614,25 +821,123 @@ function cargarDashboard() {
       view.classList.remove('is-loading');
     })
     .catch(function (err) {
+      mostrarError(alertsBody, err.message || err);
       showError(err.message || err);
       view.classList.remove('is-loading');
     });
 }
 
+function renderizarAnalisis(analisis) {
+  var c = document.getElementById('ia-results');
+  var html = '<div class="ir-section">';
+  html += '<div class="ir-label">Resumen ejecutivo</div>';
+  html += '<div class="ir-value">' + escapeHtml(analisis.resumen_ejecutivo || '') + '</div>';
+  html += '</div>';
+  html += '<div class="ir-section"><div class="ir-badge">Confianza: ' + (analisis.nivel_confianza_general || 0) + '%</div></div>';
+
+  if (analisis.alertas_criticas && analisis.alertas_criticas.length) {
+    html += '<div class="ir-section"><div class="ir-label">Alertas críticas</div>';
+    analisis.alertas_criticas.forEach(function (a) {
+      html += '<div class="ir-alert-item">' + escapeHtml(a.titulo || a.mensaje || a.descripcion || '') + '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (analisis.analisis_riesgo_cartera) {
+    var r = analisis.analisis_riesgo_cartera;
+    html += '<div class="ir-section"><div class="ir-label">Análisis de riesgo</div><div class="ir-grid">';
+    Object.keys(r).forEach(function (k) {
+      html += '<div class="ir-grid-item"><div class="ir-glabel">' + escapeHtml(k.replace(/_/g, ' ')) + '</div><div class="ir-gvalue">' + escapeHtml(String(r[k])) + '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  if (analisis.segmentacion_terceros) {
+    var s = analisis.segmentacion_terceros;
+    html += '<div class="ir-section"><div class="ir-label">Segmentación</div><div class="ir-grid">';
+    Object.keys(s).forEach(function (k) {
+      html += '<div class="ir-grid-item"><div class="ir-glabel">' + escapeHtml(k.replace(/_/g, ' ')) + '</div><div class="ir-gvalue">' + escapeHtml(String(s[k])) + '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  if (analisis.anomalias_detectadas && analisis.anomalias_detectadas.length) {
+    html += '<div class="ir-section"><div class="ir-label">Anomalías detectadas</div>';
+    analisis.anomalias_detectadas.forEach(function (a) {
+      html += '<div class="ir-ano-item">' + escapeHtml(typeof a === 'string' ? a : (a.titulo || a.mensaje || a.descripcion || JSON.stringify(a))) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (analisis.recomendaciones_accionables && analisis.recomendaciones_accionables.length) {
+    html += '<div class="ir-section"><div class="ir-label">Recomendaciones</div>';
+    analisis.recomendaciones_accionables.forEach(function (r) {
+      html += '<div class="ir-rec-item">' + escapeHtml(typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || JSON.stringify(r))) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  c.innerHTML = html;
+  c.style.display = 'block';
+}
+
+function analizarConGeminiFresco() {
+  var btnHeader = document.getElementById('btn-analizar-ia');
+  var btnPanel = document.getElementById('btn-analizar-completo');
+  var results = document.getElementById('ia-results');
+  var textoOriginalH = btnHeader.textContent;
+  var textoOriginalP = btnPanel.textContent;
+
+  btnHeader.disabled = true;
+  btnHeader.textContent = '◈ Analizando...';
+  btnPanel.disabled = true;
+  btnPanel.textContent = '◈ Analizando...';
+  results.style.display = 'none';
+
+  App.api.analizarConGeminiFresco()
+    .then(function (resp) {
+      if (resp && resp.success && resp.analisis) {
+        renderizarAnalisis(resp.analisis);
+      } else {
+        showError('El análisis no devolvió datos válidos.');
+      }
+    })
+    .catch(function (err) {
+      var msg = err.message || err || 'Error al conectar con el servicio de IA.';
+      if (msg.indexOf('rate') > -1 || msg.indexOf('límite') > -1) {
+        msg = 'Límite de uso alcanzado. Intenta de nuevo en unos minutos.';
+      } else if (msg.indexOf('timeout') > -1 || msg.indexOf('tiempo') > -1) {
+        msg = 'La solicitud tardó demasiado. Intenta de nuevo.';
+      }
+      showError(msg);
+    })
+    .then(function () {
+      btnHeader.disabled = false;
+      btnHeader.textContent = textoOriginalH;
+      btnPanel.disabled = false;
+      btnPanel.textContent = textoOriginalP;
+    });
+}
+
 function cargarCartera() {
   var view = document.getElementById('view-cartera');
-  view.classList.add('is-loading');
+  var tbody = document.querySelector('#view-cartera .data-table tbody');
+  mostrarLoader(tbody);
 
   var filtroTipo = document.getElementById('filter-tipo').value || null;
   var filtroEstado = document.getElementById('filter-estado').value || null;
 
   App.api.getCartera(filtroEstado, filtroTipo)
     .then(function (data) {
-      var tbody = document.querySelector('#view-cartera .data-table tbody');
       tbody.innerHTML = '';
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">No se encontraron registros</td></tr>';
+        var td = document.createElement('td');
+        td.colSpan = 5;
+        mostrarVacio(td, 'No se encontraron registros');
+        var tr = document.createElement('tr');
+        tr.appendChild(td);
+        tbody.appendChild(tr);
       } else {
         data.forEach(function (item) {
           var estadoInfo = App.mapearEstadoCartera(item.estado);
@@ -662,14 +967,74 @@ function cargarCartera() {
           tbody.appendChild(tr);
         });
       }
-
-      view.classList.remove('is-loading');
     })
     .catch(function (err) {
-      showError(err.message || err);
-      view.classList.remove('is-loading');
-      var tbody = document.querySelector('#view-cartera .data-table tbody');
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--red);font-size:11px;">Error al cargar cartera</td></tr>';
+      mostrarError(tbody, err.message || err);
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = '↻ Reintentar';
+      btn.style.marginLeft = '12px';
+      btn.addEventListener('click', cargarCartera);
+      tbody.querySelector('.error-banner').appendChild(btn);
+    });
+}
+
+function cargarAbonoSelect() {
+  var select = document.getElementById('abono-cliente');
+  select.innerHTML = '<option value="">Seleccione un cliente...</option>';
+  App.api.getTerceros(null)
+    .then(function (data) {
+      if (data && data.length) {
+        data.forEach(function (t) {
+          var opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+          select.appendChild(opt);
+        });
+      }
+    })
+    .catch(function () {});
+}
+
+function ejecutarAbono() {
+  var btn = document.getElementById('btn-ejecutar-abono');
+  var errorEl = document.getElementById('abono-error');
+  errorEl.classList.remove('show');
+  errorEl.textContent = '';
+
+  var idTercero = document.getElementById('abono-cliente').value;
+  var tipo = document.getElementById('abono-tipo').value;
+  var monto = parseInt(document.getElementById('abono-monto').value, 10);
+  var referencia = document.getElementById('abono-referencia').value.trim();
+
+  if (!idTercero) { errorEl.textContent = 'Seleccione un cliente.'; errorEl.classList.add('show'); return; }
+  if (!monto || monto < 1) { errorEl.textContent = 'Ingrese un monto válido.'; errorEl.classList.add('show'); return; }
+  if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '→ Procesando...';
+
+  var centavos = monto * 100;
+  App.api.registrarAbono(idTercero, centavos, referencia, tipo)
+    .then(function (r) {
+      btn.disabled = false;
+      btn.textContent = '→ Ejecutar movimiento';
+      if (r && r.success === false) {
+        errorEl.textContent = r.message || 'Error al registrar el abono.';
+        errorEl.classList.add('show');
+      } else {
+        document.getElementById('abono-monto').value = '';
+        document.getElementById('abono-referencia').value = '';
+        document.getElementById('abono-cliente').value = '';
+        cargarDashboard();
+        cargarCartera();
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = '→ Ejecutar movimiento';
+      errorEl.textContent = err.message || err || 'Error al registrar el abono.';
+      errorEl.classList.add('show');
     });
 }
 
@@ -679,13 +1044,19 @@ function generarIdTemporal() {
 
 function cargarTerceros() {
   var view = document.getElementById('view-terceros');
-  view.classList.add('is-loading');
+  var tbody = document.querySelector('#view-terceros .data-table tbody');
+  mostrarLoader(tbody);
+
   App.api.getTerceros(null)
     .then(function (data) {
-      var tbody = document.querySelector('#view-terceros .data-table tbody');
       tbody.innerHTML = '';
       if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">No se encontraron terceros</td></tr>';
+        var td = document.createElement('td');
+        td.colSpan = 5;
+        mostrarVacio(td, 'No se encontraron terceros');
+        var tr = document.createElement('tr');
+        tr.appendChild(td);
+        tbody.appendChild(tr);
       } else {
         data.forEach(function (item) {
           var tipoInfo = App.mapearTipoTercero(item.tipo);
@@ -699,13 +1070,15 @@ function cargarTerceros() {
           tbody.appendChild(tr);
         });
       }
-      view.classList.remove('is-loading');
     })
     .catch(function (err) {
-      showError(err.message || err);
-      view.classList.remove('is-loading');
-      var tbody = document.querySelector('#view-terceros .data-table tbody');
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--red);font-size:11px;">Error al cargar terceros</td></tr>';
+      mostrarError(tbody, err.message || err);
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = '↻ Reintentar';
+      btn.style.marginLeft = '12px';
+      btn.addEventListener('click', cargarTerceros);
+      tbody.querySelector('.error-banner').appendChild(btn);
     });
 }
 
@@ -778,14 +1151,34 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (viewId === 'dashboard') cargarDashboard();
       if (viewId === 'cartera') cargarCartera();
       if (viewId === 'terceros') cargarTerceros();
+      if (viewId === 'abonos') cargarAbonoSelect();
     }
   });
 });
 
+function cargarUserInfo() {
+  var userEl = document.getElementById('sidebar-user');
+  App.api.getUserInfo()
+    .then(function (info) {
+      if (info && info.email) {
+        userEl.innerHTML =
+          '<div class="user-email">' + escapeHtml(info.email) + '</div>' +
+          '<div class="user-role">' + escapeHtml(info.role || 'Sin rol') + '</div>';
+      } else {
+        userEl.innerHTML = '<div class="user-error">Sesión no disponible</div>';
+      }
+    })
+    .catch(function () {
+      userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
+  cargarUserInfo();
   cargarDashboard();
   cargarCartera();
   cargarTerceros();
+  cargarAbonoSelect();
 
   document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
   document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
@@ -793,6 +1186,11 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('modal-tercero').addEventListener('click', function (e) {
     if (e.target === this) cerrarModalTercero();
   });
+
+  document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
+  document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
+
+  document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
 });
 </script>
 </body>
