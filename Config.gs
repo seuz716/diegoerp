@@ -59,7 +59,7 @@ function getSheet(name) {
   return _SHEETS_CACHE[name];
 }
 
-function _sanitizeId(id) { return String(id || "").trim(); }
+function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ""); }
 
 /**
  * Convierte un valor del sheet a centavos (entero).

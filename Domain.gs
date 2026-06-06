@@ -27,9 +27,16 @@ var _Transaction = {
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
         const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
         const unique = [...new Set(rowIndexes)].sort((a, b) => a - b);
-        for (const rowIndex of unique) {
-          const values = sheet.getRange(rowIndex, 1, 1, numCols).getValues()[0];
-          ctx.carteraSnapshots.push({ rowIndex, values });
+        const minRow = unique[0];
+        const maxRow = unique[unique.length - 1];
+        const rangeData = sheet.getRange(minRow, 1, maxRow - minRow + 1, numCols).getValues();
+        const rowIndexSet = new Set(unique);
+        ctx.carteraSnapshots = [];
+        for (let i = 0; i < rangeData.length; i++) {
+          const actualRow = minRow + i;
+          if (rowIndexSet.has(actualRow)) {
+            ctx.carteraSnapshots.push({ rowIndex: actualRow, values: rangeData[i] });
+          }
         }
       },
 
@@ -76,7 +83,7 @@ const DOMAIN = {
     let lockAcquired = null;
     try {
       if (!tercero || typeof tercero !== 'object') return _error('Datos inválidos.');
-      const id = _sanitizeId(tercero.id).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+      const id = _sanitizeId(tercero.id);
       if (!id) return _error("ID de tercero inválido.");
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(id);
