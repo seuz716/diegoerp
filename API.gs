@@ -34,7 +34,7 @@ function getTerceros(filtroTipo = null) {
 function getCartera(filtroEstado = null, filtroTipo = null) {
   try {
     AuthService.checkPermission("ver_cartera");
-    return DOMAIN.getCartera(filtroTipo, filtroEstado);
+    return DOMAIN.getCartera(filtroEstado, filtroTipo);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
     throw new Error(e.message || e.toString());

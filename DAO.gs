@@ -150,7 +150,7 @@ const DAO = {
         }
 
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-        const rowData = [id, nombre, "", tipo, limite, activo];
+        const rowData = [id, nombre, tercero.telefono || "", tipo, limite, activo];
         const cachedRow = CACHE.terceroIndex[id];
 
         if (cachedRow) {

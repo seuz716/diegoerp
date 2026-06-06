@@ -254,6 +254,28 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .view{display:none;}
 .view.active{display:block;}
 
+/* ── LOADING STATE ── */
+.view.is-loading{position:relative;}
+.view.is-loading::after{
+  content:'';position:absolute;inset:0;background:rgba(12,12,10,0.5);
+  z-index:10;
+}
+.view.is-loading::before{
+  content:'Cargando';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:11;font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--muted);
+  padding:8px 16px;border:1px solid var(--border);background:var(--bg-1);
+}
+
+/* ── ERROR BANNER ── */
+.error-banner{display:none;padding:12px 16px;margin-bottom:16px;border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:11px;letter-spacing:0.04em;}
+.error-banner.show{display:block;}
+
+/* ── MODAL ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:3000;align-items:center;justify-content:center;padding:1rem;}
+.modal-overlay.active{display:flex;}
+.modal-box{width:100%;max-width:480px;background:var(--bg-1);border:1px solid var(--border);padding:2rem;}
+.modal-title{font-size:15px;font-family:var(--display);color:var(--text);margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+
 /* ── MOBILE NAV — hidden en desktop ── */
 #bottom-nav{display:none;}
 
@@ -299,24 +321,25 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   <section id="view-dashboard" class="view active">
     <div class="page-header">
       <h1 class="page-title">Resumen <em>financiero</em></h1>
-      <button class="btn btn-accent btn-sm">◈ Analizar con IA</button>
+      <button class="btn btn-accent btn-sm" id="btn-analizar-ia">◈ Analizar con IA</button>
     </div>
+    <div class="error-banner" id="error-banner"></div>
 
     <!-- Stats: héroe izquierda, dos columnas derecha -->
     <div class="stats-asymmetric">
       <div class="stat-hero">
         <div class="stat-label">Por Cobrar · CxC</div>
-        <div class="stat-value">$4.280.000</div>
-        <div class="stat-meta">Vencido: <span class="venc">$1.240.000</span></div>
+        <div class="stat-value" id="stat-cobrar">$4.280.000</div>
+        <div class="stat-meta">Vencido: <span class="venc" id="stat-vencido-cxc">$1.240.000</span></div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Por Pagar · CxP</div>
-        <div class="stat-value">$890.000</div>
-        <div class="stat-meta">Vencido: <span class="ok">$0</span></div>
+        <div class="stat-value" id="stat-pagar">$890.000</div>
+        <div class="stat-meta">Vencido: <span class="ok" id="stat-vencido-cxp">$0</span></div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Exposición neta</div>
-        <div class="stat-value">$3.390.000</div>
+        <div class="stat-value" id="stat-exposicion">$3.390.000</div>
         <div class="stat-meta">Al día de hoy</div>
       </div>
     </div>
@@ -325,42 +348,44 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <div class="alerts-section">
       <div class="section-header">
         <span>Deudores con mayor vencimiento</span>
-        <span class="section-count">3 críticos</span>
+        <span class="section-count" id="alert-count">3 críticos</span>
       </div>
 
-      <div class="alert-row critical">
-        <div class="rank top">#1</div>
-        <div>
-          <div class="alert-name">Distribuciones López</div>
-          <div class="alert-id">900.123.456-7</div>
+      <div id="alerts-body">
+        <div class="alert-row critical">
+          <div class="rank top">#1</div>
+          <div>
+            <div class="alert-name">Distribuciones López</div>
+            <div class="alert-id">900.123.456-7</div>
+          </div>
+          <div class="alert-right">
+            <div class="alert-amount">$640.000</div>
+            <div class="alert-dias">87 días</div>
+          </div>
         </div>
-        <div class="alert-right">
-          <div class="alert-amount">$640.000</div>
-          <div class="alert-dias">87 días</div>
-        </div>
-      </div>
 
-      <div class="alert-row">
-        <div class="rank">#2</div>
-        <div>
-          <div class="alert-name">Ferretería del Norte</div>
-          <div class="alert-id">800.456.789-1</div>
+        <div class="alert-row">
+          <div class="rank">#2</div>
+          <div>
+            <div class="alert-name">Ferretería del Norte</div>
+            <div class="alert-id">800.456.789-1</div>
+          </div>
+          <div class="alert-right">
+            <div class="alert-amount">$380.000</div>
+            <div class="alert-dias">43 días</div>
+          </div>
         </div>
-        <div class="alert-right">
-          <div class="alert-amount">$380.000</div>
-          <div class="alert-dias">43 días</div>
-        </div>
-      </div>
 
-      <div class="alert-row">
-        <div class="rank">#3</div>
-        <div>
-          <div class="alert-name">Comercial Andes SAS</div>
-          <div class="alert-id">901.234.567-2</div>
-        </div>
-        <div class="alert-right">
-          <div class="alert-amount">$220.000</div>
-          <div class="alert-dias">31 días</div>
+        <div class="alert-row">
+          <div class="rank">#3</div>
+          <div>
+            <div class="alert-name">Comercial Andes SAS</div>
+            <div class="alert-id">901.234.567-2</div>
+          </div>
+          <div class="alert-right">
+            <div class="alert-amount">$220.000</div>
+            <div class="alert-dias">31 días</div>
+          </div>
         </div>
       </div>
     </div>
@@ -379,11 +404,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   <section id="view-cartera" class="view">
     <div class="page-header">
       <h1 class="page-title">Cartera</h1>
-      <select class="form-field" style="width:auto;padding:7px 12px;font-size:10px;">
-        <option>Todos los tipos</option>
-        <option>CxC</option>
-        <option>CxP</option>
-      </select>
+      <div style="display:flex;gap:8px">
+        <select id="filter-tipo" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;" onchange="cargarCartera()">
+          <option value="">Todos los tipos</option>
+          <option value="CxC">CxC</option>
+          <option value="CxP">CxP</option>
+        </select>
+        <select id="filter-estado" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;" onchange="cargarCartera()">
+          <option value="">Todos los estados</option>
+          <option value="ABIERTA">Abierta</option>
+          <option value="VENCIDA">Vencida</option>
+          <option value="PARCIAL">Parcial</option>
+          <option value="CANCELADA">Cancelada</option>
+        </select>
+      </div>
     </div>
 
     <div class="table-section">
@@ -398,38 +432,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           </tr>
         </thead>
         <tbody>
-          <tr class="row-red">
-            <td class="td-mono td-muted">12 mar. 2026</td>
-            <td>
-              <div style="font-weight:500">Distribuciones López</div>
-              <div style="font-size:10px;color:var(--muted)">900.123.456-7</div>
-            </td>
-            <td class="td-mono" style="font-weight:500;color:var(--red)">$640.000</td>
-            <td><span class="badge badge-venc">Vencida</span></td>
-            <td>
-              <div class="td-mono" style="font-size:11px">08 mar. 2026</div>
-              <div style="font-size:10px;color:var(--red)">87 días</div>
-            </td>
-          </tr>
           <tr>
-            <td class="td-mono td-muted">20 abr. 2026</td>
-            <td>
-              <div style="font-weight:500">Ferretería del Norte</div>
-              <div style="font-size:10px;color:var(--muted)">800.456.789-1</div>
-            </td>
-            <td class="td-mono" style="font-weight:500">$380.000</td>
-            <td><span class="badge badge-open">Abierta</span></td>
-            <td class="td-mono" style="font-size:11px">30 may. 2026</td>
-          </tr>
-          <tr>
-            <td class="td-mono td-muted">01 may. 2026</td>
-            <td>
-              <div style="font-weight:500">Plásticos Modernos</div>
-              <div style="font-size:10px;color:var(--muted)">700.987.654-3</div>
-            </td>
-            <td class="td-mono" style="font-weight:500">$180.000</td>
-            <td><span class="badge badge-done">Cancelada</span></td>
-            <td class="td-mono" style="font-size:11px">31 may. 2026</td>
+            <td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">Cargando cartera...</td>
           </tr>
         </tbody>
       </table>
@@ -521,18 +525,273 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     </div>
   </section>
 
+  <!-- MODAL NUEVO TERCERO -->
+  <div class="modal-overlay" id="modal-tercero">
+    <div class="modal-box">
+      <div class="modal-title">Nuevo tercero</div>
+      <div class="form-row">
+        <label class="form-label">Nombre</label>
+        <input type="text" class="form-field" id="tercero-nombre" placeholder="Nombre del tercero" maxlength="200">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Tipo</label>
+        <select class="form-field" id="tercero-tipo">
+          <option value="CLIENTE">Cliente</option>
+          <option value="PROVEEDOR">Proveedor</option>
+          <option value="AMBOS">Ambos</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Límite de crédito</label>
+        <input type="number" class="form-field" id="tercero-limite" placeholder="0" min="0">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Teléfono</label>
+        <input type="text" class="form-field" id="tercero-telefono" placeholder="Teléfono" maxlength="30">
+      </div>
+      <div class="form-row" style="margin-bottom:24px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="tercero-activo" checked style="accent-color:var(--accent);"> Activo
+        </label>
+      </div>
+      <div id="tercero-error" style="display:none;padding:8px 12px;margin-bottom:12px;border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:11px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" id="btn-tercero-cancelar" style="flex:1;justify-content:center;padding:10px;">Cancelar</button>
+        <button class="btn btn-accent btn-sm" id="btn-tercero-guardar" style="flex:1;justify-content:center;padding:10px;">Guardar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 </main>
 
+<script src="api.js"></script>
 <script>
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+function showError(msg) {
+  var banner = document.getElementById('error-banner');
+  banner.textContent = msg;
+  banner.classList.add('show');
+  setTimeout(function () { banner.classList.remove('show'); }, 6000);
+}
+
+function cargarDashboard() {
+  var view = document.getElementById('view-dashboard');
+  view.classList.add('is-loading');
+
+  App.api.getDashboard()
+    .then(function (data) {
+      document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
+      document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
+      document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
+      document.getElementById('stat-vencido-cxp').textContent = App.formatearMoneda(data.vencidaCxP);
+      var expo = data.porCobrar - data.porPagar;
+      document.getElementById('stat-exposicion').textContent = App.formatearMoneda(expo);
+
+      document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
+
+      var container = document.getElementById('alerts-body');
+      container.innerHTML = '';
+      if (data.alertas.length === 0) {
+        container.innerHTML = '<div class="alert-row" style="justify-content:center;color:var(--muted);padding:20px 18px">Sin alertas</div>';
+      } else {
+        data.alertas.forEach(function (a, i) {
+          var row = document.createElement('div');
+          row.className = 'alert-row' + (i === 0 ? ' critical' : '');
+          row.innerHTML =
+            '<div class="rank' + (i === 0 ? ' top' : '') + '">#' + (i + 1) + '</div>' +
+            '<div><div class="alert-name">' + escapeHtml(a.nombre || '—') + '</div><div class="alert-id">' + escapeHtml(a.id_tercero || '') + '</div></div>' +
+            '<div class="alert-right"><div class="alert-amount">' + App.formatearMoneda(a.saldo) + '</div><div class="alert-dias">' + (a.dias || 0) + ' d' + (a.dias === 1 ? 'ía' : 'ías') + '</div></div>';
+          container.appendChild(row);
+        });
+      }
+
+      view.classList.remove('is-loading');
+    })
+    .catch(function (err) {
+      showError(err.message || err);
+      view.classList.remove('is-loading');
+    });
+}
+
+function cargarCartera() {
+  var view = document.getElementById('view-cartera');
+  view.classList.add('is-loading');
+
+  var filtroTipo = document.getElementById('filter-tipo').value || null;
+  var filtroEstado = document.getElementById('filter-estado').value || null;
+
+  App.api.getCartera(filtroEstado, filtroTipo)
+    .then(function (data) {
+      var tbody = document.querySelector('#view-cartera .data-table tbody');
+      tbody.innerHTML = '';
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">No se encontraron registros</td></tr>';
+      } else {
+        data.forEach(function (item) {
+          var estadoInfo = App.mapearEstadoCartera(item.estado);
+          var isVencida = item.estado === 'VENCIDA';
+
+          var tr = document.createElement('tr');
+          if (isVencida) tr.className = 'row-red';
+
+          var vencHtml;
+          if (item.fecha_vencimiento) {
+            if (isVencida && item.dias_vencido > 0) {
+              vencHtml = '<div class="td-mono" style="font-size:11px">' + App.formatearFecha(item.fecha_vencimiento) + '</div>' +
+                '<div style="font-size:10px;color:var(--red)">' + item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías') + '</div>';
+            } else {
+              vencHtml = '<span class="td-mono" style="font-size:11px">' + App.formatearFecha(item.fecha_vencimiento) + '</span>';
+            }
+          } else {
+            vencHtml = '<span class="td-mono" style="font-size:11px">—</span>';
+          }
+
+          tr.innerHTML =
+            '<td class="td-mono td-muted">' + App.formatearFecha(item.fecha) + '</td>' +
+            '<td><div style="font-weight:500">' + escapeHtml(item.nombre_tercero || '—') + '</div><div style="font-size:10px;color:var(--muted)">' + escapeHtml(item.id_tercero || '') + '</div></td>' +
+            '<td class="td-mono" style="font-weight:500' + (isVencida ? ';color:var(--red)' : '') + '">' + App.formatearMoneda(item.saldo) + '</td>' +
+            '<td><span class="badge ' + estadoInfo.cls + '">' + estadoInfo.label + '</span></td>' +
+            '<td>' + vencHtml + '</td>';
+          tbody.appendChild(tr);
+        });
+      }
+
+      view.classList.remove('is-loading');
+    })
+    .catch(function (err) {
+      showError(err.message || err);
+      view.classList.remove('is-loading');
+      var tbody = document.querySelector('#view-cartera .data-table tbody');
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--red);font-size:11px;">Error al cargar cartera</td></tr>';
+    });
+}
+
+function generarIdTemporal() {
+  return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+
+function cargarTerceros() {
+  var view = document.getElementById('view-terceros');
+  view.classList.add('is-loading');
+  App.api.getTerceros(null)
+    .then(function (data) {
+      var tbody = document.querySelector('#view-terceros .data-table tbody');
+      tbody.innerHTML = '';
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--muted);font-size:11px;">No se encontraron terceros</td></tr>';
+      } else {
+        data.forEach(function (item) {
+          var tipoInfo = App.mapearTipoTercero(item.tipo);
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td class="td-mono td-muted">' + escapeHtml(item.id || '—') + '</td>' +
+            '<td style="font-weight:500">' + escapeHtml(item.nombre || '—') + '</td>' +
+            '<td><span class="badge ' + tipoInfo.cls + '">' + tipoInfo.label + '</span></td>' +
+            '<td class="td-mono">' + App.formatearMoneda(item.limite_credito) + '</td>' +
+            '<td><button class="btn btn-sm" style="font-size:8px">···</button></td>';
+          tbody.appendChild(tr);
+        });
+      }
+      view.classList.remove('is-loading');
+    })
+    .catch(function (err) {
+      showError(err.message || err);
+      view.classList.remove('is-loading');
+      var tbody = document.querySelector('#view-terceros .data-table tbody');
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px 16px;color:var(--red);font-size:11px;">Error al cargar terceros</td></tr>';
+    });
+}
+
+function abrirModalTercero() {
+  document.getElementById('tercero-nombre').value = '';
+  document.getElementById('tercero-tipo').value = 'CLIENTE';
+  document.getElementById('tercero-limite').value = '';
+  document.getElementById('tercero-telefono').value = '';
+  document.getElementById('tercero-activo').checked = true;
+  document.getElementById('tercero-error').style.display = 'none';
+  document.getElementById('modal-tercero').classList.add('active');
+}
+
+function cerrarModalTercero() {
+  document.getElementById('modal-tercero').classList.remove('active');
+}
+
+function guardarTercero() {
+  var btnGuardar = document.getElementById('btn-tercero-guardar');
+  var errorEl = document.getElementById('tercero-error');
+  var nombre = document.getElementById('tercero-nombre').value.trim();
+  var tipo = document.getElementById('tercero-tipo').value;
+  var limite = parseInt(document.getElementById('tercero-limite').value, 10) || 0;
+  var telefono = document.getElementById('tercero-telefono').value.trim();
+  var activo = document.getElementById('tercero-activo').checked;
+
+  if (!nombre) {
+    errorEl.textContent = 'El nombre es obligatorio.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  errorEl.style.display = 'none';
+  btnGuardar.disabled = true;
+  btnGuardar.textContent = 'Guardando...';
+
+  App.api.saveTercero({
+    id: generarIdTemporal(),
+    nombre: nombre,
+    tipo: tipo,
+    limite_credito: limite,
+    telefono: telefono,
+    activo: activo
+  }).then(function (r) {
+    btnGuardar.disabled = false;
+    btnGuardar.textContent = 'Guardar';
+    if (r && r.success === false) {
+      errorEl.textContent = r.message || 'Error al guardar tercero.';
+      errorEl.style.display = 'block';
+    } else {
+      cerrarModalTercero();
+      cargarTerceros();
+    }
+  }).catch(function (err) {
+    btnGuardar.disabled = false;
+    btnGuardar.textContent = 'Guardar';
+    errorEl.textContent = err.message || err || 'Error al guardar tercero.';
+    errorEl.style.display = 'block';
+  });
+}
+
+document.querySelectorAll('.nav-item').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
-    const viewId = btn.dataset.view;
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    const view = document.getElementById('view-' + viewId);
-    if (view) view.classList.add('active');
+    var viewId = btn.dataset.view;
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    var view = document.getElementById('view-' + viewId);
+    if (view) {
+      view.classList.add('active');
+      if (viewId === 'dashboard') cargarDashboard();
+      if (viewId === 'cartera') cargarCartera();
+      if (viewId === 'terceros') cargarTerceros();
+    }
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  cargarDashboard();
+  cargarCartera();
+  cargarTerceros();
+
+  document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
+  document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
+  document.getElementById('btn-tercero-guardar').addEventListener('click', guardarTercero);
+  document.getElementById('modal-tercero').addEventListener('click', function (e) {
+    if (e.target === this) cerrarModalTercero();
   });
 });
 </script>

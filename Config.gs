@@ -61,6 +61,10 @@ function getSheet(name) {
 
 function _sanitizeId(id) { return String(id || "").trim(); }
 
+/**
+ * Convierte un valor del sheet a centavos (entero).
+ * Usa parseInt porque el sheet almacena montos en centavos sin decimales.
+ */
 function _parseMoneda(v, defaultVal) {
   const n = parseInt(v, 10);
   return isNaN(n) ? (defaultVal || 0) : n;
@@ -100,6 +104,10 @@ function _safeDate(v) {
   }
 }
 
+/**
+ * Formatea centavos a moneda COP para display.
+ * Divide por 100 porque el sheet almacena valores en centavos (enteros).
+ */
 function _formatMoneda(centavos) {
   return (centavos / 100).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 }

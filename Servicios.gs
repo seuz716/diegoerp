@@ -280,11 +280,6 @@ function obtenerTerceros(filtros = {}) {
   }));
 }
 
-/** @deprecated Usar obtenerTerceros(). */
-function getTerceros(filtros) {
-  return obtenerTerceros(filtros);
-}
-
 /**
  * @deprecated Usar DOMAIN.registrarAbonoAtomic() directamente.
  * Capa eliminada: toda validación vive en Domain.gs. Se mantiene

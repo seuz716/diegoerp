@@ -115,7 +115,7 @@ const DOMAIN = {
     }
   },
 
-  getCartera(filtroTipo = null, filtroEstado = null) {
+  getCartera(filtroEstado = null, filtroTipo = null) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
     const baseCartera = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado);
     const hoy = _today();
