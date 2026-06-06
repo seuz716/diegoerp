@@ -35,6 +35,9 @@ function procesarVentaV2(carrito, opciones) {
     }
   }
 
+  const errorStock = _validarStockCarrito(carrito);
+  if (errorStock) return _error(errorStock);
+
   const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
 
   if (esCredito && idTercero) {
@@ -56,6 +59,8 @@ function procesarVentaV2(carrito, opciones) {
       const diasCredito = opciones.diasCredito || 30;
       DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
     }
+
+    _descontarInventario(carrito);
 
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
       { items: carrito.length },
@@ -281,4 +286,54 @@ function obtenerTerceros(filtros = {}) {
 function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera) {
   AuthService.checkPermission("registrar_abono");
   return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipoCartera);
+}
+
+function _validarStockCarrito(carrito) {
+  const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+  const data = sheet.getDataRange().getValues();
+  const COL = CONFIG.COLUMNS.PRODUCTOS;
+
+  for (const item of carrito) {
+    const id = String(item.id || "").trim();
+    const cantidad = parseInt(item.cantidad) || 0;
+    if (!id || cantidad <= 0) continue;
+
+    let encontrado = false;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][COL.id] || "").trim() === id) {
+        const stock = parseInt(data[i][COL.stock]) || 0;
+        if (stock < cantidad) {
+          return `Stock insuficiente para ${data[i][COL.nombre] || id}: disponible ${stock}, solicitado ${cantidad}`;
+        }
+        encontrado = true;
+        break;
+      }
+    }
+    if (!encontrado) {
+      return `Producto ${id} no encontrado en inventario.`;
+    }
+  }
+  return null;
+}
+
+function _descontarInventario(carrito) {
+  const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+  const data = sheet.getDataRange().getValues();
+  const COL = CONFIG.COLUMNS.PRODUCTOS;
+
+  for (const item of carrito) {
+    const id = String(item.id || "").trim();
+    const cantidad = parseInt(item.cantidad) || 0;
+    if (!id || cantidad <= 0) continue;
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][COL.id] || "").trim() === id) {
+        const stockActual = parseInt(data[i][COL.stock]) || 0;
+        const nuevoStock = Math.max(0, stockActual - cantidad);
+        sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
+        data[i][COL.stock] = nuevoStock;
+        break;
+      }
+    }
+  }
 }
