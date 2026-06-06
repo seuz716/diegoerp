@@ -29,6 +29,9 @@ function procesarVentaV2(carrito, opciones) {
     return _error("ID de tercero es requerido para ventas a crédito.");
   }
 
+  // Consolidar cantidades y validar productos duplicados
+  const carritoConsolidado = [];
+  const mapProductos = new Map();
   for (const item of carrito) {
     const id = String(item.id || "").trim();
     if (!id) return _error("ID de producto inválido.");
@@ -43,16 +46,23 @@ function procesarVentaV2(carrito, opciones) {
       return _error(`Precio inválido para ${id}`);
     }
 
-    // Sanitizar
-    item.id = id;
-    item.cantidad = cantidad;
-    item.precio = precio;
+    if (mapProductos.has(id)) {
+      const prodExistente = mapProductos.get(id);
+      if (prodExistente.precio !== precio) {
+        return _error(`Precio inconsistente para el producto duplicado ${id}`);
+      }
+      prodExistente.cantidad += cantidad;
+    } else {
+      const prodLimpio = { id, cantidad, precio };
+      mapProductos.set(id, prodLimpio);
+      carritoConsolidado.push(prodLimpio);
+    }
   }
 
-  const errorStock = _validarStockCarrito(carrito);
+  const errorStock = _validarStockCarrito(carritoConsolidado);
   if (errorStock) return _error(errorStock);
 
-  const totalVenta = carrito.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+  const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
 
   if (esCredito && idTercero) {
     CACHE.refresh();
@@ -74,10 +84,10 @@ function procesarVentaV2(carrito, opciones) {
       DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
     }
 
-    _descontarInventario(carrito);
+    _descontarInventario(carritoConsolidado);
 
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
-      { items: carrito.length },
+      { items: carritoConsolidado.length },
       { total: totalVenta, tipo: opciones.tipo },
       "SUCCESS"
     );
