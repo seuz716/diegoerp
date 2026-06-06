@@ -2,7 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -289,7 +292,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .btn-sm{padding:6px 10px;font-size:9px;}
 
 /* ── CARTERA TABLE ── */
-.table-section{border:1px solid var(--border);background:var(--bg-1);}
+.table-section{border:1px solid var(--border);background:var(--bg-1);overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .data-table{width:100%;border-collapse:collapse;}
 .data-table thead th{
   background:var(--bg-2);
@@ -393,17 +396,57 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 ::-webkit-scrollbar{width:3px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border-med);}
+
+/* ── FOCUS VISIBLE ── */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.skip-link:focus { top: 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .nav-item { transition: none; }
+  .view.is-loading::before { animation: none; }
+}
+
+/* ── RESPONSIVE: TABLET / MOBILE ── */
+@media (max-width: 768px) {
+  #sidebar { display: none; }
+  #bottom-nav { display: flex; }
+  #main { padding: 16px; }
+  body { min-height: 100dvh; }
+}
+@media (max-width: 768px) {
+  #bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 56px; background: var(--bg-1);
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around; align-items: center;
+    z-index: 2000; padding: 0 8px;
+  }
+  #bottom-nav .nav-item {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6px; font-size: 10px; border: none; gap: 2px;
+    min-height: 44px; justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .form-field { font-size: 16px; }
+  .btn { min-height: 44px; padding: 12px 16px; }
+}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link" style="position:absolute;top:-1000px;left:8px;z-index:9999;background:var(--bg-1);color:var(--accent);padding:8px 16px;border:1px solid var(--accent-border);font-size:11px;">Saltar al contenido</a>
 
-<aside id="sidebar">
+<aside id="sidebar" role="navigation" aria-label="Menú principal">
   <div class="brand-zone">
     <div class="brand-logotype">Micro<em style="color:var(--accent)">ERP</em></div>
     <div class="brand-sub">Cartera Pro · v2.1</div>
   </div>
 
-  <nav class="sidebar-nav">
+  <nav class="sidebar-nav" aria-label="Secciones">
     <div class="nav-item active" data-view="dashboard">
       <span style="font-size:9px;opacity:.6">◆</span> Dashboard
     </div>
@@ -430,7 +473,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   </div>
 </aside>
 
-<main id="app">
+<main id="app" role="main">
 <div id="main">
 
   <!-- DASHBOARD -->
@@ -467,7 +510,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
         <span class="section-count" id="alert-count">3 críticos</span>
       </div>
 
-      <div id="alerts-body">
+      <div id="alerts-body" aria-live="polite">
         <div class="alert-row critical">
           <div class="rank top">#1</div>
           <div>
@@ -513,9 +556,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
       <div style="margin-top:16px;font-size:11px;color:var(--muted);line-height:1.6;">
         El análisis detecta patrones de mora, proyecta flujos a 90 días e identifica clientes en riesgo de impago. Usa el modelo Gemini 2.5 Flash con datos en tiempo real.
       </div>
+      <div id="ia-progress" style="display:none;margin-top:12px;">
+        <div style="height:2px;background:var(--border);overflow:hidden;">
+          <div id="ia-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width .3s ease;"></div>
+        </div>
+        <div id="ia-progress-text" style="font-size:9px;color:var(--muted);margin-top:6px;letter-spacing:0.1em;text-transform:uppercase;">Iniciando análisis...</div>
+      </div>
     </div>
 
-    <div id="ia-results" class="ia-results" style="display:none"></div>
+    <div id="ia-results" class="ia-results" style="display:none" aria-live="polite"></div>
   </section>
 
   <!-- CARTERA -->
@@ -523,12 +572,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
     <div class="page-header">
       <h1 class="page-title">Cartera</h1>
       <div style="display:flex;gap:8px">
-        <select id="filter-tipo" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;" onchange="cargarCartera()">
+        <select id="filter-tipo" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;">
           <option value="">Todos los tipos</option>
           <option value="CxC">CxC</option>
           <option value="CxP">CxP</option>
         </select>
-        <select id="filter-estado" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;" onchange="cargarCartera()">
+        <select id="filter-estado" class="form-field" style="width:auto;padding:7px 12px;font-size:10px;">
           <option value="">Todos los estados</option>
           <option value="ABIERTA">Abierta</option>
           <option value="VENCIDA">Vencida</option>
@@ -572,9 +621,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
         </div>
 
         <div class="form-row">
-          <label class="form-label">Cliente</label>
+          <label class="form-label">Tercero</label>
           <select class="form-field" id="abono-cliente">
-            <option value="">Seleccione un cliente...</option>
+            <option value="">Seleccione un tercero...</option>
           </select>
         </div>
 
@@ -596,7 +645,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <input type="text" class="form-field" id="abono-referencia" placeholder="Ej: Recibo 001" maxlength="100">
         </div>
 
-        <div id="abono-error" class="error-banner" style="margin-bottom:12px"></div>
+        <div id="abono-error" class="error-banner" style="margin-bottom:12px" aria-live="assertive"></div>
+        <div id="abono-success" style="display:none;padding:12px 16px;margin-bottom:12px;border:1px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-size:11px;letter-spacing:0.04em;"></div>
 
         <button class="btn btn-accent" id="btn-ejecutar-abono" style="width:100%;justify-content:center;padding:12px;">
           → Ejecutar movimiento
@@ -689,7 +739,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <span id="venta-total" style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--accent);">$0</span>
         </div>
 
-        <div id="venta-error" class="error-banner" style="margin-bottom:12px"></div>
+        <div id="venta-error" class="error-banner" style="margin-bottom:12px" aria-live="assertive"></div>
         <div id="venta-success" style="display:none;padding:12px 16px;margin-bottom:12px;border:1px solid var(--accent-border);background:var(--accent-dim);color:var(--accent);font-size:11px;letter-spacing:0.04em;"></div>
 
         <button class="btn btn-accent" id="btn-registrar-venta" style="width:100%;justify-content:center;padding:12px;">
@@ -700,7 +750,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   </section>
 
   <!-- MODAL NUEVO TERCERO -->
-  <div class="modal-overlay" id="modal-tercero">
+  <div class="modal-overlay" id="modal-tercero" role="dialog" aria-modal="true" aria-label="Nuevo tercero">
     <div class="modal-box">
       <div class="modal-title">Nuevo tercero</div>
       <div class="form-row">
@@ -739,7 +789,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 </div>
 </main>
 
+<nav id="bottom-nav" role="navigation" aria-label="Navegación principal">
+  <div class="nav-item active" data-view="dashboard">◆</div>
+  <div class="nav-item" data-view="terceros">◇</div>
+  <div class="nav-item" data-view="cartera">◇</div>
+  <div class="nav-item" data-view="abonos">◇</div>
+  <div class="nav-item" data-view="ventas">◇</div>
+</nav>
+
 <script>
+'use strict';
 var App = App || {};
 
 function callServer(funcName) {
@@ -818,8 +877,7 @@ App.data = {
   refreshCartera: function (filtroEstado, filtroTipo) { var self = this; return App.api.getCartera(filtroEstado, filtroTipo).then(function (d) { self.cartera = d; return d; }); },
   refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
 };
-</script>
-<script>
+
 function escapeHtml(str) {
   var div = document.createElement('div');
   div.appendChild(document.createTextNode(str));
@@ -830,7 +888,6 @@ function showError(msg) {
   var banner = document.getElementById('error-banner');
   banner.textContent = msg;
   banner.classList.add('show');
-  setTimeout(function () { banner.classList.remove('show'); }, 6000);
 }
 
 function cargarDashboard() {
@@ -840,8 +897,15 @@ function cargarDashboard() {
   var alertsBody = document.getElementById('alerts-body');
   mostrarLoader(alertsBody);
 
-  App.api.getDashboard()
-    .then(function (data) {
+  var promise;
+  if (App.data.dashboard) {
+    promise = Promise.resolve(App.data.dashboard);
+  } else {
+    promise = App.api.getDashboard();
+  }
+
+  promise.then(function (data) {
+    if (!App.data.dashboard) App.data.dashboard = data;
       document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
       document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
       document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
@@ -943,8 +1007,21 @@ function analizarConGeminiFresco() {
   btnPanel.textContent = '◈ Analizando...';
   results.style.display = 'none';
 
+  var progressBar = document.getElementById('ia-progress');
+  var progressBarInner = document.getElementById('ia-progress-bar');
+  var progressText = document.getElementById('ia-progress-text');
+  progressBar.style.display = 'block';
+  progressBarInner.style.width = '30%';
+  progressText.textContent = 'Consultando Gemini 2.5 Flash...';
+
+  var progTimer = setTimeout(function(){ progressBarInner.style.width = '60%'; progressText.textContent = 'Procesando análisis financiero...'; }, 2000);
+  var progTimer2 = setTimeout(function(){ progressBarInner.style.width = '85%'; progressText.textContent = 'Generando recomendaciones...'; }, 5000);
+
   App.api.analizarConGeminiFresco()
     .then(function (resp) {
+      clearTimeout(progTimer); clearTimeout(progTimer2);
+      progressBarInner.style.width = '100%';
+      setTimeout(function(){ progressBar.style.display = 'none'; }, 500);
       if (resp && resp.success && resp.analisis) {
         renderizarAnalisis(resp.analisis);
       } else {
@@ -952,6 +1029,8 @@ function analizarConGeminiFresco() {
       }
     })
     .catch(function (err) {
+      clearTimeout(progTimer); clearTimeout(progTimer2);
+      progressBar.style.display = 'none';
       var msg = err.message || err || 'Error al conectar con el servicio de IA.';
       if (msg.indexOf('rate') > -1 || msg.indexOf('límite') > -1) {
         msg = 'Límite de uso alcanzado. Intenta de nuevo en unos minutos.';
@@ -973,10 +1052,19 @@ function cargarCartera() {
   var tbody = document.querySelector('#view-cartera .data-table tbody');
   mostrarLoader(tbody);
 
-  var filtroTipo = document.getElementById('filter-tipo').value || null;
-  var filtroEstado = document.getElementById('filter-estado').value || null;
+  var filterTipoEl = document.getElementById('filter-tipo');
+  var filterEstadoEl = document.getElementById('filter-estado');
+  var filtroTipo = filterTipoEl.value || null;
+  var filtroEstado = filterEstadoEl.value || null;
 
-  App.api.getCartera(filtroEstado, filtroTipo)
+  var promise;
+  if (App.data.cartera && !filtroTipo && !filtroEstado) {
+    promise = Promise.resolve(App.data.cartera);
+  } else {
+    promise = App.api.getCartera(filtroEstado, filtroTipo);
+  }
+
+  promise
     .then(function (data) {
       tbody.innerHTML = '';
 
@@ -1060,6 +1148,8 @@ function ejecutarAbono() {
   if (!monto || monto < 1) { errorEl.textContent = 'Ingrese un monto válido.'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
+  if (!confirm('¿Confirmar el registro de este movimiento?\nMonto: ' + App.formatearMoneda(monto * 100) + '\nTipo: ' + tipo)) { return; }
+
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
@@ -1074,6 +1164,10 @@ function ejecutarAbono() {
       } else {
         document.getElementById('abono-monto').value = '';
         document.getElementById('abono-referencia').value = '';
+        var successEl = document.getElementById('abono-success');
+        successEl.textContent = 'Abono registrado exitosamente.';
+        successEl.style.display = 'block';
+        setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
         document.getElementById('abono-cliente').value = '';
         cargarDashboard();
         cargarCartera();
@@ -1115,7 +1209,7 @@ function cargarTerceros() {
             '<td style="font-weight:500">' + escapeHtml(item.nombre || '—') + '</td>' +
             '<td><span class="badge ' + tipoInfo.cls + '">' + tipoInfo.label + '</span></td>' +
             '<td class="td-mono">' + App.formatearMoneda(item.limite_credito) + '</td>' +
-            '<td><button class="btn btn-sm" style="font-size:8px">···</button></td>';
+            '<td><button class="btn btn-sm" style="font-size:8px" aria-label="Opciones de ' + escapeHtml(item.nombre || '') + '">···</button></td>';
           tbody.appendChild(tr);
         });
       }
@@ -1139,6 +1233,7 @@ function abrirModalTercero() {
   document.getElementById('tercero-activo').checked = true;
   document.getElementById('tercero-error').style.display = 'none';
   document.getElementById('modal-tercero').classList.add('active');
+  setTimeout(function(){ document.getElementById('tercero-nombre').focus(); }, 100);
 }
 
 function cerrarModalTercero() {
@@ -1189,10 +1284,10 @@ function guardarTercero() {
 }
 
 /* ── VENTAS ── */
-var productosCache = [];
+App.productosCache = [];
 
 function cargarVentas() {
-  productosCache = [];
+  App.productosCache = [];
   cargarVentasProductos();
   cargarVentasTerceros();
   document.getElementById('venta-tipo').value = 'CONTADO';
@@ -1208,7 +1303,7 @@ function cargarVentas() {
 
 function cargarVentasProductos() {
   App.api.getProductos().then(function (data) {
-    productosCache = data || [];
+    App.productosCache = data || [];
     var selects = document.querySelectorAll('.venta-producto-select');
     selects.forEach(function (sel) {
       llenarSelectProductos(sel);
@@ -1219,7 +1314,7 @@ function cargarVentasProductos() {
 function llenarSelectProductos(sel) {
   var current = sel.value;
   sel.innerHTML = '<option value="">Seleccionar...</option>';
-  productosCache.forEach(function (p) {
+  App.productosCache.forEach(function (p) {
     var opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.nombre + ' (' + p.id + ')';
@@ -1319,6 +1414,9 @@ function registrarVenta() {
     return;
   }
 
+  var totalStr = document.getElementById('venta-total').textContent;
+  if (!confirm('¿Confirmar el registro de esta venta?\nTotal: ' + totalStr + '\nTipo: ' + tipo)) { return; }
+
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
@@ -1363,6 +1461,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
     btn.classList.add('active');
     var viewId = btn.dataset.view;
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    document.getElementById('error-banner').classList.remove('show');
     var view = document.getElementById('view-' + viewId);
     if (view) {
       view.classList.add('active');
@@ -1412,6 +1511,16 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
   document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
   document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
+
+  document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
+  document.getElementById('filter-estado').addEventListener('change', cargarCartera);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var modal = document.getElementById('modal-tercero');
+      if (modal.classList.contains('active')) cerrarModalTercero();
+    }
+  });
 });
 </script>
 </body>
