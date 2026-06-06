@@ -80,20 +80,25 @@ const AuthService = {
   },
 
   getApiKey(keyName) {
+    // Primero intentar proxy externo
+    const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
+    if (proxyValue) return proxyValue;
+
+    // Fallback local (para no romper la instalación estándar local)
     const value = this._loadKey(keyName);
-    if (!value) {
-      const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
-      if (legacy) {
-        console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a ofuscado...");
-        this._storeKey(keyName, legacy);
-        PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
-        console.log("Migración completada para '" + keyName + "'.");
-        return legacy;
-      }
-      console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
-      throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada.");
+    if (value) return value;
+
+    const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
+    if (legacy) {
+      console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a ofuscado...");
+      this._storeKey(keyName, legacy);
+      PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
+      console.log("Migración completada para '" + keyName + "'.");
+      return legacy;
     }
-    return value;
+
+    console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
+    throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada en proxy ni localmente.");
   },
 
   removeApiKey(keyName) {

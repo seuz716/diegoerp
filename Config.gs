@@ -48,15 +48,23 @@ let _SHEETS_CACHE = {};
  * Resuelve Problema #5: getSheet() sin cacheo del objeto Sheet
  */
 function getSheet(name) {
-  if (!_SHEETS_CACHE[name]) {
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    _SHEETS_CACHE[name] = spreadsheet.getSheetByName(name);
-    if (!_SHEETS_CACHE[name]) {
-      console.error("Error: Hoja no encontrada: " + name);
-      throw new Error("Hoja no encontrada: " + name);
-    }
+  if (_SHEETS_CACHE[name]) return _SHEETS_CACHE[name];
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) {
+    console.error("Error: Hoja no encontrada: " + name);
+    throw new Error("Hoja no encontrada: " + name);
   }
-  return _SHEETS_CACHE[name];
+
+  // Limitar caché a 10 hojas, eliminar la más antigua (orden de inserción)
+  const keys = Object.keys(_SHEETS_CACHE);
+  if (keys.length >= 10) {
+    delete _SHEETS_CACHE[keys[0]];
+  }
+
+  _SHEETS_CACHE[name] = sheet;
+  return sheet;
 }
 
 function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ""); }
@@ -66,8 +74,16 @@ function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(
  * Usa parseInt porque el sheet almacena montos en centavos sin decimales.
  */
 function _parseMoneda(v, defaultVal) {
-  const n = parseInt(v, 10);
-  return isNaN(n) ? (defaultVal || 0) : n;
+  if (v === null || v === undefined) return defaultVal || 0;
+  const raw = String(v).trim();
+  if (raw === "") return defaultVal || 0;
+  const num = Number(raw);
+  if (isNaN(num)) return defaultVal || 0;
+  if (num % 1 !== 0) {
+    console.warn(`Valor con decimales rechazado: ${raw}. Use centavos (entero).`);
+    throw new Error(`Monto inválido: ${raw}. Ingrese valores en centavos (sin decimales).`);
+  }
+  return num;
 }
 
 function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }
@@ -93,14 +109,20 @@ function _today() {
  * Devuelve Date(0) si no es una fecha válida.
  */
 function _safeDate(v) {
+  if (v === null || v === undefined || String(v).trim() === "") {
+    return null;
+  }
   try {
     const tz = _getTimeZone();
     const d = v instanceof Date ? v : new Date(v);
-    if (!_isValidDate(d)) return new Date(0);
+    if (!_isValidDate(d)) {
+      throw new Error(`Fecha inválida: ${v}`);
+    }
     const s = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
     return new Date(s + 'T00:00:00');
   } catch (e) {
-    return new Date(0);
+    console.error(`Fecha inválida detectada: ${v}`);
+    throw new Error(`No se puede procesar fecha: ${v}. Corrija el dato en la hoja.`);
   }
 }
 

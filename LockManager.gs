@@ -10,7 +10,7 @@ const LOCK_MANAGER = {
   MAX_RETRIES: 4,
   BASE_BACKOFF: 500,
   RESOURCE_LOCK_WAIT: 1500,
-  RESOURCE_LOCK_TIMEOUT: 10000,
+  RESOURCE_LOCK_TIMEOUT: 25000,
   RESOURCE_TTL_MS: 45000,
   LOCK_PREFIX: "LOCK_",
 
@@ -21,10 +21,11 @@ const LOCK_MANAGER = {
   acquireResourceLock(resourceId) {
     const properties = PropertiesService.getScriptProperties();
     const lockKey = this.LOCK_PREFIX + resourceId;
+    const MAX_RETRIES = 10;
     let attempt = 0;
     const startTime = Date.now();
 
-    while (attempt < this.MAX_RETRIES) {
+    while (attempt < MAX_RETRIES) {
       const globalLock = LockService.getScriptLock();
       if (globalLock.tryLock(this.RESOURCE_LOCK_WAIT)) {
         try {
@@ -37,6 +38,8 @@ const LOCK_MANAGER = {
               const parsed = JSON.parse(raw);
               if (parsed.expiresAt && parsed.expiresAt > now) {
                 isLocked = true;
+              } else {
+                properties.deleteProperty(lockKey); // Limpiar lock expirado
               }
             } catch (e) {
               isLocked = false;
@@ -55,12 +58,12 @@ const LOCK_MANAGER = {
       }
 
       attempt++;
-      if (attempt < this.MAX_RETRIES && Date.now() - startTime < this.RESOURCE_LOCK_TIMEOUT) {
+      if (attempt < MAX_RETRIES && Date.now() - startTime < this.RESOURCE_LOCK_TIMEOUT) {
         Utilities.sleep(this._backoffMs(attempt));
       }
     }
 
-    throw new Error('El sistema está ocupado. Por favor reintenta en 30s.');
+    throw new Error(`No se pudo adquirir el bloqueo para el recurso ${resourceId} después de ${MAX_RETRIES} intentos.`);
   },
 
   _releaseResourceLock(lockKey) {
@@ -91,7 +94,7 @@ const LOCK_MANAGER = {
   },
 
   _backoffMs(attempt) {
-    const baseWait = this.BASE_BACKOFF * Math.pow(2, attempt - 1);
+    const baseWait = Math.min(3000, this.BASE_BACKOFF * Math.pow(2, attempt - 1));
     const jitterRatio = 0.3 + Math.random() * 0.2;
     const jitter = baseWait * jitterRatio * (Math.random() * 2 - 1);
     return Math.max(500, baseWait + jitter);

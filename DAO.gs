@@ -197,29 +197,31 @@ const DAO = {
       throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
     }
 
-    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
-
-    let minRow = Infinity;
-    let maxRow = -Infinity;
-
-    const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
-    const minColIdx = Math.min(COL.saldo, COL.estado);
-    const maxColIdx = Math.max(COL.saldo, COL.estado, hasVencidaTs ? COL.vencida_timestamp : COL.estado);
-    const numColsToProcess = maxColIdx - minColIdx + 1;
-
-    const rowMap = new Map();
-    for (const cambio of cambios) {
-      if (cambio.rowIndex > 0) {
-        minRow = Math.min(minRow, cambio.rowIndex);
-        maxRow = Math.max(maxRow, cambio.rowIndex);
-        rowMap.set(cambio.rowIndex, cambio);
-      }
-    }
-
-    if (minRow === Infinity) return true;
+    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
 
     try {
+      const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+      const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+
+      let minRow = Infinity;
+      let maxRow = -Infinity;
+
+      const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
+      const minColIdx = Math.min(COL.saldo, COL.estado);
+      const maxColIdx = Math.max(COL.saldo, COL.estado, hasVencidaTs ? COL.vencida_timestamp : COL.estado);
+      const numColsToProcess = maxColIdx - minColIdx + 1;
+
+      const rowMap = new Map();
+      for (const cambio of cambios) {
+        if (cambio.rowIndex > 0) {
+          minRow = Math.min(minRow, cambio.rowIndex);
+          maxRow = Math.max(maxRow, cambio.rowIndex);
+          rowMap.set(cambio.rowIndex, cambio);
+        }
+      }
+
+      if (minRow === Infinity) return true;
+
       const numRowsToProcess = maxRow - minRow + 1;
       const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
       const values = targetRange.getValues();
@@ -243,6 +245,10 @@ const DAO = {
     } catch (e) {
       Logger.log("ERROR updateCarteraBatch: " + e.toString());
       throw e;
+    } finally {
+      if (lock) {
+        lock.releaseLock();
+      }
     }
   },
 

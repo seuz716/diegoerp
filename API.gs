@@ -153,6 +153,7 @@ function procesarVenta(carrito, opciones) {
  */
 function getProductos() {
   try {
+    validateAndMapSchemas();
     AuthService.checkPermission("revisar_inventario");
     const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
     const data = sheet.getDataRange().getValues();

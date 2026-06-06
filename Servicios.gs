@@ -30,9 +30,23 @@ function procesarVentaV2(carrito, opciones) {
   }
 
   for (const item of carrito) {
-    if (!item.id || !item.cantidad || item.cantidad <= 0) {
-      return _error(`Producto inválido en el carrito: ${item.id || "sin ID"}.`);
+    const id = String(item.id || "").trim();
+    if (!id) return _error("ID de producto inválido.");
+    
+    const cantidad = Number(item.cantidad);
+    if (isNaN(cantidad) || cantidad <= 0 || cantidad % 1 !== 0) {
+      return _error(`Cantidad inválida para ${id}`);
     }
+
+    const precio = Number(item.precio);
+    if (isNaN(precio) || precio < 0 || precio % 1 !== 0) {
+      return _error(`Precio inválido para ${id}`);
+    }
+
+    // Sanitizar
+    item.id = id;
+    item.cantidad = cantidad;
+    item.precio = precio;
   }
 
   const errorStock = _validarStockCarrito(carrito);
@@ -295,13 +309,13 @@ function _validarStockCarrito(carrito) {
 
   for (const item of carrito) {
     const id = String(item.id || "").trim();
-    const cantidad = parseInt(item.cantidad) || 0;
+    const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
     let encontrado = false;
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][COL.id] || "").trim() === id) {
-        const stock = parseInt(data[i][COL.stock]) || 0;
+        const stock = Number(data[i][COL.stock]) || 0;
         if (stock < cantidad) {
           return `Stock insuficiente para ${data[i][COL.nombre] || id}: disponible ${stock}, solicitado ${cantidad}`;
         }
@@ -323,12 +337,12 @@ function _descontarInventario(carrito) {
 
   for (const item of carrito) {
     const id = String(item.id || "").trim();
-    const cantidad = parseInt(item.cantidad) || 0;
+    const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][COL.id] || "").trim() === id) {
-        const stockActual = parseInt(data[i][COL.stock]) || 0;
+        const stockActual = Number(data[i][COL.stock]) || 0;
         const nuevoStock = Math.max(0, stockActual - cantidad);
         sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
         data[i][COL.stock] = nuevoStock;

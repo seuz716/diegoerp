@@ -87,6 +87,8 @@ let CACHE = {
    * Recarga caché (permite forzar refresco)
    */
   refresh(forceRefresh = false) {
+    validateAndMapSchemas();
+
     if (forceRefresh) {
         this.invalidate();
     }

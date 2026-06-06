@@ -950,10 +950,35 @@ function cargarDashboard() {
         data.alertas.forEach(function (a, i) {
           var row = document.createElement('div');
           row.className = 'alert-row' + (i === 0 ? ' critical' : '');
-          row.innerHTML =
-            '<div class="rank' + (i === 0 ? ' top' : '') + '">#' + (i + 1) + '</div>' +
-            '<div><div class="alert-name">' + escapeHtml(a.nombre || '—') + '</div><div class="alert-id">' + escapeHtml(a.id_tercero || '') + '</div></div>' +
-            '<div class="alert-right"><div class="alert-amount">' + App.formatearMoneda(a.saldo) + '</div><div class="alert-dias">' + (a.dias || 0) + ' d' + (a.dias === 1 ? 'ía' : 'ías') + '</div></div>';
+
+          var rankDiv = document.createElement('div');
+          rankDiv.className = 'rank' + (i === 0 ? ' top' : '');
+          rankDiv.textContent = '#' + (i + 1);
+          row.appendChild(rankDiv);
+
+          var infoDiv = document.createElement('div');
+          var nameDiv = document.createElement('div');
+          nameDiv.className = 'alert-name';
+          nameDiv.textContent = a.nombre || '—';
+          var idDiv = document.createElement('div');
+          idDiv.className = 'alert-id';
+          idDiv.textContent = a.id_tercero || '';
+          infoDiv.appendChild(nameDiv);
+          infoDiv.appendChild(idDiv);
+          row.appendChild(infoDiv);
+
+          var rightDiv = document.createElement('div');
+          rightDiv.className = 'alert-right';
+          var amountDiv = document.createElement('div');
+          amountDiv.className = 'alert-amount';
+          amountDiv.textContent = App.formatearMoneda(a.saldo);
+          var diasDiv = document.createElement('div');
+          diasDiv.className = 'alert-dias';
+          diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? 'ía' : 'ías');
+          rightDiv.appendChild(amountDiv);
+          rightDiv.appendChild(diasDiv);
+          row.appendChild(rightDiv);
+
           container.appendChild(row);
         });
       }
@@ -967,57 +992,120 @@ function cargarDashboard() {
     });
 }
 
+function crearSeccionIA(labelText) {
+  var sec = document.createElement('div');
+  sec.className = 'ir-section';
+  if (labelText) {
+    var lbl = document.createElement('div');
+    lbl.className = 'ir-label';
+    lbl.textContent = labelText;
+    sec.appendChild(lbl);
+  }
+  return sec;
+}
+
 function renderizarAnalisis(analisis) {
   var c = document.getElementById('ia-results');
-  var html = '<div class="ir-section">';
-  html += '<div class="ir-label">Resumen ejecutivo</div>';
-  html += '<div class="ir-value">' + escapeHtml(analisis.resumen_ejecutivo || '') + '</div>';
-  html += '</div>';
-  html += '<div class="ir-section"><div class="ir-badge">Confianza: ' + (analisis.nivel_confianza_general || 0) + '%</div></div>';
+  c.textContent = '';
 
+  // Resumen ejecutivo
+  var secResumen = crearSeccionIA('Resumen ejecutivo');
+  var valResumen = document.createElement('div');
+  valResumen.className = 'ir-value';
+  valResumen.textContent = analisis.resumen_ejecutivo || '';
+  secResumen.appendChild(valResumen);
+  c.appendChild(secResumen);
+
+  // Nivel de confianza
+  var secConfianza = crearSeccionIA(null);
+  var badge = document.createElement('div');
+  badge.className = 'ir-badge';
+  badge.textContent = 'Confianza: ' + (analisis.nivel_confianza_general || 0) + '%';
+  secConfianza.appendChild(badge);
+  c.appendChild(secConfianza);
+
+  // Alertas críticas
   if (analisis.alertas_criticas && analisis.alertas_criticas.length) {
-    html += '<div class="ir-section"><div class="ir-label">Alertas críticas</div>';
+    var secAlertas = crearSeccionIA('Alertas críticas');
     analisis.alertas_criticas.forEach(function (a) {
-      html += '<div class="ir-alert-item">' + escapeHtml(a.titulo || a.mensaje || a.descripcion || '') + '</div>';
+      var item = document.createElement('div');
+      item.className = 'ir-alert-item';
+      item.textContent = a.titulo || a.mensaje || a.descripcion || '';
+      secAlertas.appendChild(item);
     });
-    html += '</div>';
+    c.appendChild(secAlertas);
   }
 
+  // Análisis de riesgo
   if (analisis.analisis_riesgo_cartera) {
     var r = analisis.analisis_riesgo_cartera;
-    html += '<div class="ir-section"><div class="ir-label">Análisis de riesgo</div><div class="ir-grid">';
+    var secRiesgo = crearSeccionIA('Análisis de riesgo');
+    var grid = document.createElement('div');
+    grid.className = 'ir-grid';
     Object.keys(r).forEach(function (k) {
-      html += '<div class="ir-grid-item"><div class="ir-glabel">' + escapeHtml(k.replace(/_/g, ' ')) + '</div><div class="ir-gvalue">' + escapeHtml(String(r[k])) + '</div></div>';
+      var gridItem = document.createElement('div');
+      gridItem.className = 'ir-grid-item';
+      var glabel = document.createElement('div');
+      glabel.className = 'ir-glabel';
+      glabel.textContent = k.replace(/_/g, ' ');
+      var gvalue = document.createElement('div');
+      gvalue.className = 'ir-gvalue';
+      gvalue.textContent = String(r[k]);
+      gridItem.appendChild(glabel);
+      gridItem.appendChild(gvalue);
+      grid.appendChild(gridItem);
     });
-    html += '</div></div>';
+    secRiesgo.appendChild(grid);
+    c.appendChild(secRiesgo);
   }
 
+  // Segmentación
   if (analisis.segmentacion_terceros) {
     var s = analisis.segmentacion_terceros;
-    html += '<div class="ir-section"><div class="ir-label">Segmentación</div><div class="ir-grid">';
+    var secSeg = crearSeccionIA('Segmentación');
+    var gridSeg = document.createElement('div');
+    gridSeg.className = 'ir-grid';
     Object.keys(s).forEach(function (k) {
-      html += '<div class="ir-grid-item"><div class="ir-glabel">' + escapeHtml(k.replace(/_/g, ' ')) + '</div><div class="ir-gvalue">' + escapeHtml(String(s[k])) + '</div></div>';
+      var gridItem = document.createElement('div');
+      gridItem.className = 'ir-grid-item';
+      var glabel = document.createElement('div');
+      glabel.className = 'ir-glabel';
+      glabel.textContent = k.replace(/_/g, ' ');
+      var gvalue = document.createElement('div');
+      gvalue.className = 'ir-gvalue';
+      gvalue.textContent = String(s[k]);
+      gridItem.appendChild(glabel);
+      gridItem.appendChild(gvalue);
+      gridSeg.appendChild(gridItem);
     });
-    html += '</div></div>';
+    secSeg.appendChild(gridSeg);
+    c.appendChild(secSeg);
   }
 
+  // Anomalías
   if (analisis.anomalias_detectadas && analisis.anomalias_detectadas.length) {
-    html += '<div class="ir-section"><div class="ir-label">Anomalías detectadas</div>';
+    var secAno = crearSeccionIA('Anomalías detectadas');
     analisis.anomalias_detectadas.forEach(function (a) {
-      html += '<div class="ir-ano-item">' + escapeHtml(typeof a === 'string' ? a : (a.titulo || a.mensaje || a.descripcion || JSON.stringify(a))) + '</div>';
+      var item = document.createElement('div');
+      item.className = 'ir-ano-item';
+      item.textContent = typeof a === 'string' ? a : (a.titulo || a.mensaje || a.descripcion || JSON.stringify(a));
+      secAno.appendChild(item);
     });
-    html += '</div>';
+    c.appendChild(secAno);
   }
 
+  // Recomendaciones
   if (analisis.recomendaciones_accionables && analisis.recomendaciones_accionables.length) {
-    html += '<div class="ir-section"><div class="ir-label">Recomendaciones</div>';
+    var secRec = crearSeccionIA('Recomendaciones');
     analisis.recomendaciones_accionables.forEach(function (r) {
-      html += '<div class="ir-rec-item">' + escapeHtml(typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || JSON.stringify(r))) + '</div>';
+      var item = document.createElement('div');
+      item.className = 'ir-rec-item';
+      item.textContent = typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || JSON.stringify(r));
+      secRec.appendChild(item);
     });
-    html += '</div>';
+    c.appendChild(secRec);
   }
 
-  c.innerHTML = html;
   c.style.display = 'block';
 }
 
@@ -1110,24 +1198,69 @@ function cargarCartera() {
           var tr = document.createElement('tr');
           if (isVencida) tr.className = 'row-red';
 
-          var vencHtml;
+          // Columna: Fecha
+          var tdFecha = document.createElement('td');
+          tdFecha.className = 'td-mono td-muted';
+          tdFecha.textContent = App.formatearFecha(item.fecha);
+          tr.appendChild(tdFecha);
+
+          // Columna: Tercero
+          var tdTercero = document.createElement('td');
+          var nombreDiv = document.createElement('div');
+          nombreDiv.style.fontWeight = '500';
+          nombreDiv.textContent = item.nombre_tercero || '—';
+          var idTerceroDiv = document.createElement('div');
+          idTerceroDiv.style.cssText = 'font-size:10px;color:var(--muted)';
+          idTerceroDiv.textContent = item.id_tercero || '';
+          tdTercero.appendChild(nombreDiv);
+          tdTercero.appendChild(idTerceroDiv);
+          tr.appendChild(tdTercero);
+
+          // Columna: Saldo
+          var tdSaldo = document.createElement('td');
+          tdSaldo.className = 'td-mono';
+          tdSaldo.style.fontWeight = '500';
+          if (isVencida) tdSaldo.style.color = 'var(--red)';
+          tdSaldo.textContent = App.formatearMoneda(item.saldo);
+          tr.appendChild(tdSaldo);
+
+          // Columna: Estado
+          var tdEstado = document.createElement('td');
+          var badgeSpan = document.createElement('span');
+          badgeSpan.className = 'badge ' + estadoInfo.cls;
+          badgeSpan.textContent = estadoInfo.label;
+          tdEstado.appendChild(badgeSpan);
+          tr.appendChild(tdEstado);
+
+          // Columna: Vencimiento
+          var tdVenc = document.createElement('td');
           if (item.fecha_vencimiento) {
             if (isVencida && item.dias_vencido > 0) {
-              vencHtml = '<div class="td-mono" style="font-size:11px">' + App.formatearFecha(item.fecha_vencimiento) + '</div>' +
-                '<div style="font-size:10px;color:var(--red)">' + item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías') + '</div>';
+              var vencFechaDiv = document.createElement('div');
+              vencFechaDiv.className = 'td-mono';
+              vencFechaDiv.style.fontSize = '11px';
+              vencFechaDiv.textContent = App.formatearFecha(item.fecha_vencimiento);
+              var vencDiasDiv = document.createElement('div');
+              vencDiasDiv.style.cssText = 'font-size:10px;color:var(--red)';
+              vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías');
+              tdVenc.appendChild(vencFechaDiv);
+              tdVenc.appendChild(vencDiasDiv);
             } else {
-              vencHtml = '<span class="td-mono" style="font-size:11px">' + App.formatearFecha(item.fecha_vencimiento) + '</span>';
+              var vencSpan = document.createElement('span');
+              vencSpan.className = 'td-mono';
+              vencSpan.style.fontSize = '11px';
+              vencSpan.textContent = App.formatearFecha(item.fecha_vencimiento);
+              tdVenc.appendChild(vencSpan);
             }
           } else {
-            vencHtml = '<span class="td-mono" style="font-size:11px">—</span>';
+            var vencDashSpan = document.createElement('span');
+            vencDashSpan.className = 'td-mono';
+            vencDashSpan.style.fontSize = '11px';
+            vencDashSpan.textContent = '—';
+            tdVenc.appendChild(vencDashSpan);
           }
+          tr.appendChild(tdVenc);
 
-          tr.innerHTML =
-            '<td class="td-mono td-muted">' + App.formatearFecha(item.fecha) + '</td>' +
-            '<td><div style="font-weight:500">' + escapeHtml(item.nombre_tercero || '—') + '</div><div style="font-size:10px;color:var(--muted)">' + escapeHtml(item.id_tercero || '') + '</div></td>' +
-            '<td class="td-mono" style="font-weight:500' + (isVencida ? ';color:var(--red)' : '') + '">' + App.formatearMoneda(item.saldo) + '</td>' +
-            '<td><span class="badge ' + estadoInfo.cls + '">' + estadoInfo.label + '</span></td>' +
-            '<td>' + vencHtml + '</td>';
           tbody.appendChild(tr);
         });
       }
@@ -1236,12 +1369,43 @@ function cargarTerceros() {
         data.forEach(function (item) {
           var tipoInfo = App.mapearTipoTercero(item.tipo);
           var tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td class="td-mono td-muted">' + escapeHtml(item.id || '—') + '</td>' +
-            '<td style="font-weight:500">' + escapeHtml(item.nombre || '—') + '</td>' +
-            '<td><span class="badge ' + tipoInfo.cls + '">' + tipoInfo.label + '</span></td>' +
-            '<td class="td-mono">' + App.formatearMoneda(item.limite_credito) + '</td>' +
-            '<td><button class="btn btn-sm" style="font-size:8px" aria-label="Opciones de ' + escapeHtml(item.nombre || '') + '">···</button></td>';
+
+          // Columna: ID
+          var tdId = document.createElement('td');
+          tdId.className = 'td-mono td-muted';
+          tdId.textContent = item.id || '—';
+          tr.appendChild(tdId);
+
+          // Columna: Nombre
+          var tdNombre = document.createElement('td');
+          tdNombre.style.fontWeight = '500';
+          tdNombre.textContent = item.nombre || '—';
+          tr.appendChild(tdNombre);
+
+          // Columna: Tipo
+          var tdTipo = document.createElement('td');
+          var tipoSpan = document.createElement('span');
+          tipoSpan.className = 'badge ' + tipoInfo.cls;
+          tipoSpan.textContent = tipoInfo.label;
+          tdTipo.appendChild(tipoSpan);
+          tr.appendChild(tdTipo);
+
+          // Columna: Límite crédito
+          var tdLimite = document.createElement('td');
+          tdLimite.className = 'td-mono';
+          tdLimite.textContent = App.formatearMoneda(item.limite_credito);
+          tr.appendChild(tdLimite);
+
+          // Columna: Acciones
+          var tdAcciones = document.createElement('td');
+          var btnOpciones = document.createElement('button');
+          btnOpciones.className = 'btn btn-sm';
+          btnOpciones.style.fontSize = '8px';
+          btnOpciones.setAttribute('aria-label', 'Opciones de ' + (item.nombre || ''));
+          btnOpciones.textContent = '···';
+          tdAcciones.appendChild(btnOpciones);
+          tr.appendChild(tdAcciones);
+
           tbody.appendChild(tr);
         });
       }
@@ -1521,9 +1685,15 @@ function cargarUserInfo() {
   App.api.getUserInfo()
     .then(function (info) {
       if (info && info.email) {
-        userEl.innerHTML =
-          '<div class="user-email">' + escapeHtml(info.email) + '</div>' +
-          '<div class="user-role">' + escapeHtml(info.role || 'Sin rol') + '</div>';
+        userEl.textContent = '';
+        var emailDiv = document.createElement('div');
+        emailDiv.className = 'user-email';
+        emailDiv.textContent = info.email;
+        var roleDiv = document.createElement('div');
+        roleDiv.className = 'user-role';
+        roleDiv.textContent = info.role || 'Sin rol';
+        userEl.appendChild(emailDiv);
+        userEl.appendChild(roleDiv);
       } else {
         userEl.innerHTML = '<div class="user-error">Sesión no disponible</div>';
       }

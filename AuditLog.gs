@@ -24,8 +24,8 @@ const LOG_ENGINE = {
         tabla,
         idRegistro,
         usuario,
-        JSON.stringify(datosPrevios || {}),
-        JSON.stringify(datosNuevos || {}),
+        JSON.stringify(_sanitizeForLog(datosPrevios || {})),
+        JSON.stringify(_sanitizeForLog(datosNuevos || {})),
         estado,
       ];
 
@@ -80,3 +80,28 @@ const LOG_ENGINE = {
     }
   },
 };
+
+function _sanitizeForLog(obj) {
+  if (obj === null || obj === undefined) return {};
+  const sensitiveKeys = ['api_key', 'password', 'token', 'secret', 'authorization'];
+  let safe;
+  try {
+    safe = JSON.parse(JSON.stringify(obj));
+  } catch (e) {
+    return { error: "[SERIALIZATION_FAILED]" };
+  }
+  const sanitize = (o) => {
+    if (!o || typeof o !== 'object') return;
+    for (let key in o) {
+      if (Object.prototype.hasOwnProperty.call(o, key)) {
+        if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+          o[key] = '[REDACTED]';
+        } else if (o[key] && typeof o[key] === 'object') {
+          sanitize(o[key]);
+        }
+      }
+    }
+  };
+  sanitize(safe);
+  return safe;
+}
