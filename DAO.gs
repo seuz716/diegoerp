@@ -99,17 +99,18 @@ const DAO = {
     for (const group of groups) {
       const values = sheet.getRange(group.start, 1, group.end - group.start + 1, numCols).getValues();
       for (let i = 0; i < values.length; i++) {
-        items.push(this._rowToCarteraItem(values[i]));
+        items.push(this._rowToCarteraItem(values[i], group.start + i));
       }
     }
 
     return items;
   },
 
-  _rowToCarteraItem(row) {
+  _rowToCarteraItem(row, rowIndex) {
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     return {
       id: String(row[COL.id] || "").trim(),
+      rowIndex: rowIndex || 0,
       fecha: _safeDate(row[COL.fecha]),
       id_tercero: String(row[COL.id_tercero] || "").trim(),
       origen_id: String(row[COL.origen_id] || "").trim(),

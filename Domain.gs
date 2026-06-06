@@ -296,8 +296,6 @@ const DOMAIN = {
         CACHE.recoverFromStale();
       }
 
-      CACHE.invalidateCartera();
-
       const idCartera = (tipo === CARTERA_CONFIG.TIPOS.CXC ? "CXC" : "CXP") + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
 
       const record = {
@@ -307,6 +305,7 @@ const DOMAIN = {
       };
 
       DAO.createCartera(record);
+      CACHE.invalidateCartera();
       LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS");
       
       return idCartera;

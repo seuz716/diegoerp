@@ -170,7 +170,7 @@ function actualizarVencimientos() {
         {}, { marcados, revertidos, errores }, errores > 0 ? "WARNING" : "SUCCESS");
     }
 
-    CACHE.invalidateTerceros();
+    CACHE.invalidateCartera();
 
     return { success: true, marcados, revertidos, errores, timestamp: new Date().toISOString() };
 

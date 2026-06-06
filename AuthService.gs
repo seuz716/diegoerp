@@ -136,7 +136,20 @@ const AuthService = {
     }
   },
 
+  _isTriggerContext() {
+    try {
+      const email = Session.getActiveUser().getEmail();
+      return !email || email.indexOf("@") <= 0;
+    } catch (e) {
+      return true;
+    }
+  },
+
   checkPermission(accion) {
+    const isSystemAction = ["ejecutar_mantenimiento", "revisar_inventario", "enviar_alertas"].includes(accion);
+    if (isSystemAction && this._isTriggerContext()) {
+      return;
+    }
     const userEmail = this._getCurrentUser();
     if (!userEmail) {
       throw new Error("No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");

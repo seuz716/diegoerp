@@ -67,7 +67,7 @@ let CACHE = {
       if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
         return false;
       }
-      return false;
+      return true;
     }
     return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
   },
@@ -78,7 +78,7 @@ let CACHE = {
       if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
         return false;
       }
-      return false;
+      return true;
     }
     return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
   },
@@ -107,7 +107,7 @@ let CACHE = {
     this.carteraCircuitOpen = false;
     this._refreshTerceros();
     this._refreshCartera();
-    const restored = !this.tercerosStale || !this.carteraStale;
+    const restored = !this.tercerosStale && !this.carteraStale;
     Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored);
     return restored;
   },
