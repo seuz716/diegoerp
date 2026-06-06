@@ -222,7 +222,7 @@ const DOMAIN = {
           tipo_mov: (aplicado >= p.saldo) ? "CANCELACION" : "ABONO", referencia: refLimpia,
         });
 
-        txPlan.cambios.push({ rowIndex: p.rowIndex, saldo: nuevoSaldo, estado: nuevoEstado });
+        txPlan.cambios.push({ rowIndex: p.rowIndex, saldo: nuevoSaldo, estado: nuevoEstado, expectedVersion: p.version || 1 });
         restante -= aplicado;
       }
 

@@ -310,6 +310,7 @@ let CACHE = {
           estado: String(dataCartera[i][COL_C.estado] || "ABIERTA").trim(),
           fecha_vencimiento: _safeDate(dataCartera[i][COL_C.fecha_vencimiento]),
           vencida_timestamp: dataCartera[i][COL_C.vencida_timestamp] || null,
+          version: Number(dataCartera[i][COL_C.version]) || 1,
         });
       }
 

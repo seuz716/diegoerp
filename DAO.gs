@@ -188,8 +188,10 @@ const DAO = {
   },
 
   /**
-   * ACTUALIZACIÓN OPTIMIZADA - No lee Array entero, evita Timeout.
-   * Agrupa TODOS los cambios en una sola llamada setValues() para minimizar llamadas a la API.
+   * ACTUALIZACIÓN OPTIMIZADA con Optimistic Locking.
+   * Lee la columna `version` para cada fila y rechaza la escritura si otra
+   * ejecución ya modificó la fila (expectedVersion no coincide con sheet).
+   * Lanza OptimisticLockError si hay conflicto; el caller debe reintentar.
    */
   updateCarteraBatch(cambios) {
     if (!cambios || cambios.length === 0) return true;
@@ -203,14 +205,20 @@ const DAO = {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
       const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
 
-      let minRow = Infinity;
-      let maxRow = -Infinity;
-
       const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
-      const minColIdx = Math.min(COL.saldo, COL.estado);
-      const maxColIdx = Math.max(COL.saldo, COL.estado, hasVencidaTs ? COL.vencida_timestamp : COL.estado);
+      const hasVersionCheck = cambios.some(c => c.expectedVersion !== undefined);
+
+      // Calcular rango mínimo de columnas a leer/escribir.
+      // Siempre incluir COL.version si algún cambio lleva expectedVersion.
+      const colsToInclude = [COL.saldo, COL.estado];
+      if (hasVencidaTs) colsToInclude.push(COL.vencida_timestamp);
+      if (hasVersionCheck) colsToInclude.push(COL.version);
+      const minColIdx = Math.min(...colsToInclude);
+      const maxColIdx = Math.max(...colsToInclude);
       const numColsToProcess = maxColIdx - minColIdx + 1;
 
+      let minRow = Infinity;
+      let maxRow = -Infinity;
       const rowMap = new Map();
       for (const cambio of cambios) {
         if (cambio.rowIndex > 0) {
@@ -226,6 +234,23 @@ const DAO = {
       const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
       const values = targetRange.getValues();
 
+      // Validar versiones ANTES de cualquier escritura
+      if (hasVersionCheck) {
+        for (const [rowIndex, cambio] of rowMap.entries()) {
+          if (cambio.expectedVersion === undefined) continue;
+          const localRowIndex = rowIndex - minRow;
+          const localColVersion = COL.version - minColIdx;
+          const currentVersion = Number(values[localRowIndex][localColVersion]) || 1;
+          if (currentVersion !== cambio.expectedVersion) {
+            throw new Error(
+              `OptimisticLockError: fila ${rowIndex} fue modificada concurrentemente ` +
+              `(esperada v${cambio.expectedVersion}, actual v${currentVersion}). Reintente la operación.`
+            );
+          }
+        }
+      }
+
+      // Aplicar cambios
       for (const [rowIndex, cambio] of rowMap.entries()) {
         const localRowIndex = rowIndex - minRow;
         if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) {
@@ -236,6 +261,10 @@ const DAO = {
           if (cambio.vencida_timestamp !== undefined) {
             const localColIndexTs = COL.vencida_timestamp - minColIdx;
             values[localRowIndex][localColIndexTs] = cambio.vencida_timestamp;
+          }
+          if (hasVersionCheck && cambio.expectedVersion !== undefined) {
+            const localColVersion = COL.version - minColIdx;
+            values[localRowIndex][localColVersion] = cambio.expectedVersion + 1;
           }
         }
       }
@@ -251,6 +280,7 @@ const DAO = {
       }
     }
   },
+
 
   createMovimiento(mov) {
     if (!CACHE.ensureIntegrity('cartera')) {

@@ -377,9 +377,20 @@ function _descontarInventario(carrito) {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][COL.id] || "").trim() === id) {
         const stockActual = Number(data[i][COL.stock]) || 0;
+        const currentVersion = Number(data[i][COL.version]) || 1;
+
+        // Optimistic Locking: rechazar si la fila fue modificada entre _validarStock y _descontar
+        if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
+          throw new Error(
+            `OptimisticLockError: producto ${id} modificado concurrentemente ` +
+            `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
+          );
+        }
+
         const nuevoStock = Math.max(0, stockActual - cantidad);
-        sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
+        sheet.getRange(i + 1, COL.stock + 1, 1, 2).setValues([[nuevoStock, currentVersion + 1]]);
         data[i][COL.stock] = nuevoStock;
+        data[i][COL.version] = currentVersion + 1;
         break;
       }
     }
