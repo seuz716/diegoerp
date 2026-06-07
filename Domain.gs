@@ -78,6 +78,47 @@ var _Transaction = {
   },
 };
 
+function _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia) {
+  const movimientos = [];
+  const cambios = [];
+  let restante = valor;
+  let movIdx = 0;
+
+  for (const p of pendientes) {
+    if (restante <= 0) break;
+
+    const aplicado = Math.min(restante, p.saldo);
+    const nuevoSaldo = p.saldo - aplicado;
+    const nuevoEstado = nuevoSaldo <= 0 ? CARTERA_CONFIG.ESTADOS.CANCELADA : CARTERA_CONFIG.ESTADOS.PARCIAL;
+
+    movimientos.push({
+      id: idPrefijo + "_" + (movIdx++),
+      fecha: fechaMov,
+      id_cartera: p.id,
+      id_tercero: p.id_tercero,
+      valor: aplicado,
+      tipo_mov: (aplicado >= p.saldo) ? "CANCELACION" : "ABONO",
+      referencia: refLimpia,
+    });
+
+    cambios.push({
+      rowIndex: p.rowIndex,
+      saldo: nuevoSaldo,
+      estado: nuevoEstado,
+      expectedVersion: p.version || 1,
+    });
+
+    restante -= aplicado;
+  }
+
+  return {
+    movimientos: movimientos,
+    cambios: cambios,
+    aplicadoTotal: valor - restante,
+    restante: restante,
+  };
+}
+
 const DOMAIN = {
   saveTercero(tercero) {
     let lockAcquired = null;
@@ -162,98 +203,113 @@ const DOMAIN = {
   },
 
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {
-    let lockAcquired = null;
-    const txPlan = { movimientos: [], cambios: [], logEntry: null };
-    const tx = _Transaction.create();
+    const idTerceroLimpio = _sanitizeId(idTercero);
+    if (!idTerceroLimpio) return _error('ID tercero inválido.');
 
-    try {
-      const idTerceroLimpio = _sanitizeId(idTercero);
-      if (!idTerceroLimpio) return _error('ID tercero inválido.');
+    const valor = _parseMoneda(valorAbono, NaN);
+    if (isNaN(valor) || valor <= 0) return _error('Valor inválido (mínimo 1 centavo).');
 
-      // Lock Selectivo únicamente de ESE tercero.
-      lockAcquired = LOCK_MANAGER.acquireResourceLock(idTerceroLimpio);
+    const tipoLimpio = tipo === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
+    const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
 
-      const valor = _parseMoneda(valorAbono, NaN);
-      if (isNaN(valor) || valor <= 0) return _error('Valor inválido (mínimo 1 centavo).');
+    const MAX_RETRIES = 3;
 
-      const tercero = DAO.getTerceroById(idTerceroLimpio);
-      if (!tercero) {
-        LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio, {}, { error: "TERCERO_NO_EXISTE" }, "ERROR");
-        return _error(`Tercero ${idTerceroLimpio} no existe en la base de datos.`);
+    const _executeAbonoTx = () => {
+      let lockAcquired = null;
+      const tx = _Transaction.create();
+
+      try {
+        lockAcquired = LOCK_MANAGER.acquireResourceLock(idTerceroLimpio);
+
+        const tercero = DAO.getTerceroById(idTerceroLimpio);
+        if (!tercero) {
+          LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio, {}, { error: "TERCERO_NO_EXISTE" }, "ERROR");
+          return _error(`Tercero ${idTerceroLimpio} no existe en la base de datos.`);
+        }
+
+        CACHE.refresh();
+        const consistency = CACHE.verifyConsistency();
+        if (consistency.mismatched) {
+          Logger.log("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
+          CACHE.recoverFromStale();
+        }
+
+        const pendientes = DAO.getCarteraByTerceroAndTipo(idTerceroLimpio, tipoLimpio)
+          .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+
+        if (pendientes.length === 0) {
+          return _error("No hay cartera pendiente de ese tipo para este tercero.");
+        }
+
+        const totalDeuda = pendientes.reduce((s, p) => s + p.saldo, 0);
+        if (valor > totalDeuda) {
+          return _error(`Abono supera deuda total: $${_formatMoneda(valor)} > $${_formatMoneda(totalDeuda)}`);
+        }
+
+        const fechaMov = new Date();
+        const idPrefijo = "MOV" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+
+        const plan = _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia);
+
+        tx.begin();
+        tx.snapshotCarteraRows(plan.cambios.map(c => c.rowIndex));
+        tx.markMovPreAppend();
+
+        if (plan.movimientos.length > 0) {
+          for (const mov of plan.movimientos) { DAO.createMovimiento(mov); }
+        }
+        tx.markMovPostAppend();
+        DAO.updateCarteraBatch(plan.cambios);
+        tx.commit();
+
+        CACHE.invalidateCartera();
+
+        LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio,
+          { anterior_saldo: totalDeuda },
+          { nuevo_saldo: totalDeuda - valor, movimientos: plan.movimientos.length },
+          "SUCCESS");
+
+        return {
+          success: true,
+          aplicado: plan.aplicadoTotal,
+          restante: Math.max(0, plan.restante),
+          movimientos: plan.movimientos.length,
+        };
+
+      } catch (e) {
+        tx.rollback();
+        throw e;
+      } finally {
+        if (lockAcquired) lockAcquired.releaseLock();
       }
+    };
 
-      const tipoLimpio = tipo === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
-      const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = _executeAbonoTx();
+        return result;
+      } catch (e) {
+        const isOptimisticLock =
+          e.type === 'OPTIMISTIC_LOCK_FAILURE' ||
+          (e.message && e.message.includes('OptimisticLockError'));
 
-      CACHE.refresh();
-      const consistency = CACHE.verifyConsistency();
-      if (consistency.mismatched) {
-        Logger.log("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
-        CACHE.recoverFromStale();
+        if (!isOptimisticLock) {
+          LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTercero, {}, { error: e.toString() }, "FAILED");
+          return _error(e.message || "Error procesando abono.");
+        }
+
+        if (attempt < MAX_RETRIES - 1) {
+          CACHE.refresh(true);
+          const delay = 100 * Math.pow(2, attempt) + Math.random() * 50;
+          Logger.warn(`registrarAbonoAtomic retry #${attempt + 1} para ${idTerceroLimpio} tras OptimisticLockError`);
+          Utilities.sleep(delay);
+        }
       }
-
-      const pendientes = DAO.getCarteraByTerceroAndTipo(idTerceroLimpio, tipoLimpio)
-        .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
-
-      if (pendientes.length === 0) {
-        return _error("No hay cartera pendiente de ese tipo para este tercero.");
-      }
-
-      const totalDeuda = pendientes.reduce((s, p) => s + p.saldo, 0);
-      if (valor > totalDeuda) {
-        return _error(`Abono supera deuda total: $${_formatMoneda(valor)} > $${_formatMoneda(totalDeuda)}`);
-      }
-
-      let restante = valor;
-      const fechaMov = new Date();
-      const idPrefijo = "MOV" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-      let movIdx = 0;
-
-      for (const p of pendientes) {
-        if (restante <= 0) break;
-
-        const aplicado = Math.min(restante, p.saldo);
-        const nuevoSaldo = p.saldo - aplicado;
-        const nuevoEstado = nuevoSaldo <= 0 ? CARTERA_CONFIG.ESTADOS.CANCELADA : CARTERA_CONFIG.ESTADOS.PARCIAL;
-
-        txPlan.movimientos.push({
-          id: idPrefijo + "_" + (movIdx++), fecha: fechaMov, id_cartera: p.id,
-          id_tercero: idTerceroLimpio, valor: aplicado,
-          tipo_mov: (aplicado >= p.saldo) ? "CANCELACION" : "ABONO", referencia: refLimpia,
-        });
-
-        txPlan.cambios.push({ rowIndex: p.rowIndex, saldo: nuevoSaldo, estado: nuevoEstado, expectedVersion: p.version || 1 });
-        restante -= aplicado;
-      }
-
-      // ── TRANSACCIÓN: snapshot + escrituras con rollback compensatorio ──
-      tx.begin();
-      tx.snapshotCarteraRows(txPlan.cambios.map(c => c.rowIndex));
-      tx.markMovPreAppend();
-
-      if (txPlan.movimientos.length > 0) {
-        for (const mov of txPlan.movimientos) { DAO.createMovimiento(mov); }
-      }
-      tx.markMovPostAppend();
-      DAO.updateCarteraBatch(txPlan.cambios);
-
-      tx.commit();
-      // ── FIN TRANSACCIÓN ──
-
-      // Invalidar caché después de todas las escrituras para evitar lecturas parciales.
-      CACHE.invalidateCartera();
-
-      LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio, { anterior_saldo: totalDeuda }, { nuevo_saldo: totalDeuda - valor, movimientos: txPlan.movimientos.length }, "SUCCESS");
-
-      return { success: true, aplicado: valor - restante, restante: Math.max(0, restante), movimientos: txPlan.movimientos.length };
-
-    } catch (e) {
-      tx.rollback();
-      LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTercero, {}, { error: e.toString() }, "FAILED");
-      return _error(e.message || "Error procesando abono.");
-    } finally {
-      if (lockAcquired) lockAcquired.releaseLock();
     }
+
+    const msg = `Conflicto de concurrencia persistente para tercero ${idTerceroLimpio}. Operación abortada.`;
+    LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTercero, {}, { error: msg }, "FAILED");
+    return _error(msg);
   },
 
   actualizarCarteraBatch(cambios) {

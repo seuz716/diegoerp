@@ -3,6 +3,79 @@
  * Contiene funciones de alto nivel que orquestan las operaciones del DAO.
  */
 
+const VENTA_STATES = { INIT: 'INIT', STOCK_VALIDATED: 'STOCK_VALIDATED', INVENTORY_RESERVED: 'INVENTORY_RESERVED', CARTERA_CREATED: 'CARTERA_CREATED', COMPLETED: 'COMPLETED', FAILED: 'FAILED' };
+
+function _createStateMachine() {
+  const state = {
+    current: VENTA_STATES.INIT,
+    transitions: [],
+    compensations: [],
+    fail(reason) {
+      this.current = VENTA_STATES.FAILED;
+      for (let i = this.compensations.length - 1; i >= 0; i--) {
+        const comp = this.compensations[i];
+        try {
+          Logger.warn(`Rollback: ${comp.name}`);
+          comp.fn();
+        } catch (e) {
+          Logger.warn(`Rollback error in ${comp.name}: ${e.message}`);
+        }
+      }
+      return _error(reason);
+    },
+    transition(name, fn, compensation) {
+      this.current = VENTA_STATES[name];
+      fn();
+      this.transitions.push(name);
+      if (compensation) {
+        this.compensations.push({ name, fn: compensation });
+      }
+    }
+  };
+  return state;
+}
+
+function _validateCarrito(carrito) {
+  const consolidated = [];
+  const mapProductos = new Map();
+  const errors = [];
+
+  for (const item of carrito) {
+    const id = String(item.id || "").trim();
+    if (!id) {
+      errors.push("ID de producto inválido.");
+      return { valid: false, consolidated: [], errors };
+    }
+
+    const cantidad = Number(item.cantidad);
+    if (isNaN(cantidad) || cantidad <= 0 || cantidad % 1 !== 0) {
+      errors.push(`Cantidad inválida para ${id}`);
+      return { valid: false, consolidated: [], errors };
+    }
+
+    const precio = Number(item.precio);
+    if (isNaN(precio) || precio < 0 || precio % 1 !== 0) {
+      errors.push(`Precio inválido para ${id}`);
+      return { valid: false, consolidated: [], errors };
+    }
+
+    if (mapProductos.has(id)) {
+      const prodExistente = mapProductos.get(id);
+      if (prodExistente.precio !== precio) {
+        errors.push(`Precio inconsistente para el producto duplicado ${id}`);
+        return { valid: false, consolidated: [], errors };
+      }
+      prodExistente.cantidad += cantidad;
+    } else {
+      const prodLimpio = { id, cantidad, precio };
+      mapProductos.set(id, prodLimpio);
+      consolidated.push(prodLimpio);
+    }
+  }
+
+  return { valid: true, consolidated, errors: [] };
+}
+
 /**
  * Procesa una venta, ya sea al contado o a crédito.
  * @param {Array<Object>} carrito Lista de productos en el carrito.
@@ -11,6 +84,7 @@
  */
 function procesarVentaV2(carrito, opciones) {
   AuthService.checkPermission("registrar_venta");
+  const _startTime = Date.now();
 
   if (!carrito || !Array.isArray(carrito) || carrito.length === 0) {
     return _error("El carrito no puede estar vacío.");
@@ -29,74 +103,51 @@ function procesarVentaV2(carrito, opciones) {
     return _error("ID de tercero es requerido para ventas a crédito.");
   }
 
-  // Consolidar cantidades y validar productos duplicados
-  const carritoConsolidado = [];
-  const mapProductos = new Map();
-  for (const item of carrito) {
-    const id = String(item.id || "").trim();
-    if (!id) return _error("ID de producto inválido.");
-    
-    const cantidad = Number(item.cantidad);
-    if (isNaN(cantidad) || cantidad <= 0 || cantidad % 1 !== 0) {
-      return _error(`Cantidad inválida para ${id}`);
-    }
+  const validation = _validateCarrito(carrito);
+  if (!validation.valid) {
+    return _error(validation.errors[0]);
+  }
+  const carritoConsolidado = validation.consolidated;
 
-    const precio = Number(item.precio);
-    if (isNaN(precio) || precio < 0 || precio % 1 !== 0) {
-      return _error(`Precio inválido para ${id}`);
-    }
+  const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
 
-    if (mapProductos.has(id)) {
-      const prodExistente = mapProductos.get(id);
-      if (prodExistente.precio !== precio) {
-        return _error(`Precio inconsistente para el producto duplicado ${id}`);
+  // Pre-condition: fast fail-fast check for CXC before acquiring global lock
+  if (esCredito && idTercero) {
+    CACHE.refresh();
+    const tercero = CACHE.getTerceroRAW(idTercero);
+    if (!tercero) {
+      return _error(`Tercero ${idTercero} no encontrado.`);
+    }
+    if (tercero.limite_credito > 0) {
+      const saldoActual = CACHE.getSaldoTercero(idTercero);
+      if ((saldoActual + totalVenta) > tercero.limite_credito) {
+        return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
       }
-      prodExistente.cantidad += cantidad;
-    } else {
-      const prodLimpio = { id, cantidad, precio };
-      mapProductos.set(id, prodLimpio);
-      carritoConsolidado.push(prodLimpio);
     }
   }
 
-  // Adquirir bloqueo global de venta para evitar oversells concurrentes y proteger checks de stock
+  const state = _createStateMachine();
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
-  let inventarioDescontado = false;
 
   try {
-    const errorStock = _validarStockCarrito(carritoConsolidado);
-    if (errorStock) {
-      if (lock) lock.releaseLock();
-      return _error(errorStock);
-    }
+    state.transition('STOCK_VALIDATED', () => {
+      const errorStock = _validarStockCarrito(carritoConsolidado);
+      if (errorStock) throw new Error(errorStock);
+    });
 
-    const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+    state.transition('INVENTORY_RESERVED',
+      () => _descontarInventario(carritoConsolidado),
+      () => _revertirDescuentoInventario(carritoConsolidado)
+    );
 
-    if (esCredito && idTercero) {
-      CACHE.refresh();
-      const tercero = CACHE.getTerceroRAW(idTercero);
-      if (!tercero) {
-        if (lock) lock.releaseLock();
-        return _error(`Tercero ${idTercero} no encontrado.`);
+    state.transition('CARTERA_CREATED', () => {
+      if (esCredito && idTercero) {
+        const diasCredito = opciones.diasCredito || 30;
+        DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
       }
-      if (tercero.limite_credito > 0) {
-        const saldoActual = CACHE.getSaldoTercero(idTercero);
-        if ((saldoActual + totalVenta) > tercero.limite_credito) {
-          if (lock) lock.releaseLock();
-          return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
-        }
-      }
-    }
+    });
 
-    // 1. Ejecutar descuento de inventario
-    _descontarInventario(carritoConsolidado);
-    inventarioDescontado = true;
-
-    // 2. Intentar crear registro en Cartera
-    if (esCredito && idTercero) {
-      const diasCredito = opciones.diasCredito || 30;
-      DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
-    }
+    state.current = VENTA_STATES.COMPLETED;
 
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
       { items: carritoConsolidado.length },
@@ -104,20 +155,22 @@ function procesarVentaV2(carrito, opciones) {
       "SUCCESS"
     );
 
-    return { success: true, total: totalVenta, tipo: opciones.tipo, idTercero: idTercero || null };
-
+    return {
+      success: true,
+      total: totalVenta,
+      tipo: opciones.tipo,
+      idTercero: idTercero || null,
+      state: {
+        transitions: state.transitions,
+        durationMs: Date.now() - _startTime,
+      },
+    };
   } catch (e) {
-    // Si descontamos inventario pero falló la creación de cartera, revertimos el stock
-    if (inventarioDescontado) {
-      try {
-        _revertirDescuentoInventario(carritoConsolidado);
-      } catch (revertErr) {
-        console.error("CRITICAL: Falló reversión de descuento de inventario: " + revertErr.toString());
-      }
-    }
+    const msg = e.message || "Error procesando venta.";
+    state.fail(msg);
     LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idTercero || "CONTADO",
-      {}, { error: e.message || e.toString() }, "FAILED");
-    return _error(e.message || "Error procesando venta.");
+      {}, { error: msg }, "FAILED");
+    return _error(msg);
   } finally {
     if (lock) {
       lock.releaseLock();

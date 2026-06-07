@@ -27,6 +27,13 @@ const CONFIG = {
     PRODUCTOS: { id: 0, nombre: 1, stock: 2, precio: 3, version: 4 },
   },
   STOCK_MINIMO: 5,
+  SCHEMA_definitions: {
+    TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
+    CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp" },
+    MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
+    AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
+    PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio: "Precio" },
+  },
 };
 
 const ROLES = {
@@ -36,6 +43,11 @@ const ROLES = {
 };
 
 const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
+
+// ─ GLOBALES DE ESQUEMA ─
+
+let _schemaVersion = 0;
+let _schemaValidated = false;
 
 // ─ UTILIDADES BÁSICAS ─
 
@@ -65,6 +77,158 @@ function getSheet(name) {
 
   _SHEETS_CACHE[name] = sheet;
   return sheet;
+}
+
+// ─ MÉTODOS DE ESQUEMA EN CONFIG ─
+
+CONFIG.reloadSchema = function() {
+  const sheets = {
+    'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
+    'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
+    'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
+    'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
+    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
+  };
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const changes = [];
+
+  for (const [sheetName, mapping] of Object.entries(sheets)) {
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      if (sheetName === 'Productos') continue;
+      throw new Error(`Hoja obligatoria "${sheetName}" no encontrada.`);
+    }
+
+    const lastCol = sheet.getLastColumn();
+    if (lastCol === 0) continue;
+
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const expected = CONFIG.SCHEMA_definitions[mapping.key];
+
+    _SHEETS_CACHE[sheetName + '_meta'] = { lastRow: sheet.getLastRow(), lastCol: lastCol, headers: headers };
+
+    const sheetChanges = { sheet: sheetName, changes: [] };
+
+    for (const [key, expectedName] of Object.entries(expected)) {
+      const idx = headers.indexOf(expectedName);
+      if (idx === -1) {
+        throw new Error(`Columna obligatoria "${expectedName}" no encontrada en "${sheetName}".`);
+      }
+      const oldIdx = mapping.conf[mapping.key][key];
+      if (oldIdx !== idx) {
+        sheetChanges.changes.push({ key, from: oldIdx, to: idx });
+      }
+      mapping.conf[mapping.key][key] = idx;
+    }
+
+    const expectedNames = Object.values(expected);
+    const extraCols = headers.filter(h => h && !expectedNames.includes(h));
+    sheetChanges.extraColumns = extraCols;
+
+    if (sheetChanges.changes.length > 0 || extraCols.length > 0) {
+      changes.push(sheetChanges);
+    }
+  }
+
+  _schemaVersion = Date.now();
+  _schemaValidated = true;
+
+  return { success: true, changes: changes };
+};
+
+CONFIG.isSchemaStale = function(maxAgeMs) {
+  if (maxAgeMs === undefined) maxAgeMs = 3600000;
+  if (!_schemaVersion) return true;
+  if (Date.now() - _schemaVersion > maxAgeMs) return true;
+
+  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'];
+  for (const name of criticalSheets) {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    if (!sheet) continue;
+    const meta = _SHEETS_CACHE[name + '_meta'];
+    if (!meta) return true;
+    if (sheet.getLastRow() !== meta.lastRow || sheet.getLastColumn() !== meta.lastCol) return true;
+  }
+
+  return false;
+};
+
+CONFIG.getSchemaReport = function() {
+  const report = {
+    version: _schemaVersion,
+    sheetsValidated: [],
+    missingColumns: [],
+    extraColumns: [],
+    columnMappings: {}
+  };
+
+  const sheets = {
+    'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
+    'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
+    'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
+    'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
+    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
+  };
+
+  for (const [sheetName, mapping] of Object.entries(sheets)) {
+    report.sheetsValidated.push(sheetName);
+    report.columnMappings[sheetName] = Object.assign({}, mapping.conf[mapping.key]);
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    if (!sheet) continue;
+    const lastCol = sheet.getLastColumn();
+    if (lastCol === 0) continue;
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const expected = CONFIG.SCHEMA_definitions[mapping.key];
+    const expectedNames = Object.values(expected);
+
+    for (const [key, expectedName] of Object.entries(expected)) {
+      if (!headers.includes(expectedName)) {
+        report.missingColumns.push({ sheet: sheetName, key, expected: expectedName });
+      }
+    }
+
+    const extra = headers.filter(h => h && !expectedNames.includes(h));
+    if (extra.length > 0) {
+      report.extraColumns.push({ sheet: sheetName, columns: extra });
+    }
+  }
+
+  return report;
+};
+
+CONFIG.checkHeaderChanges = function() {
+  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'];
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  let changed = false;
+
+  for (const name of criticalSheets) {
+    const sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) continue;
+    const lastCol = sheet.getLastColumn();
+    if (lastCol === 0) continue;
+    const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const meta = _SHEETS_CACHE[name + '_meta'];
+    if (!meta) {
+      _schemaValidated = false;
+      changed = true;
+      continue;
+    }
+    if (JSON.stringify(meta.headers) !== JSON.stringify(currentHeaders)) {
+      _schemaValidated = false;
+      changed = true;
+    }
+  }
+
+  return changed;
+};
+
+// ─ FUNCIÓN LEGACY: DELEGADA A CONFIG.reloadSchema ─
+
+function validateAndMapSchemas() {
+  if (_schemaValidated) return;
+  CONFIG.reloadSchema();
 }
 
 function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ""); }
@@ -133,5 +297,3 @@ function _safeDate(v) {
 function _formatMoneda(centavos) {
   return (centavos / 100).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 }
-
-

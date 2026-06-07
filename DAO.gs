@@ -4,6 +4,15 @@
  * - #2: Escrito optimizado limitando getDataRange (Cuotas Scripting).
  */
 
+class DAOError extends Error {
+  constructor(message, code, details) {
+    super(message);
+    this.name = "DAOError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
 const DAO = {
   getTerceroById(id) {
     const idClean = _sanitizeId(id);
@@ -123,6 +132,18 @@ const DAO = {
     };
   },
 
+  _calculateColumnRange(cambios, COL) {
+    const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
+    const hasVersionCheck = cambios.some(c => c.expectedVersion !== undefined);
+    const colsToInclude = [COL.saldo, COL.estado];
+    if (hasVencidaTs) colsToInclude.push(COL.vencida_timestamp);
+    if (hasVersionCheck) colsToInclude.push(COL.version);
+    const minCol = Math.min(...colsToInclude);
+    const maxCol = Math.max(...colsToInclude);
+    const numCols = maxCol - minCol + 1;
+    return { minCol, maxCol, numCols, hasVersionCheck };
+  },
+
   /**
    * Escenarios donde el self-healing puede fallar incluso con este parche:
    * 1. Circuit breaker abierto — _refreshTerceros() falla y el caché no
@@ -192,6 +213,11 @@ const DAO = {
    * Lee la columna `version` para cada fila y rechaza la escritura si otra
    * ejecución ya modificó la fila (expectedVersion no coincide con sheet).
    * Lanza OptimisticLockError si hay conflicto; el caller debe reintentar.
+   *
+   * @param {Array} cambios Lista de objetos con { rowIndex, saldo, estado, expectedVersion?, vencida_timestamp? }
+   * @returns {boolean} true si la operación fue exitosa
+   * @throws {DAOError} SHEET_WRITE_FAILURE si falla la escritura a la hoja
+   * @throws {Error} OPTIMISTIC_LOCK_FAILURE si hay conflicto de versión optimista
    */
   updateCarteraBatch(cambios) {
     if (!cambios || cambios.length === 0) return true;
@@ -205,17 +231,7 @@ const DAO = {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
       const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
 
-      const hasVencidaTs = cambios.some(c => c.vencida_timestamp !== undefined);
-      const hasVersionCheck = cambios.some(c => c.expectedVersion !== undefined);
-
-      // Calcular rango mínimo de columnas a leer/escribir.
-      // Siempre incluir COL.version si algún cambio lleva expectedVersion.
-      const colsToInclude = [COL.saldo, COL.estado];
-      if (hasVencidaTs) colsToInclude.push(COL.vencida_timestamp);
-      if (hasVersionCheck) colsToInclude.push(COL.version);
-      const minColIdx = Math.min(...colsToInclude);
-      const maxColIdx = Math.max(...colsToInclude);
-      const numColsToProcess = maxColIdx - minColIdx + 1;
+      const { minCol, maxCol, numCols: numColsToProcess, hasVersionCheck } = this._calculateColumnRange(cambios, COL);
 
       let minRow = Infinity;
       let maxRow = -Infinity;
@@ -231,7 +247,7 @@ const DAO = {
       if (minRow === Infinity) return true;
 
       const numRowsToProcess = maxRow - minRow + 1;
-      const targetRange = sheet.getRange(minRow, minColIdx + 1, numRowsToProcess, numColsToProcess);
+      const targetRange = sheet.getRange(minRow, minCol + 1, numRowsToProcess, numColsToProcess);
       const values = targetRange.getValues();
 
       // Validar versiones ANTES de cualquier escritura
@@ -239,13 +255,19 @@ const DAO = {
         for (const [rowIndex, cambio] of rowMap.entries()) {
           if (cambio.expectedVersion === undefined) continue;
           const localRowIndex = rowIndex - minRow;
-          const localColVersion = COL.version - minColIdx;
+          const localColVersion = COL.version - minCol;
           const currentVersion = Number(values[localRowIndex][localColVersion]) || 1;
           if (currentVersion !== cambio.expectedVersion) {
-            throw new Error(
+            const err = new Error(
               `OptimisticLockError: fila ${rowIndex} fue modificada concurrentemente ` +
               `(esperada v${cambio.expectedVersion}, actual v${currentVersion}). Reintente la operación.`
             );
+            err.type = 'OPTIMISTIC_LOCK_FAILURE';
+            err.rowIndex = rowIndex;
+            err.expectedVersion = cambio.expectedVersion;
+            err.actualVersion = currentVersion;
+            err.retryable = true;
+            throw err;
           }
         }
       }
@@ -254,22 +276,31 @@ const DAO = {
       for (const [rowIndex, cambio] of rowMap.entries()) {
         const localRowIndex = rowIndex - minRow;
         if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) {
-          const localColIndexSaldo = COL.saldo - minColIdx;
-          const localColIndexEstado = COL.estado - minColIdx;
+          const localColIndexSaldo = COL.saldo - minCol;
+          const localColIndexEstado = COL.estado - minCol;
           values[localRowIndex][localColIndexSaldo] = cambio.saldo;
           values[localRowIndex][localColIndexEstado] = cambio.estado;
           if (cambio.vencida_timestamp !== undefined) {
-            const localColIndexTs = COL.vencida_timestamp - minColIdx;
+            const localColIndexTs = COL.vencida_timestamp - minCol;
             values[localRowIndex][localColIndexTs] = cambio.vencida_timestamp;
           }
           if (hasVersionCheck && cambio.expectedVersion !== undefined) {
-            const localColVersion = COL.version - minColIdx;
+            const localColVersion = COL.version - minCol;
             values[localRowIndex][localColVersion] = cambio.expectedVersion + 1;
           }
         }
       }
 
-      targetRange.setValues(values);
+      Logger.log(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
+
+      try {
+        targetRange.setValues(values);
+      } catch (e) {
+        const daoErr = new DAOError("Error al escribir en la hoja de cartera", 'SHEET_WRITE_FAILURE', e);
+        Logger.log("DAO.updateCarteraBatch: SHEET_WRITE_FAILURE - " + daoErr.toString());
+        throw daoErr;
+      }
+
       return true;
     } catch (e) {
       Logger.log("ERROR updateCarteraBatch: " + e.toString());

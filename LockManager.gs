@@ -3,6 +3,15 @@
  * Resuelve:
  * - #1: Condición de carrera (Lock Global vs Lock de Recurso)
  * - #6: Backoff exponencial con jitter seguro
+ *
+ * TTL Protocol:
+ * - Locks se almacenan en ScriptProperties con prefijo LOCK_ + resourceId
+ * - Cada lock contiene { expiresAt: timestamp } en ms desde epoch
+ * - TTL normal: RESOURCE_TTL_MS (45s)
+ * - TTL máximo aceptable: RESOURCE_LOCK_MAX_TTL_MS (120s)
+ * - Locks con expiresAt > now + RESOURCE_LOCK_MAX_TTL_MS se consideran corruptos
+ * - Cleanup periódico: cleanupExpiredLocks() barre y elimina locks expirados
+ * - Orphan detection: _detectOrphanLocks() busca locks sin recurso asociado
  */
 
 const LOCK_MANAGER = {
@@ -12,11 +21,15 @@ const LOCK_MANAGER = {
   RESOURCE_LOCK_WAIT: 1500,
   RESOURCE_LOCK_TIMEOUT: 25000,
   RESOURCE_TTL_MS: 45000,
+  RESOURCE_LOCK_MAX_TTL_MS: 120000,
   LOCK_PREFIX: "LOCK_",
 
   /**
    * Intenta obtener un lock específico de recurso mediante PropertiesService,
    * coordinado con un lock global para asegurar atomicidad.
+   * TTL Protocol: Si el lock existe pero expiró (expiresAt < now), se elimina
+   * y se adquiere de inmediato. Si el lock tiene un TTL anormalmente largo
+   * (expiresAt > now + RESOURCE_LOCK_MAX_TTL_MS), se loguea como corrupto.
    */
   acquireResourceLock(resourceId) {
     const properties = PropertiesService.getScriptProperties();
@@ -26,8 +39,12 @@ const LOCK_MANAGER = {
     const startTime = Date.now();
 
     while (attempt < MAX_RETRIES) {
+      let existingParsed = null;
+      let gotLock = false;
       const globalLock = LockService.getScriptLock();
+
       if (globalLock.tryLock(this.RESOURCE_LOCK_WAIT)) {
+        gotLock = true;
         try {
           const now = Date.now();
           const raw = properties.getProperty(lockKey);
@@ -38,22 +55,42 @@ const LOCK_MANAGER = {
               const parsed = JSON.parse(raw);
               if (parsed.expiresAt && parsed.expiresAt > now) {
                 isLocked = true;
+                existingParsed = parsed;
               } else {
-                properties.deleteProperty(lockKey); // Limpiar lock expirado
+                properties.deleteProperty(lockKey);
               }
             } catch (e) {
-              isLocked = false;
+              // Invalid JSON — treat as unlocked
             }
           }
 
           if (!isLocked) {
-            properties.setProperty(lockKey, JSON.stringify({ expiresAt: now + this.RESOURCE_TTL_MS }));
+            const lockData = { expiresAt: now + this.RESOURCE_TTL_MS };
+            properties.setProperty(lockKey, JSON.stringify(lockData));
             return {
-              releaseLock: () => this._releaseResourceLock(lockKey),
+              releaseLock: () => this._releaseResourceLock(lockKey, lockData),
             };
           }
         } finally {
           globalLock.releaseLock();
+        }
+      }
+
+      if (gotLock && existingParsed) {
+        const now = Date.now();
+        if (existingParsed.expiresAt < now) {
+          const gl = LockService.getScriptLock();
+          if (gl.tryLock(5000)) {
+            try {
+              properties.deleteProperty(lockKey);
+            } finally {
+              gl.releaseLock();
+            }
+          }
+          continue;
+        }
+        if (typeof existingParsed.expiresAt === "number" && existingParsed.expiresAt > now + this.RESOURCE_LOCK_MAX_TTL_MS) {
+          Logger.log("LOCK_CORRUPT: Resource lock " + lockKey + " has absurd TTL. expiresAt=" + existingParsed.expiresAt + " now=" + now + " maxTTL=" + this.RESOURCE_LOCK_MAX_TTL_MS);
         }
       }
 
@@ -66,15 +103,160 @@ const LOCK_MANAGER = {
     throw new Error(`No se pudo adquirir el bloqueo para el recurso ${resourceId} después de ${MAX_RETRIES} intentos.`);
   },
 
-  _releaseResourceLock(lockKey) {
+  /**
+   * Libera un lock de recurso verificando que el valor actual coincida
+   * con el esperado (por si otra ejecución adquirió el lock tras expirar).
+   * Cleanup strategy: se adquiere lock global para evitar condiciones de carrera.
+   * @param {string} lockKey - Clave del lock (LOCK_ + resourceId)
+   * @param {Object} expectedData - Datos esperados del lock al momento de adquisición
+   */
+  _releaseResourceLock(lockKey, expectedData) {
     const globalLock = LockService.getScriptLock();
     if (globalLock.tryLock(5000)) {
       try {
-        PropertiesService.getScriptProperties().deleteProperty(lockKey);
+        const props = PropertiesService.getScriptProperties();
+        const currentRaw = props.getProperty(lockKey);
+        if (currentRaw) {
+          try {
+            const current = JSON.parse(currentRaw);
+            if (expectedData && current.expiresAt !== expectedData.expiresAt) {
+              Logger.log("WARNING: Lock " + lockKey + " was acquired by another execution after expiry. Expected expiresAt=" + expectedData.expiresAt + " but found " + current.expiresAt);
+            }
+          } catch (e) {
+            // Ignore parse errors on release
+          }
+        }
+        props.deleteProperty(lockKey);
       } finally {
         globalLock.releaseLock();
       }
     }
+  },
+
+  /**
+   * Cleans up all expired locks from ScriptProperties.
+   * TTL Protocol: scans all LOCK_* properties, removes those with
+   * expiresAt < Date.now(). Uses global lock for atomicity.
+   * Cleanup strategy: designed to be run via time-based trigger (hourly).
+   * @returns {{cleaned: number, scanned: number}} Resultado de la limpieza
+   */
+  cleanupExpiredLocks() {
+    const globalLock = LockService.getScriptLock();
+    let cleaned = 0;
+    let scanned = 0;
+
+    if (globalLock.tryLock(this.GLOBAL_TIMEOUT)) {
+      try {
+        const props = PropertiesService.getScriptProperties();
+        const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
+        scanned = keys.length;
+
+        for (const key of keys) {
+          const raw = props.getProperty(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
+                props.deleteProperty(key);
+                cleaned++;
+              }
+            } catch (e) {
+              props.deleteProperty(key);
+              cleaned++;
+            }
+          }
+        }
+      } finally {
+        globalLock.releaseLock();
+      }
+    }
+
+    return { cleaned, scanned };
+  },
+
+  /**
+   * Scans all LOCK_* properties and detects orphan locks whose resourceId
+   * no longer exists in the system (Terceros or Cartera sheets).
+   * Best-effort: just logs warnings for manual review.
+   * Cleanup strategy: intended as diagnostic tool, does not auto-delete.
+   * @returns {string[]} List of orphan lock keys
+   */
+  _detectOrphanLocks() {
+    const props = PropertiesService.getScriptProperties();
+    const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
+    const orphans = [];
+
+    let tercerosData = null;
+    let carteraData = null;
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const tercerosSheet = ss.getSheetByName("Terceros");
+      const carteraSheet = ss.getSheetByName("Cartera");
+      if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
+      if (carteraSheet) carteraData = carteraSheet.getDataRange().getValues();
+    } catch (e) {
+      Logger.log("WARNING: No se pudo acceder a las hojas para detección de orphans: " + e.message);
+    }
+
+    for (const key of keys) {
+      const resourceId = key.substring(this.LOCK_PREFIX.length);
+      let found = false;
+
+      if (tercerosData) {
+        for (const row of tercerosData) {
+          if (row.some(cell => String(cell) === resourceId)) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found && carteraData) {
+        for (const row of carteraData) {
+          if (row.some(cell => String(cell) === resourceId)) {
+            found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) {
+        Logger.log("WARNING: Possible orphan lock. Resource " + resourceId + " (key: " + key + ") not found in Terceros or Cartera sheets.");
+        orphans.push(key);
+      }
+    }
+
+    return orphans;
+  },
+
+  /**
+   * Creates a time-driven trigger to run cleanupExpiredLocks every hour.
+   * Requires "configurar_sistema" permission.
+   * Cleanup strategy: periodic cleanup prevents ScriptProperties bloat
+   * from abandoned locks due to script interruptions.
+   * @returns {{success: boolean, message: string}} Resultado de la operación
+   */
+  crearTriggerLockCleanup() {
+    try {
+      AuthService.checkPermission("configurar_sistema");
+    } catch (e) {
+      Logger.log("WARNING: No se pudo verificar permiso configurar_sistema: " + e.message);
+    }
+
+    const triggers = ScriptApp.getProjectTriggers();
+    triggers.forEach(t => {
+      if (t.getHandlerFunction() === "cleanupExpiredLocks") {
+        ScriptApp.deleteTrigger(t);
+      }
+    });
+
+    ScriptApp.newTrigger("cleanupExpiredLocks")
+      .timeBased()
+      .everyHours(1)
+      .create();
+
+    const msg = "Trigger de limpieza de locks creado exitosamente (cada 1 hora).";
+    Logger.log(msg);
+    return { success: true, message: msg };
   },
 
   /** Fallback genérico para acciones masivas (Ej: cache refreshes generales) */

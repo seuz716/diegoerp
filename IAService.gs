@@ -10,6 +10,197 @@
  *   3. Authorize: PropertiesService, UrlFetchApp, SpreadsheetApp
  */
 
+const SamplingStrategy = {
+  segmentByAge(items) {
+    const buckets = {
+      SIN_FECHA: [],
+      SIN_VENCER: [],
+      MORA_1_30: [],
+      MORA_31_90: [],
+      MORA_91_180: [],
+      MORA_180_PLUS: [],
+    };
+
+    items.forEach(item => {
+      const d = item.dias_vencido;
+      if (d === null || d === undefined) {
+        buckets.SIN_FECHA.push(item);
+      } else if (d <= 0) {
+        buckets.SIN_VENCER.push(item);
+      } else if (d <= 30) {
+        buckets.MORA_1_30.push(item);
+      } else if (d <= 90) {
+        buckets.MORA_31_90.push(item);
+      } else if (d <= 180) {
+        buckets.MORA_91_180.push(item);
+      } else {
+        buckets.MORA_180_PLUS.push(item);
+      }
+    });
+
+    return Object.fromEntries(
+      Object.entries(buckets).filter(([_, v]) => v.length > 0)
+    );
+  },
+
+  calculateImportanceScore(item, hoy, weightsConfig = {}) {
+    const {
+      saldoWeight = 1,
+      moraWeight = 1,
+      vencimientoProximoWeight = 1,
+      estadoWeight = 1,
+    } = weightsConfig;
+
+    let score = 0;
+
+    const saldo = Math.abs(item.saldo || item.valor || 0);
+    score += Math.log(Math.max(saldo, 1)) * 2 * saldoWeight;
+
+    if (item.dias_vencido && item.dias_vencido > 0) {
+      score += Math.min(item.dias_vencido * 5, 100) * moraWeight;
+    }
+
+    if (item.fecha_vencimiento) {
+      const fVenc = new Date(item.fecha_vencimiento);
+      if (fVenc <= hoy) {
+        score += 50 * vencimientoProximoWeight;
+      } else {
+        const diasAVencer = Math.ceil((fVenc.getTime() - hoy.getTime()) / 86400000);
+        if (diasAVencer > 0 && diasAVencer <= 15) {
+          score += Math.max(40 - diasAVencer * 2, 10) * vencimientoProximoWeight;
+        }
+      }
+    }
+
+    if (item.estado === "VENCIDA") score += 30 * estadoWeight;
+    if (item.estado === "ABIERTA") score += 10 * estadoWeight;
+    if (item.estado === "CANCELADA") score += 1 * estadoWeight;
+
+    return score;
+  },
+
+  weightedRandomSample(items, hoy, n) {
+    if (n >= items.length) return items;
+    if (n <= 0) return [];
+
+    const weights = items.map(item => this.calculateImportanceScore(item, hoy) + 1);
+    const pool = items.map((item, i) => ({ item, weight: weights[i] }));
+    const result = [];
+
+    for (let k = 0; k < n && pool.length > 0; k++) {
+      const totalWeight = pool.reduce((s, x) => s + x.weight, 0);
+      let r = Math.random() * totalWeight;
+      let i = 0;
+      while (r > pool[i].weight) {
+        r -= pool[i].weight;
+        i++;
+      }
+      result.push(pool[i].item);
+      pool.splice(i, 1);
+    }
+
+    return result;
+  },
+
+  stratifiedSample(items, hoy, maxItems = 500) {
+    if (items.length <= maxItems) return items;
+
+    const buckets = this.segmentByAge(items);
+    const entries = Object.entries(buckets);
+    const totalItems = items.length;
+
+    const allocation = {};
+    let allocated = 0;
+    const activeBuckets = [];
+
+    for (const [key, group] of entries) {
+      const floor = Math.min(1, group.length);
+      allocation[key] = floor;
+      allocated += floor;
+      activeBuckets.push({ key, group, available: group.length - floor });
+    }
+
+    const remaining = Math.max(0, maxItems - allocated);
+    const totalAvailable = activeBuckets.reduce((s, b) => s + b.available, 0);
+
+    if (remaining > 0 && totalAvailable > 0) {
+      let distributed = 0;
+      for (let i = 0; i < activeBuckets.length; i++) {
+        const b = activeBuckets[i];
+        if (b.available <= 0) continue;
+
+        if (i === activeBuckets.length - 1) {
+          const extra = Math.min(b.available, remaining - distributed);
+          allocation[b.key] += extra;
+          distributed += extra;
+        } else {
+          const extra = Math.min(b.available, Math.round(remaining * b.available / totalAvailable));
+          allocation[b.key] += extra;
+          distributed += extra;
+        }
+      }
+    }
+
+    const result = [];
+    for (const [key, group] of entries) {
+      const n = allocation[key];
+      if (n > 0) {
+        const sampled = this.weightedRandomSample(group, hoy, n);
+        result.push(...sampled);
+      }
+    }
+
+    return result.slice(0, maxItems);
+  },
+
+  getSamplingStats(items, sampled, hoy) {
+    const sampledBuckets = this.segmentByAge(sampled);
+    const bucketNames = ["SIN_FECHA", "SIN_VENCER", "MORA_1_30", "MORA_31_90", "MORA_91_180", "MORA_180_PLUS"];
+    const bucketDistribution = {};
+    for (const name of bucketNames) {
+      bucketDistribution[name] = sampledBuckets[name] ? sampledBuckets[name].length : 0;
+    }
+
+    const scores = sampled.map(item => this.calculateImportanceScore(item, hoy));
+    const min = scores.length > 0 ? Math.min(...scores) : 0;
+    const max = scores.length > 0 ? Math.max(...scores) : 0;
+    const avg = scores.length > 0 ? scores.reduce((s, x) => s + x, 0) / scores.length : 0;
+
+    return {
+      originalCount: items.length,
+      sampledCount: sampled.length,
+      bucketDistribution,
+      importanceScoreRange: { min, max, avg },
+    };
+  },
+
+  validateSamplingRepresentativeness(sampled, original, hoy) {
+    const originalBuckets = this.segmentByAge(original);
+    const sampledBuckets = this.segmentByAge(sampled);
+    const warnings = [];
+
+    for (const [key, group] of Object.entries(originalBuckets)) {
+      if (!sampledBuckets[key] || sampledBuckets[key].length === 0) {
+        warnings.push(`Bucket ${key} tiene ${group.length} items en original pero 0 en muestra`);
+      }
+    }
+
+    const origScores = original.map(item => this.calculateImportanceScore(item, hoy));
+    const sampScores = sampled.map(item => this.calculateImportanceScore(item, hoy));
+    const origAvg = origScores.length > 0 ? origScores.reduce((s, x) => s + x, 0) / origScores.length : 0;
+    const sampAvg = sampScores.length > 0 ? sampScores.reduce((s, x) => s + x, 0) / sampScores.length : 0;
+
+    if (sampAvg < origAvg * 0.8) {
+      warnings.push(`La importancia promedio de la muestra (${sampAvg.toFixed(2)}) es <80% del original (${origAvg.toFixed(2)})`);
+    }
+
+    return {
+      representative: warnings.length === 0,
+      warnings,
+    };
+  },
+};
+
 const IA_SERVICE = {
   MODEL: "gemini-2.5-flash-preview-05-20",
   BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
@@ -114,143 +305,19 @@ const IA_SERVICE = {
    * - Sin sesgo determinista: mantiene varianza de casos normales
    */
   _calculateImportanceScore(item, hoy) {
-    let score = 0;
-
-    const saldo = Math.abs(item.saldo || item.valor || 0);
-    score += Math.log(Math.max(saldo, 1)) * 2;
-
-    // Mora = urgencia (null/0/negativo se ignoran)
-    if (item.dias_vencido && item.dias_vencido > 0) {
-      score += Math.min(item.dias_vencido * 5, 100);
-    }
-
-    // Vencimiento próximo < 15 días = riesgo
-    if (item.fecha_vencimiento) {
-      const fVenc = new Date(item.fecha_vencimiento);
-      if (fVenc <= hoy) {
-        score += 50;
-      } else {
-        const diasAVencer = Math.ceil((fVenc.getTime() - hoy.getTime()) / 86400000);
-        if (diasAVencer > 0 && diasAVencer <= 15) {
-          score += Math.max(40 - diasAVencer * 2, 10);
-        }
-      }
-    }
-
-    if (item.estado === "VENCIDA") score += 30;
-    if (item.estado === "ABIERTA") score += 10;
-    if (item.estado === "CANCELADA") score += 1;
-
-    return score;
+    return SamplingStrategy.calculateImportanceScore(item, hoy);
   },
 
   _segmentByAge(items) {
-    const buckets = {
-      SIN_FECHA: [],
-      SIN_VENCER: [],
-      MORA_1_30: [],
-      MORA_31_90: [],
-      MORA_91_180: [],
-      MORA_180_PLUS: [],
-    };
-
-    items.forEach(item => {
-      const d = item.dias_vencido;
-      if (d === null || d === undefined) {
-        buckets.SIN_FECHA.push(item);
-      } else if (d <= 0) {
-        buckets.SIN_VENCER.push(item);
-      } else if (d <= 30) {
-        buckets.MORA_1_30.push(item);
-      } else if (d <= 90) {
-        buckets.MORA_31_90.push(item);
-      } else if (d <= 180) {
-        buckets.MORA_91_180.push(item);
-      } else {
-        buckets.MORA_180_PLUS.push(item);
-      }
-    });
-
-    return Object.fromEntries(
-      Object.entries(buckets).filter(([_, v]) => v.length > 0)
-    );
+    return SamplingStrategy.segmentByAge(items);
   },
 
   _weightedRandomSample(items, hoy, n) {
-    if (n >= items.length) return items;
-    if (n <= 0) return [];
-
-    const weights = items.map(item => this._calculateImportanceScore(item, hoy) + 1);
-    const pool = items.map((item, i) => ({ item, weight: weights[i] }));
-    const result = [];
-
-    for (let k = 0; k < n && pool.length > 0; k++) {
-      const totalWeight = pool.reduce((s, x) => s + x.weight, 0);
-      let r = Math.random() * totalWeight;
-      let i = 0;
-      while (r > pool[i].weight) {
-        r -= pool[i].weight;
-        i++;
-      }
-      result.push(pool[i].item);
-      pool.splice(i, 1);
-    }
-
-    return result;
+    return SamplingStrategy.weightedRandomSample(items, hoy, n);
   },
 
   _stratifiedSample(items, hoy, maxItems = 500) {
-    if (items.length <= maxItems) return items;
-
-    const buckets = this._segmentByAge(items);
-    const entries = Object.entries(buckets);
-    const totalItems = items.length;
-
-    // Fase 1: piso de 1 por estrato para garantizar representación
-    const allocation = {};
-    let allocated = 0;
-    const activeBuckets = [];
-
-    for (const [key, group] of entries) {
-      const floor = Math.min(1, group.length);
-      allocation[key] = floor;
-      allocated += floor;
-      activeBuckets.push({ key, group, available: group.length - floor });
-    }
-
-    // Fase 2: distribuir remanente proporcionalmente
-    const remaining = Math.max(0, maxItems - allocated);
-    const totalAvailable = activeBuckets.reduce((s, b) => s + b.available, 0);
-
-    if (remaining > 0 && totalAvailable > 0) {
-      let distributed = 0;
-      for (let i = 0; i < activeBuckets.length; i++) {
-        const b = activeBuckets[i];
-        if (b.available <= 0) continue;
-
-        if (i === activeBuckets.length - 1) {
-          const extra = Math.min(b.available, remaining - distributed);
-          allocation[b.key] += extra;
-          distributed += extra;
-        } else {
-          const extra = Math.min(b.available, Math.round(remaining * b.available / totalAvailable));
-          allocation[b.key] += extra;
-          distributed += extra;
-        }
-      }
-    }
-
-    // Fase 3: muestreo ponderado por bucket
-    const result = [];
-    for (const [key, group] of entries) {
-      const n = allocation[key];
-      if (n > 0) {
-        const sampled = this._weightedRandomSample(group, hoy, n);
-        result.push(...sampled);
-      }
-    }
-
-    return result.slice(0, maxItems);
+    return SamplingStrategy.stratifiedSample(items, hoy, maxItems);
   },
 
   _compressForTokens(data, maxRecords = 500) {
@@ -313,10 +380,13 @@ ${JSON.stringify(data.terceros.slice(0, 150))}
     const carteraMuestreada = this._stratifiedSample(data.cartera, hoy, carteraLimit);
     const movimientosMuestreados = this._stratifiedSample(data.movimientos, hoy, movimientosLimit);
 
+    const samplingStats = SamplingStrategy.getSamplingStats(data.cartera, carteraMuestreada, hoy);
+
     const carteraComprimida = this._compressForTokens(carteraMuestreada);
     const movimientosComprimidos = this._compressForTokens(movimientosMuestreados);
 
     const prompt = `${summary}
+MUESTREO: ${samplingStats.sampledCount}/${samplingStats.originalCount} items, distribución: ${JSON.stringify(samplingStats.bucketDistribution)}
 CARTERA (${carteraMuestreada.length}/${data.cartera.length} muestreados — segmentados por antigüedad + weighted random sampling):
 ${JSON.stringify(carteraComprimida)}
 
