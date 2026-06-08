@@ -876,6 +876,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     <div class="modal-box">
       <div class="modal-title">Nuevo tercero</div>
       <div class="form-row">
+        <label class="form-label">NIT / Identificación</label>
+        <input type="text" class="form-field" id="tercero-nit" placeholder="NIT o cédula" maxlength="30" autocomplete="off">
+      </div>
+      <div class="form-row">
         <label class="form-label">Nombre</label>
         <input type="text" class="form-field" id="tercero-nombre" placeholder="Nombre del tercero" maxlength="200">
       </div>
@@ -1608,12 +1612,18 @@ function confirmarAccion(mensaje, onConfirm) {
 function guardarTercero() {
   var btnGuardar = document.getElementById('btn-tercero-guardar');
   var errorEl = document.getElementById('tercero-error');
+  var nit = document.getElementById('tercero-nit').value.trim().toUpperCase();
   var nombre = document.getElementById('tercero-nombre').value.trim();
   var tipo = document.getElementById('tercero-tipo').value;
   var limite = App.toCents(document.getElementById('tercero-limite').value);
   var telefono = document.getElementById('tercero-telefono').value.trim();
   var activo = document.getElementById('tercero-activo').checked;
 
+  if (!nit) {
+    errorEl.textContent = 'El NIT / identificación es obligatorio.';
+    errorEl.style.display = 'block';
+    return;
+  }
   if (!nombre) {
     errorEl.textContent = 'El nombre es obligatorio.';
     errorEl.style.display = 'block';
@@ -1624,7 +1634,7 @@ function guardarTercero() {
   btnGuardar.textContent = 'Guardando...';
 
   App.api.saveTercero({
-    id: generarIdTemporal(),
+    id: nit,
     nombre: nombre,
     tipo: tipo,
     limite_credito: limite,
