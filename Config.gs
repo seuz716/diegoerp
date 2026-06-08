@@ -51,8 +51,16 @@ let _schemaValidated = false;
 
 // ─ UTILIDADES BÁSICAS ─
 
-// Cache global para objetos Sheet
+// Cache global para objetos Sheet y Spreadsheet
 let _SHEETS_CACHE = {};
+let _SPREADSHEET_CACHE = null;
+
+function getActiveSpreadsheet() {
+  if (!_SPREADSHEET_CACHE) {
+    _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
+  }
+  return _SPREADSHEET_CACHE;
+}
 
 /**
  * Obtiene una hoja de cálculo por nombre, utilizando un caché.
@@ -62,7 +70,7 @@ let _SHEETS_CACHE = {};
 function getSheet(name) {
   if (_SHEETS_CACHE[name]) return _SHEETS_CACHE[name];
 
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
     console.error("Error: Hoja no encontrada: " + name);
@@ -90,7 +98,7 @@ CONFIG.reloadSchema = function() {
     'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
   };
 
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = getActiveSpreadsheet();
   const changes = [];
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {
@@ -144,7 +152,7 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
 
   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'];
   for (const name of criticalSheets) {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+    const sheet = getActiveSpreadsheet().getSheetByName(name);
     if (!sheet) continue;
     const meta = _SHEETS_CACHE[name + '_meta'];
     if (!meta) return true;
@@ -175,7 +183,7 @@ CONFIG.getSchemaReport = function() {
     report.sheetsValidated.push(sheetName);
     report.columnMappings[sheetName] = Object.assign({}, mapping.conf[mapping.key]);
 
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    const sheet = getActiveSpreadsheet().getSheetByName(sheetName);
     if (!sheet) continue;
     const lastCol = sheet.getLastColumn();
     if (lastCol === 0) continue;

@@ -23,6 +23,29 @@ const LOCK_MANAGER = {
   RESOURCE_TTL_MS: 45000,
   RESOURCE_LOCK_MAX_TTL_MS: 120000,
   LOCK_PREFIX: "LOCK_",
+  _lockDepth: 0,
+
+  _safeTryLock(timeoutMs) {
+    const lock = LockService.getScriptLock();
+    if (this._lockDepth > 0) {
+      this._lockDepth++;
+      return true;
+    }
+    if (lock.tryLock(timeoutMs)) {
+      this._lockDepth = 1;
+      return true;
+    }
+    return false;
+  },
+
+  _safeReleaseLock() {
+    if (this._lockDepth > 0) {
+      this._lockDepth--;
+      if (this._lockDepth === 0) {
+        LockService.getScriptLock().releaseLock();
+      }
+    }
+  },
 
   /**
    * Intenta obtener un lock específico de recurso mediante PropertiesService,
@@ -39,12 +62,7 @@ const LOCK_MANAGER = {
     const startTime = Date.now();
 
     while (attempt < MAX_RETRIES) {
-      let existingParsed = null;
-      let gotLock = false;
-      const globalLock = LockService.getScriptLock();
-
-      if (globalLock.tryLock(this.RESOURCE_LOCK_WAIT)) {
-        gotLock = true;
+      if (this._safeTryLock(this.RESOURCE_LOCK_WAIT)) {
         try {
           const now = Date.now();
           const raw = properties.getProperty(lockKey);
@@ -55,7 +73,9 @@ const LOCK_MANAGER = {
               const parsed = JSON.parse(raw);
               if (parsed.expiresAt && parsed.expiresAt > now) {
                 isLocked = true;
-                existingParsed = parsed;
+                if (typeof parsed.expiresAt === "number" && parsed.expiresAt > now + this.RESOURCE_LOCK_MAX_TTL_MS) {
+                  Logger.log("LOCK_CORRUPT: Resource lock " + lockKey + " has absurd TTL. expiresAt=" + parsed.expiresAt + " now=" + now + " maxTTL=" + this.RESOURCE_LOCK_MAX_TTL_MS);
+                }
               } else {
                 properties.deleteProperty(lockKey);
               }
@@ -72,25 +92,7 @@ const LOCK_MANAGER = {
             };
           }
         } finally {
-          globalLock.releaseLock();
-        }
-      }
-
-      if (gotLock && existingParsed) {
-        const now = Date.now();
-        if (existingParsed.expiresAt < now) {
-          const gl = LockService.getScriptLock();
-          if (gl.tryLock(5000)) {
-            try {
-              properties.deleteProperty(lockKey);
-            } finally {
-              gl.releaseLock();
-            }
-          }
-          continue;
-        }
-        if (typeof existingParsed.expiresAt === "number" && existingParsed.expiresAt > now + this.RESOURCE_LOCK_MAX_TTL_MS) {
-          Logger.log("LOCK_CORRUPT: Resource lock " + lockKey + " has absurd TTL. expiresAt=" + existingParsed.expiresAt + " now=" + now + " maxTTL=" + this.RESOURCE_LOCK_MAX_TTL_MS);
+          this._safeReleaseLock();
         }
       }
 
@@ -111,24 +113,25 @@ const LOCK_MANAGER = {
    * @param {Object} expectedData - Datos esperados del lock al momento de adquisición
    */
   _releaseResourceLock(lockKey, expectedData) {
-    const globalLock = LockService.getScriptLock();
-    if (globalLock.tryLock(5000)) {
-      try {
-        const props = PropertiesService.getScriptProperties();
-        const currentRaw = props.getProperty(lockKey);
-        if (currentRaw) {
-          try {
-            const current = JSON.parse(currentRaw);
-            if (expectedData && current.expiresAt !== expectedData.expiresAt) {
-              Logger.log("WARNING: Lock " + lockKey + " was acquired by another execution after expiry. Expected expiresAt=" + expectedData.expiresAt + " but found " + current.expiresAt);
-            }
-          } catch (e) {
-            // Ignore parse errors on release
+    const gotLock = this._safeTryLock(5000);
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const currentRaw = props.getProperty(lockKey);
+      if (currentRaw) {
+        try {
+          const current = JSON.parse(currentRaw);
+          if (expectedData && current.expiresAt !== expectedData.expiresAt) {
+            Logger.log("WARNING: Lock " + lockKey + " was acquired by another execution after expiry. Expected expiresAt=" + expectedData.expiresAt + " but found " + current.expiresAt);
+            return; // Do not delete someone else's lock
           }
+        } catch (e) {
+          // Ignore parse errors on release
         }
-        props.deleteProperty(lockKey);
-      } finally {
-        globalLock.releaseLock();
+      }
+      props.deleteProperty(lockKey);
+    } finally {
+      if (gotLock) {
+        this._safeReleaseLock();
       }
     }
   },
@@ -141,11 +144,10 @@ const LOCK_MANAGER = {
    * @returns {{cleaned: number, scanned: number}} Resultado de la limpieza
    */
   cleanupExpiredLocks() {
-    const globalLock = LockService.getScriptLock();
     let cleaned = 0;
     let scanned = 0;
 
-    if (globalLock.tryLock(this.GLOBAL_TIMEOUT)) {
+    if (this._safeTryLock(this.GLOBAL_TIMEOUT)) {
       try {
         const props = PropertiesService.getScriptProperties();
         const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
@@ -167,7 +169,7 @@ const LOCK_MANAGER = {
           }
         }
       } finally {
-        globalLock.releaseLock();
+        this._safeReleaseLock();
       }
     }
 
@@ -189,7 +191,7 @@ const LOCK_MANAGER = {
     let tercerosData = null;
     let carteraData = null;
     try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const ss = getActiveSpreadsheet();
       const tercerosSheet = ss.getSheetByName("Terceros");
       const carteraSheet = ss.getSheetByName("Cartera");
       if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
@@ -261,11 +263,14 @@ const LOCK_MANAGER = {
 
   /** Fallback genérico para acciones masivas (Ej: cache refreshes generales) */
   acquireGlobalLock(timeout = this.GLOBAL_TIMEOUT) {
-    const lock = LockService.getScriptLock();
     let attempt = 0;
 
     while (attempt < this.MAX_RETRIES) {
-      if (lock.tryLock(timeout)) return lock;
+      if (this._safeTryLock(timeout)) {
+        return {
+          releaseLock: () => this._safeReleaseLock()
+        };
+      }
       attempt++;
       if (attempt < this.MAX_RETRIES) {
         Utilities.sleep(this._backoffMs(attempt));
