@@ -70,6 +70,10 @@ function revisarInventario() {
 
 // ─────────────────────────────────────────────
 // ⚡ CAPA 2: BLOQUEO EN TIEMPO REAL (onEdit)
+// ⚠️ LIMITACIÓN DE PLATAFORMA: onEdit(e) es un trigger simple que SOLO se
+// ejecuta cuando un usuario edita una celda manualmente en la interfaz/editor
+// de Google Sheets. NO se ejecuta para ediciones realizadas a través de la API
+// o la Web App (ej. llamadas de servicio programáticas).
 // ─────────────────────────────────────────────
 
 function onEdit(e) {

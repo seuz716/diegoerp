@@ -344,11 +344,11 @@ const DAO = {
       const lastRow = sheet.getLastRow() || 0;
 
       if (lastRow === 0) {
-        sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp"]);
+        sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp", "Version"]);
       }
 
-      const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null];
-      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 10).setValues([rowData]);
+      const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null, c.version || 1];
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 11).setValues([rowData]);
       return true;
     } finally {
       if (lock) lock.releaseLock();

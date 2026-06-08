@@ -29,10 +29,10 @@ const CONFIG = {
   STOCK_MINIMO: 5,
   SCHEMA_definitions: {
     TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
-    CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp" },
+    CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
     AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
-    PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio: "Precio" },
+    PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio: "Precio", version: "Version" },
   },
 };
 
