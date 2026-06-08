@@ -1,4 +1,4 @@
-# 📝 CHANGELOG - VERSIÓN 1.1 → 2.1
+ # 📝 CHANGELOG - VERSIÓN 1.1 → 2.1
 
 **Versión anterior:** 1.1 (13 de Abril 2026 - Con errores)  
 **Versión nueva:** 2.1 (13 de Abril 2026 - Refactorizada)  

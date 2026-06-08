@@ -1,5 +1,5 @@
 /**
- * LAYER 5.5: IA SERVICE — Gemini 2.5 Flash Integration
+ * LAYER 5.5: IA SERVICE — Gemini 2.5  Flash Integration
  * Financial Intelligence Engine for MicroERP
  *
  * Dependencies: Config.gs, CacheService.gs, Domain.gs
