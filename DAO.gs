@@ -31,14 +31,23 @@ const DAO = {
     return CACHE.getCarteraBase();
   },
 
-  getCartera(filtroTipo = null, filtroEstado = null) {
-    if (!filtroTipo && !filtroEstado) {
-      return this.getCarteraBase();
-    }
-
+  getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
+    pageSize = Math.min(5000, pageSize);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
+    const lastRow = sheet.getLastRow();
+
+    if (!filtroTipo && !filtroEstado) {
+      if (lastRow < 2) return { items: [], nextPageToken: null };
+      const startRow = 2 + pageToken;
+      if (startRow > lastRow) return { items: [], nextPageToken: null };
+      const limit = Math.min(pageSize, lastRow - startRow + 1);
+      const values = sheet.getRange(startRow, 1, limit, numCols).getValues();
+      const items = values.map((row, idx) => this._rowToCarteraItem(row, startRow + idx));
+      const nextPageToken = (startRow + limit - 2 < lastRow - 1) ? (pageToken + limit) : null;
+      return { items, nextPageToken };
+    }
 
     let rowIndexes = null;
     if (filtroTipo) {
@@ -56,10 +65,16 @@ const DAO = {
     }
 
     if (!rowIndexes || rowIndexes.length === 0) {
-      return [];
+      return { items: [], nextPageToken: null };
     }
 
-    return this._fetchCarteraItemsFromRows(sheet, rowIndexes, numCols);
+    rowIndexes = Array.from(new Set(rowIndexes)).sort((a, b) => a - b);
+    const totalCount = rowIndexes.length;
+    const paginatedRows = rowIndexes.slice(pageToken, pageToken + pageSize);
+    const items = this._fetchCarteraItemsFromRows(sheet, paginatedRows, numCols);
+    const nextPageToken = (pageToken + paginatedRows.length < totalCount) ? (pageToken + paginatedRows.length) : null;
+
+    return { items, nextPageToken };
   },
 
   getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
@@ -168,7 +183,8 @@ const DAO = {
    *    ya no corresponde, causando una sobreescritura incorrecta.
    */
   saveTerceroImpl(tercero, id, nombre, telefono, tipo, limite, activo) {
-    const MAX_RETRIES = 2;
+    const MAX_RETRIES = 5;
+    const BACKOFF_MS = 200;
     for (let retries = 0; retries <= MAX_RETRIES; retries++) {
       try {
         if (!CACHE.ensureIntegrity('terceros')) {
@@ -211,6 +227,7 @@ const DAO = {
         } else {
           throw e;
         }
+        Utilities.sleep(BACKOFF_MS * Math.pow(2, retries) + Math.random() * 100);
       }
     }
   },

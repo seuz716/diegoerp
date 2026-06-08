@@ -62,7 +62,7 @@ function revisarInventario() {
     Logger.log("ERROR revisarInventario: " + e.toString());
     return { 
       success: false, 
-      message: e.toString(),
+      message: "Error al revisar inventario. Intente nuevamente.",
       timestamp: new Date().toISOString()
     };
   }

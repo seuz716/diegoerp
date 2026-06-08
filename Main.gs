@@ -5,7 +5,8 @@ function doGet(e) {
   try {
     validateAndMapSchemas();
   } catch (err) {
-    return HtmlService.createHtmlOutput("Error de inicialización del esquema: " + err.message);
+    Logger.log("ERROR doGet schema validation: " + err.message);
+    return HtmlService.createHtmlOutput("Error de inicialización. Contacte al administrador.");
   }
   return HtmlService.createTemplateFromFile('index_v3_SaaS')
     .evaluate()

@@ -205,7 +205,7 @@ const IA_SERVICE = {
   MODEL: "gemini-2.5-flash-preview-05-20",
   BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
   TIMEOUT_MS: 90000,
-  MAX_RETRIES: 3,
+  MAX_RETRIES: 5,
   RETRY_BACKOFF_MS: 2000,
   CACHE_PREFIX: "IA_CACHE_",
   CACHE_TTL_MS: 3600000,
@@ -866,7 +866,6 @@ function analizarConGeminiCompleto() {
         success: false,
         code: e.code,
         message: userMessages[e.code] || e.message,
-        _technical: e.message,
       };
     }
 
@@ -874,7 +873,6 @@ function analizarConGeminiCompleto() {
       success: false,
       code: "UNEXPECTED",
       message: "Error inesperado al analizar. Intenta de nuevo más tarde.",
-      _technical: e.toString(),
     };
   }
 }
