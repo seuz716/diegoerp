@@ -398,6 +398,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .data-table tbody tr.row-red:hover td{background:var(--red-dim);}
 .td-mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
 .td-muted{color:var(--muted);}
+.td-bold{font-weight:500;}
 
 /* ── BADGES ── */
 .badge{
@@ -410,6 +411,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .badge-venc{color:var(--red);border-color:var(--red-border);background:var(--red-dim);}
 .badge-done{color:var(--muted);border-color:var(--border);background:transparent;}
 .badge-ok{color:var(--green);border-color:var(--green-border);background:var(--green-dim);}
+.badge-partial{color:var(--text);border-color:var(--border-med);background:var(--bg-2);}
 
 /* ── ABONO FORM ── */
 .form-panel{border:1px solid var(--border);background:var(--bg-1);}
@@ -467,13 +469,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   animation:lr-spin .7s linear infinite;
 }
 @keyframes lr-spin{to{transform:rotate(360deg)}}
+@keyframes ia-progress-indeterminate{
+  0%{transform:translateX(-100%);width:40%}
+  100%{transform:translateX(300%);width:40%}
+}
+.ia-progress-bar-active{animation:ia-progress-indeterminate 1.4s ease-in-out infinite;width:40%!important;background:var(--accent);}
 
 /* ── TOAST ── */
 #toast-container{position:fixed;bottom:80px;right:var(--space-4);z-index:3000;display:flex;flex-direction:column;gap:var(--space-2);pointer-events:none;}
 .toast{pointer-events:auto;padding:var(--space-3) var(--space-4);border-left:3px solid var(--accent);background:var(--bg-1);color:var(--text);font-size:var(--text-sm);letter-spacing:0.04em;box-shadow:var(--shadow);animation:toast-in .3s ease forwards;max-width:360px;}
 .toast.error{border-left-color:var(--red);}
 .toast.success{border-left-color:var(--green);}
-.toast.success{border-left-color:var(--accent);}
 @keyframes toast-in{from{opacity:0;transform:translateX(40px);}to{opacity:1;transform:translateX(0);}}
 @keyframes toast-out{from{opacity:1;transform:translateX(0);}to{opacity:0;transform:translateX(40px);}}
 
@@ -555,7 +561,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   </div>
 
   <nav class="sidebar-nav" aria-label="Secciones">
-    <div class="nav-item active" data-view="dashboard">
+    <div class="nav-item active" data-view="dashboard" aria-current="page">
       <span class="nav-icon">◆</span> Dashboard
     </div>
     <div class="nav-item" data-view="terceros">
@@ -902,6 +908,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     </div>
   </div>
 
+  <!-- MODAL CONFIRMACIÓN -->
+  <div id="modal-confirm" class="modal-overlay" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-msg">
+    <div class="modal-box">
+      <div id="modal-confirm-msg" class="modal-title"></div>
+      <div style="display:flex;gap:var(--space-3);justify-content:flex-end;margin-top:var(--space-6)">
+        <button id="modal-confirm-cancel" class="btn btn-sm">Cancelar</button>
+        <button id="modal-confirm-ok" class="btn btn-sm btn-accent">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 </main>
 
@@ -972,7 +989,7 @@ App.formatearFecha = function (dateObj) {
 };
 
 App.mapearEstadoCartera = function (estado) {
-  var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-open' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
+  var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-partial' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
   return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
 };
 
@@ -1051,7 +1068,7 @@ function cargarDashboard() {
     promise = App.api.getDashboard();
   }
 
-  promise.then(function (data) {
+  return promise.then(function (data) {
     if (!App.data.dashboard) App.data.dashboard = data;
       document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
       document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
@@ -1246,15 +1263,12 @@ function analizarConGeminiFresco() {
   var progressBarInner = document.getElementById('ia-progress-bar');
   var progressText = document.getElementById('ia-progress-text');
   progressBar.style.display = 'block';
-  progressBarInner.style.width = '30%';
+  progressBarInner.className = 'ia-progress-bar-active';
   progressText.textContent = 'Consultando Gemini 2.5 Flash...';
-
-  var progTimer = setTimeout(function(){ progressBarInner.style.width = '60%'; progressText.textContent = 'Procesando análisis financiero...'; }, 2000);
-  var progTimer2 = setTimeout(function(){ progressBarInner.style.width = '85%'; progressText.textContent = 'Generando recomendaciones...'; }, 5000);
 
   App.api.analizarConGeminiFresco()
     .then(function (resp) {
-      clearTimeout(progTimer); clearTimeout(progTimer2);
+      progressBarInner.className = '';
       progressBarInner.style.width = '100%';
       setTimeout(function(){ progressBar.style.display = 'none'; }, 500);
       if (resp && resp.success && resp.analisis) {
@@ -1264,7 +1278,7 @@ function analizarConGeminiFresco() {
       }
     })
     .catch(function (err) {
-      clearTimeout(progTimer); clearTimeout(progTimer2);
+      progressBarInner.className = '';
       progressBar.style.display = 'none';
       var msg = err.message || err || 'Error al conectar con el servicio de IA.';
       if (msg.indexOf('rate') > -1 || msg.indexOf('límite') > -1) {
@@ -1272,7 +1286,10 @@ function analizarConGeminiFresco() {
       } else if (msg.indexOf('timeout') > -1 || msg.indexOf('tiempo') > -1) {
         msg = 'La solicitud tardó demasiado. Intenta de nuevo.';
       }
-      showError(msg);
+      var iaEl = document.getElementById('ia-results');
+      iaEl.innerHTML = '<div class="error-banner show" style="margin:0">' + msg + '</div>';
+      iaEl.style.display = 'block';
+      showToast(msg, 'error');
     })
     .then(function () {
       btnHeader.disabled = false;
@@ -1327,10 +1344,10 @@ function cargarCartera() {
           // Columna: Tercero
           var tdTercero = document.createElement('td');
           var nombreDiv = document.createElement('div');
-          nombreDiv.style.fontWeight = '500';
+          nombreDiv.className = 'td-bold';
           nombreDiv.textContent = item.nombre_tercero || '—';
           var idTerceroDiv = document.createElement('div');
-          idTerceroDiv.style.cssText = 'font-size:var(--text-data);color:var(--muted)';
+          idTerceroDiv.className = 'td-muted';
           idTerceroDiv.textContent = item.id_tercero || '';
           tdTercero.appendChild(nombreDiv);
           tdTercero.appendChild(idTerceroDiv);
@@ -1338,8 +1355,7 @@ function cargarCartera() {
 
           // Columna: Saldo
           var tdSaldo = document.createElement('td');
-          tdSaldo.className = 'td-mono';
-          tdSaldo.style.fontWeight = '500';
+          tdSaldo.className = 'td-mono td-bold';
           if (isVencida) tdSaldo.style.color = 'var(--red)';
           tdSaldo.textContent = App.formatearMoneda(item.saldo);
           tr.appendChild(tdSaldo);
@@ -1361,7 +1377,8 @@ function cargarCartera() {
               vencFechaDiv.style.fontSize = 'var(--text-sm)';
               vencFechaDiv.textContent = App.formatearFecha(item.fecha_vencimiento);
               var vencDiasDiv = document.createElement('div');
-              vencDiasDiv.style.cssText = 'font-size:var(--text-data);color:var(--red)';
+              vencDiasDiv.className = 'td-muted';
+              vencDiasDiv.style.color = 'var(--red)';
               vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías');
               tdVenc.appendChild(vencFechaDiv);
               tdVenc.appendChild(vencDiasDiv);
@@ -1390,7 +1407,7 @@ function cargarCartera() {
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm';
       btn.textContent = '↻ Reintentar';
-      btn.style.marginLeft = '12px';
+      btn.style.marginLeft = 'var(--space-3)';
       btn.addEventListener('click', cargarCartera);
       tbody.querySelector('.error-banner').appendChild(btn);
     });
@@ -1432,8 +1449,7 @@ function ejecutarAbono() {
   if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
-  if (!confirm('¿Confirmar el registro de este movimiento?\nMonto: ' + App.formatearMoneda(centavos) + '\nTipo: ' + tipo)) { return; }
-
+  confirmarAccion('¿Confirmar el registro de este movimiento?<br>Monto: ' + App.formatearMoneda(centavos) + '<br>Tipo: ' + tipo, function() {
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
@@ -1464,6 +1480,7 @@ function ejecutarAbono() {
       errorEl.textContent = err.message || err || 'Error al registrar el abono.';
       errorEl.classList.add('show');
     });
+  });
 }
 
 function generarIdTemporal() {
@@ -1535,7 +1552,7 @@ function cargarTerceros() {
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm';
       btn.textContent = '↻ Reintentar';
-      btn.style.marginLeft = '12px';
+      btn.style.marginLeft = 'var(--space-3)';
       btn.addEventListener('click', cargarTerceros);
       tbody.querySelector('.error-banner').appendChild(btn);
     });
@@ -1568,6 +1585,24 @@ function cerrarModalTercero() {
   modal.classList.remove('active');
   modal.removeEventListener('keydown',modal._trap);
   if(modal._opener) modal._opener.focus();
+}
+
+function confirmarAccion(mensaje, onConfirm) {
+  var modal = document.getElementById('modal-confirm');
+  document.getElementById('modal-confirm-msg').innerHTML = mensaje;
+  modal.classList.add('active');
+  var btnOk = document.getElementById('modal-confirm-ok');
+  var btnCan = document.getElementById('modal-confirm-cancel');
+  function cleanup() {
+    modal.classList.remove('active');
+    btnOk.removeEventListener('click', onOk);
+    btnCan.removeEventListener('click', onCancel);
+  }
+  function onOk() { cleanup(); onConfirm(); }
+  function onCancel() { cleanup(); }
+  btnOk.addEventListener('click', onOk);
+  btnCan.addEventListener('click', onCancel);
+  btnOk.focus();
 }
 
 function guardarTercero() {
@@ -1752,8 +1787,7 @@ function registrarVenta() {
   }
 
   var totalStr = document.getElementById('venta-total').textContent;
-  if (!confirm('¿Confirmar el registro de esta venta?\nTotal: ' + totalStr + '\nTipo: ' + tipo)) { return; }
-
+  confirmarAccion('¿Confirmar el registro de esta venta?<br>Total: ' + totalStr + '<br>Tipo: ' + tipo, function() {
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
@@ -1785,6 +1819,7 @@ function registrarVenta() {
       errorEl.textContent = err.message || err || 'Error al registrar venta.';
       errorEl.classList.add('show');
     });
+  });
 }
 
 document.addEventListener('change', function (e) {
@@ -1797,8 +1832,9 @@ document.addEventListener('change', function (e) {
 
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
-    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); b.removeAttribute('aria-current'); });
     btn.classList.add('active');
+    btn.setAttribute('aria-current', 'page');
     var viewId = btn.dataset.view;
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     document.getElementById('error-banner').classList.remove('show');
@@ -1840,10 +1876,11 @@ function cargarUserInfo() {
 
 document.addEventListener('DOMContentLoaded', function () {
   cargarUserInfo();
-  cargarDashboard();
-  cargarCartera();
-  cargarTerceros();
-  cargarAbonoSelect();
+  cargarDashboard().then(function() {
+    cargarCartera();
+    cargarTerceros();
+    cargarAbonoSelect();
+  });
 
   document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
   document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
