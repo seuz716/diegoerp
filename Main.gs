@@ -10,5 +10,5 @@ function doGet(e) {
   return HtmlService.createTemplateFromFile('index_v3_SaaS')
     .evaluate()
     .setTitle('MicroERP · Cartera Pro')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.SAMEORIGIN);
 }

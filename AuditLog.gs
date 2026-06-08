@@ -18,15 +18,15 @@ const LOG_ENGINE = {
       const id = "LOG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
 
       const rowData = [
-        id,
+        _sanitizeCell(id),
         timestamp,
-        operacion,
-        tabla,
-        idRegistro,
-        usuario,
-        JSON.stringify(_sanitizeForLog(datosPrevios || {})),
-        JSON.stringify(_sanitizeForLog(datosNuevos || {})),
-        estado,
+        _sanitizeCell(operacion),
+        _sanitizeCell(tabla),
+        _sanitizeCell(idRegistro),
+        _sanitizeCell(usuario),
+        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosPrevios || {}))),
+        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosNuevos || {}))),
+        _sanitizeCell(estado),
       ];
 
       // BATCH: no appendRow, sino getLastRow + setValues

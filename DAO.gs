@@ -13,6 +13,13 @@ class DAOError extends Error {
   }
 }
 
+function _sanitizeCell(value) {
+  if (typeof value === 'string' && value.length > 0 && /^[=+\-@]/.test(value)) {
+    return "'" + value;
+  }
+  return value;
+}
+
 const DAO = {
   getTerceroById(id) {
     const idClean = _sanitizeId(id);
@@ -172,7 +179,7 @@ const DAO = {
         }
 
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-        const rowData = [id, nombre, telefono, tipo, limite, activo];
+        const rowData = [_sanitizeCell(id), _sanitizeCell(nombre), _sanitizeCell(telefono), _sanitizeCell(tipo), limite, activo];
         const cachedRow = CACHE.terceroIndex[id];
 
         if (cachedRow) {
@@ -326,7 +333,7 @@ const DAO = {
         sheet.appendRow(["ID", "Fecha", "ID_Cartera", "ID_Tercero", "Valor", "Tipo_Mov", "Referencia"]);
       }
 
-      const rowData = [mov.id, mov.fecha, mov.id_cartera, mov.id_tercero, mov.valor, mov.tipo_mov, mov.referencia];
+      const rowData = [_sanitizeCell(mov.id), mov.fecha, _sanitizeCell(mov.id_cartera), _sanitizeCell(mov.id_tercero), mov.valor, _sanitizeCell(mov.tipo_mov), _sanitizeCell(mov.referencia)];
       sheet.getRange(sheet.getLastRow() + 1, 1, 1, 7).setValues([rowData]);
       return true;
     } finally {
@@ -347,7 +354,7 @@ const DAO = {
         sheet.appendRow(["ID", "Fecha", "ID_Tercero", "Origen_ID", "Total", "Saldo", "Tipo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp", "Version"]);
       }
 
-      const rowData = [c.id, c.fecha, c.id_tercero, c.origen_id, c.total, c.saldo, c.tipo, c.estado, c.fecha_vencimiento, c.vencida_timestamp || null, c.version || 1];
+      const rowData = [_sanitizeCell(c.id), c.fecha, _sanitizeCell(c.id_tercero), _sanitizeCell(c.origen_id), c.total, c.saldo, _sanitizeCell(c.tipo), _sanitizeCell(c.estado), c.fecha_vencimiento, c.vencida_timestamp || null, c.version || 1];
       sheet.getRange(sheet.getLastRow() + 1, 1, 1, 11).setValues([rowData]);
       return true;
     } finally {

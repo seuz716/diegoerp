@@ -9,13 +9,19 @@ function testConcurrentAbonos() {
 
   Logger.log(`Iniciando test de concurrencia con ${users} simulacros...`);
 
+    // Safe test: avoid writing to real spreadsheet unless explicitly enabled
+  const REAL_TEST_ENABLED = false; // Set true to run against real data (use with caution)
   for (let i = 0; i < users; i++) {
     Utilities.sleep(Math.random() * 100); // Simular llegada asíncrona
-    
     try {
-      // Simula abono
-      const result = DOMAIN.registrarAbonoAtomic('TERC001', 100, 'REF_TEST_' + i, 'CxC');
-      results.push({ attempt: i, status: "OK", payload: result });
+      if (REAL_TEST_ENABLED) {
+        // Ejecutar la operación real
+        const result = DOMAIN.registrarAbonoAtomic('TERC001', 100, 'REF_TEST_' + i, 'CxC');
+        results.push({ attempt: i, status: "OK", payload: result });
+      } else {
+        // Simular éxito sin tocar la hoja
+        results.push({ attempt: i, status: "MOCK", payload: { simulated: true, ref: 'REF_TEST_' + i } });
+      }
     } catch (e) {
       results.push({ attempt: i, status: "FAIL", error: e.toString() });
     }

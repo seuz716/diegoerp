@@ -7,8 +7,13 @@
  * API Pública: Registrar abono
  */
 function registrarAbono(idTercero, valorAbono, referencia, tipo) {
-  AuthService.checkPermission("registrar_abono");
-  return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
+  try {
+    AuthService.checkPermission("registrar_abono");
+    return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
+  } catch (e) {
+    Logger.log("ERROR registrarAbono: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
@@ -45,8 +50,13 @@ function getCartera(filtroTipo = null, filtroEstado = null) {
  * API Pública: Guardar tercero
  */
 function saveTercero(tercero) {
-  AuthService.checkPermission("guardar_tercero");
-  return DOMAIN.saveTercero(tercero);
+  try {
+    AuthService.checkPermission("guardar_tercero");
+    return DOMAIN.saveTercero(tercero);
+  } catch (e) {
+    Logger.log("ERROR saveTercero: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
@@ -106,46 +116,71 @@ function getDashboardCartera() {
  * API Pública: Obtener historial de auditoría
  */
 function getAuditHistory(tabla, idRegistro, limit = 50) {
-  AuthService.checkPermission("ver_auditoria");
-  return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
+  try {
+    AuthService.checkPermission("ver_auditoria");
+    return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
+  } catch (e) {
+    Logger.log("ERROR getAuditHistory: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
  * API Pública: Obtener estado de la caché (staleness info)
  */
 function getCacheHealth() {
-  AuthService.checkPermission("ver_cache");
-  return {
-    staleness: CACHE.getStalenessInfo(),
-    consistency: CACHE.verifyConsistency(),
-    timestamp: new Date().toISOString(),
-  };
+  try {
+    AuthService.checkPermission("ver_cache");
+    return {
+      staleness: CACHE.getStalenessInfo(),
+      consistency: CACHE.verifyConsistency(),
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e) {
+    Logger.log("ERROR getCacheHealth: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
  * API Pública: Forzar análisis fresco (sin caché de IA)
  */
 function analizarConGeminiFresco() {
-  AuthService.checkPermission("analizar_ia");
-  return IA_SERVICE.ejecutarAnalisisFresco();
+  try {
+    AuthService.checkPermission("analizar_ia");
+    return IA_SERVICE.ejecutarAnalisisFresco();
+  } catch (e) {
+    Logger.log("ERROR analizarConGeminiFresco: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
  * API Pública: Obtener información del usuario actual (email y rol)
  */
 function getUserInfo() {
-  AuthService.checkPermission("ver_dashboard");
-  const email = Session.getActiveUser().getEmail();
-  const role = AuthService.getUserRole(email);
-  return { email: email, role: role };
+  try {
+    AuthService.checkPermission("ver_dashboard");
+    const email = Session.getActiveUser().getEmail();
+    const role = AuthService.getUserRole(email);
+    return { email: email, role: role };
+  } catch (e) {
+    Logger.log("ERROR getUserInfo: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**
  * API Pública: Procesar venta (contado o crédito)
  */
 function procesarVenta(carrito, opciones) {
-  AuthService.checkPermission("registrar_venta");
-  return procesarVentaV2(carrito, opciones);
+  try {
+    AuthService.checkPermission("registrar_venta");
+    return procesarVentaV2(carrito, opciones);
+  } catch (e) {
+    Logger.log("ERROR procesarVenta: " + e.toString());
+    throw new Error(e.message || e.toString());
+  }
 }
 
 /**

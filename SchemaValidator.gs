@@ -1,5 +1,3 @@
-// SchemaValidator.gs — delegado a CONFIG
-function validateAndMapSchemas() {
-  if (_schemaValidated) return;
-  CONFIG.reloadSchema();
-}
+// SchemaValidator.gs — Consolidado
+// La función global validateAndMapSchemas() ahora se encuentra únicamente en Config.gs
+// para evitar duplicaciones y mantener una sola fuente de verdad.
