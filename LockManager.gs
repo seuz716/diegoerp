@@ -320,5 +320,9 @@ const LOCK_MANAGER = {
 };
 // Global wrapper required for time-driven trigger
 function cleanupExpiredLocks() {
-  LOCK_MANAGER.cleanupExpiredLocks();
+  try {
+    LOCK_MANAGER.cleanupExpiredLocks();
+  } catch (e) {
+    Logger.log("FATAL cleanupExpiredLocks trigger: " + e.toString());
+  }
 }

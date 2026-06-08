@@ -83,7 +83,6 @@ function _validateCarrito(carrito) {
  * @returns {Object} Resultado de la operación.
  */
 function procesarVentaV2(carrito, opciones) {
-  AuthService.checkPermission("registrar_venta");
   const _startTime = Date.now();
 
   if (!carrito || !Array.isArray(carrito) || carrito.length === 0) {
@@ -130,6 +129,8 @@ function procesarVentaV2(carrito, opciones) {
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
   try {
+    AuthService.checkPermission("registrar_venta");
+
     state.transition('STOCK_VALIDATED', () => {
       const errorStock = _validarStockCarrito(carritoConsolidado);
       if (errorStock) throw new Error(errorStock);
@@ -421,32 +422,49 @@ function _descontarInventario(carrito) {
   const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
   const data = sheet.getDataRange().getValues();
   const COL = CONFIG.COLUMNS.PRODUCTOS;
+  const updates = [];
+
+  // Index rows by product ID for O(N+M) instead of O(N*M)
+  const index = {};
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][COL.id] || "").trim();
+    if (id) index[id] = i;
+  }
 
   for (const item of carrito) {
     const id = String(item.id || "").trim();
     const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][COL.id] || "").trim() === id) {
-        const stockActual = Number(data[i][COL.stock]) || 0;
-        const currentVersion = Number(data[i][COL.version]) || 1;
-
-        // Optimistic Locking: rechazar si la fila fue modificada entre _validarStock y _descontar
-        if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
-          throw new Error(
-            `OptimisticLockError: producto ${id} modificado concurrentemente ` +
-            `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
-          );
-        }
-
-        const nuevoStock = Math.max(0, stockActual - cantidad);
-        sheet.getRange(i + 1, COL.stock + 1, 1, 2).setValues([[nuevoStock, currentVersion + 1]]);
-        data[i][COL.stock] = nuevoStock;
-        data[i][COL.version] = currentVersion + 1;
-        break;
-      }
+    const i = index[id];
+    if (i === undefined) {
+      throw new Error(`Producto ${id} no encontrado en inventario.`);
     }
+
+    const stockActual = Number(data[i][COL.stock]) || 0;
+    const currentVersion = Number(data[i][COL.version]) || 1;
+
+    if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
+      throw new Error(
+        `OptimisticLockError: producto ${id} modificado concurrentemente ` +
+        `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
+      );
+    }
+
+    data[i][COL.stock] = Math.max(0, stockActual - cantidad);
+    data[i][COL.version] = currentVersion + 1;
+    updates.push(i);
+  }
+
+  // Single batch write: all changed rows at once
+  if (updates.length > 0) {
+    const minRow = Math.min(...updates);
+    const maxRow = Math.max(...updates);
+    const batchData = [];
+    for (let r = minRow; r <= maxRow; r++) {
+      batchData.push([data[r][COL.stock], data[r][COL.version]]);
+    }
+    sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 2).setValues(batchData);
   }
 }
 
@@ -454,20 +472,34 @@ function _revertirDescuentoInventario(carrito) {
   const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
   const data = sheet.getDataRange().getValues();
   const COL = CONFIG.COLUMNS.PRODUCTOS;
+  const updates = [];
+
+  const index = {};
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][COL.id] || "").trim();
+    if (id) index[id] = i;
+  }
 
   for (const item of carrito) {
     const id = String(item.id || "").trim();
     const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][COL.id] || "").trim() === id) {
-        const stockActual = Number(data[i][COL.stock]) || 0;
-        const nuevoStock = stockActual + cantidad;
-        sheet.getRange(i + 1, COL.stock + 1).setValue(nuevoStock);
-        data[i][COL.stock] = nuevoStock;
-        break;
-      }
+    const i = index[id];
+    if (i === undefined) continue;
+
+    const stockActual = Number(data[i][COL.stock]) || 0;
+    data[i][COL.stock] = stockActual + cantidad;
+    updates.push(i);
+  }
+
+  if (updates.length > 0) {
+    const minRow = Math.min(...updates);
+    const maxRow = Math.max(...updates);
+    const batchData = [];
+    for (let r = minRow; r <= maxRow; r++) {
+      batchData.push([data[r][COL.stock]]);
     }
+    sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 1).setValues(batchData);
   }
 }
