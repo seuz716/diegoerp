@@ -1,5 +1,5 @@
 /**
- * LAYER 6: PUBLIC API
+ * LAYER 6.0: PUBLIC API
  * Exposición de endpoints para ser llamados externamente o desde el Frontend.
  */
 
