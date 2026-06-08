@@ -40,6 +40,8 @@
   --text-base: 13px;
   --text-body: 14px;
   --text-lg: 15px;
+  --text-stat-hero: clamp(2rem, 4vw + 1rem, 2.6rem);
+  --text-stat-normal: clamp(1.2rem, 2vw + .6rem, 1.4rem);
   --toggle-w: 32px;
   --toggle-h: 16px;
   --space-half: 2px;
@@ -229,8 +231,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   color:var(--text);
   line-height:1;
 }
-.stat-hero .stat-value{font-size:2.6rem;letter-spacing:-0.03em;}
-.stat-normal .stat-value{font-size:1.4rem;letter-spacing:-0.02em;}
+.stat-hero .stat-value{font-size:var(--text-stat-hero);letter-spacing:-0.03em;}
+.stat-normal .stat-value{font-size:var(--text-stat-normal);letter-spacing:-0.02em;}
 .stat-meta{font-size:var(--text-data);color:var(--muted);font-family:var(--mono);}
 .stat-meta .venc{color:var(--red);}
 .stat-meta .ok{color:var(--green);}
@@ -410,6 +412,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .badge-ok{color:var(--green);border-color:var(--green-border);background:var(--green-dim);}
 
 /* ── ABONO FORM ── */
+.form-panel{border:1px solid var(--border);background:var(--bg-1);}
+.form-panel-title{font-size:var(--text-lg);font-family:var(--display);color:var(--text);margin-bottom:var(--space-1);}
+.form-panel-desc{font-size:var(--text-sm);color:var(--muted);margin-bottom:var(--space-6);padding-bottom:var(--space-4);border-bottom:1px solid var(--border);}
 .abono-form{padding:var(--space-6);max-width:400px;}
 .form-row{margin-bottom:var(--space-4);}
 .form-label{
@@ -496,7 +501,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.skip-link:focus { top: 8px; }
+.skip-link{
+  position:absolute;top:-40px;left:var(--space-2);z-index:9999;
+  background:var(--bg-1);color:var(--accent);
+  padding:var(--space-2) var(--space-4);
+  border:1px solid var(--accent-border);
+  font-size:var(--text-sm);
+  transition:top 150ms ease;
+}
+.skip-link:focus{top:var(--space-2);}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -533,7 +546,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 </style>
 </head>
 <body>
-<a href="#main" class="skip-link" style="position:absolute;top:-1000px;left:var(--space-2);z-index:9999;background:var(--bg-1);color:var(--accent);padding:var(--space-2) var(--space-4);border:1px solid var(--accent-border);font-size:var(--text-sm);">Saltar al contenido</a>
+<a href="#main" class="skip-link">Saltar al contenido</a>
 
 <aside id="sidebar" role="navigation" aria-label="Menú principal">
   <div class="brand-zone">
@@ -714,10 +727,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
       <h1 class="page-title">Registrar <em>pago</em></h1>
     </div>
 
-    <div style="border:1px solid var(--border);background:var(--bg-1);">
+    <div class="form-panel">
       <div class="abono-form">
-        <div style="font-size:var(--text-lg);font-family:var(--display);color:var(--text);margin-bottom:var(--space-1);">Liquidación FIFO</div>
-        <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:var(--space-6);padding-bottom:var(--space-4);border-bottom:1px solid var(--border);">
+        <div class="form-panel-title">Liquidación FIFO</div>
+        <div class="form-panel-desc">
           El sistema aplica el pago a la deuda más antigua primero.
         </div>
 
@@ -780,10 +793,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
       <h1 class="page-title">Registrar <em>venta</em></h1>
     </div>
 
-    <div style="border:1px solid var(--border);background:var(--bg-1);">
+    <div class="form-panel">
       <div style="padding:var(--space-6);">
-        <div style="font-size:var(--text-lg);font-family:var(--display);color:var(--text);margin-bottom:var(--space-1);">Nueva venta</div>
-        <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:var(--space-6);padding-bottom:var(--space-4);border-bottom:1px solid var(--border);">
+        <div class="form-panel-title">Nueva venta</div>
+        <div class="form-panel-desc">
           Registra ventas al contado o a crédito. Los productos se cargan desde la hoja "Productos".
         </div>
 
@@ -839,7 +852,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 
         <div style="text-align:right;padding:var(--space-3) 0;border-top:1px solid var(--border);margin-bottom:var(--space-4);">
           <span style="font-size:var(--text-micro);text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);">Total: </span>
-          <span id="venta-total" style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--accent);">$0</span>
+          <span id="venta-total" style="font-family:var(--mono);font-size:var(--text-stat-normal);font-weight:500;color:var(--accent);">$0</span>
         </div>
 
         <div id="venta-error" class="error-banner" style="margin-bottom:var(--space-3)" aria-live="assertive"></div>
@@ -893,11 +906,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 </main>
 
 <nav id="bottom-nav" role="navigation" aria-label="Navegación principal">
-  <div class="nav-item active" data-view="dashboard" aria-label="Dashboard"><span class="nav-icon">◆</span><span>Dasb</span></div>
-  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">◇</span><span>Terc</span></div>
-  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cart</span></div>
+  <div class="nav-item active" data-view="dashboard" aria-label="Dashboard"><span class="nav-icon">◆</span><span>Panel</span></div>
+  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">◇</span><span>Terc.</span></div>
+  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cart.</span></div>
   <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">◇</span><span>Pagos</span></div>
-  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Vtas</span></div>
+  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Vtas.</span></div>
 </nav>
 
 <div id="toast-container"></div>
@@ -1529,18 +1542,32 @@ function cargarTerceros() {
 }
 
 function abrirModalTercero() {
+  var modal = document.getElementById('modal-tercero');
   document.getElementById('tercero-nombre').value = '';
   document.getElementById('tercero-tipo').value = 'CLIENTE';
   document.getElementById('tercero-limite').value = '';
   document.getElementById('tercero-telefono').value = '';
   document.getElementById('tercero-activo').checked = true;
   document.getElementById('tercero-error').style.display = 'none';
-  document.getElementById('modal-tercero').classList.add('active');
-  setTimeout(function(){ document.getElementById('tercero-nombre').focus(); }, 100);
+  modal.classList.add('active');
+  modal._opener = document.activeElement;
+  var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  var first = focusables[0], last = focusables[focusables.length - 1];
+  setTimeout(function(){ if(first) first.focus(); }, 50);
+  function trap(e){
+    if(e.key!=='Tab') return;
+    if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}
+    else{if(document.activeElement===last){e.preventDefault();first.focus();}}
+  }
+  modal.addEventListener('keydown',trap);
+  modal._trap = trap;
 }
 
 function cerrarModalTercero() {
-  document.getElementById('modal-tercero').classList.remove('active');
+  var modal = document.getElementById('modal-tercero');
+  modal.classList.remove('active');
+  modal.removeEventListener('keydown',modal._trap);
+  if(modal._opener) modal._opener.focus();
 }
 
 function guardarTercero() {
