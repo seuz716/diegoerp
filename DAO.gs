@@ -14,7 +14,7 @@ class DAOError extends Error {
 }
 
 function _sanitizeCell(value) {
-  if (typeof value === 'string' && value.length > 0 && /^[=+\-@]/.test(value)) {
+  if (typeof value === 'string' && value.length > 0) {
     return "'" + value;
   }
   return value;
