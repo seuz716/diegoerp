@@ -23,7 +23,7 @@
   --green: #3DA35D;
   --green-dim: rgba(61,163,93,0.10);
   --green-border: rgba(61,163,93,0.22);
-  --muted: rgba(60,55,50,0.50);
+  --muted: rgba(60,55,50,0.60);
   --muted-2: rgba(60,55,50,0.24);
   --text: #1A1814;
   --border: rgba(0,0,0,0.07);
@@ -32,8 +32,8 @@
   --display: 'Libre Baskerville', Georgia, serif;
   --font-body: 'Sora', sans-serif;
   --radius: 0px;
-  --text-xs: 8px;
-  --text-micro: 9px;
+  --text-xs: 10px;
+  --text-micro: 10px;
   --text-data: 10px;
   --text-sm: 11px;
   --text-label: 12px;
@@ -235,7 +235,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .stat-normal .stat-value{font-size:var(--text-stat-normal);letter-spacing:-0.02em;}
 .stat-meta{font-size:var(--text-data);color:var(--muted);font-family:var(--mono);}
 .stat-meta .venc{color:var(--red);}
-.stat-meta .ok{color:var(--green);}
+.stat-meta .verde{color:var(--green);}
 
 /* ── ALERTAS ── */
 .alerts-section{
@@ -266,7 +266,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .alert-row:last-child{border-bottom:none;}
 .alert-row:hover{background:var(--bg-2);}
 .alert-row.critical{background:var(--red-dim);}
-.alert-row.critical:hover{background:var(--red-dim);}
+.alert-row.critical:hover{background:rgba(204,51,51,0.15);}
 .rank{
   font-size:var(--text-micro);font-weight:500;letter-spacing:0.06em;
   color:var(--muted-2);text-align:center;
@@ -549,6 +549,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   .form-field { font-size: 16px; }
   .btn { min-height: 44px; padding: var(--space-3) var(--space-4); }
 }
+@media (max-width: 600px) {
+  .stats-asymmetric { grid-template-columns: 1fr 1fr; }
+  .stat-hero { grid-column: 1 / -1; }
+}
 </style>
 </head>
 <body>
@@ -614,7 +618,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
       <div class="stat-normal">
         <div class="stat-label">Por Pagar · CxP</div>
         <div class="stat-value" id="stat-pagar">$890.000</div>
-        <div class="stat-meta">Vencido: <span class="ok" id="stat-vencido-cxp">$0</span></div>
+        <div class="stat-meta">Vencido: <span class="verde" id="stat-vencido-cxp">$0</span></div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Exposición neta</div>
@@ -1419,8 +1423,9 @@ function cargarCartera() {
 
 function cargarAbonoSelect() {
   var select = document.getElementById('abono-cliente');
-  select.innerHTML = '<option value="">Seleccione un cliente...</option>';
-  App.api.getTerceros(null)
+  select.innerHTML = '<option value="">Seleccione un tercero...</option>';
+  var promise = App.data.terceros ? Promise.resolve(App.data.terceros) : App.api.getTerceros(null);
+  promise
     .then(function (data) {
       if (data && data.length) {
         data.forEach(function (t) {
@@ -1449,11 +1454,11 @@ function ejecutarAbono() {
   var centavos = App.toCents(montoInput);
   var referencia = document.getElementById('abono-referencia').value.trim();
 
-  if (!idTercero) { errorEl.textContent = 'Seleccione un cliente.'; errorEl.classList.add('show'); return; }
+  if (!idTercero) { errorEl.textContent = 'Seleccione un tercero.'; errorEl.classList.add('show'); return; }
   if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
-  confirmarAccion('¿Confirmar el registro de este movimiento?<br>Monto: ' + App.formatearMoneda(centavos) + '<br>Tipo: ' + tipo, function() {
+  confirmarAccion(['¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
@@ -1544,6 +1549,9 @@ function cargarTerceros() {
           btnOpciones.style.fontSize = 'var(--text-xs)';
           btnOpciones.setAttribute('aria-label', 'Opciones de ' + (item.nombre || ''));
           btnOpciones.textContent = '···';
+          btnOpciones.disabled = true;
+          btnOpciones.style.opacity = '0.3';
+          btnOpciones.title = 'Próximamente';
           tdAcciones.appendChild(btnOpciones);
           tr.appendChild(tdAcciones);
 
@@ -1591,9 +1599,14 @@ function cerrarModalTercero() {
   if(modal._opener) modal._opener.focus();
 }
 
-function confirmarAccion(mensaje, onConfirm) {
+function confirmarAccion(lineas, onConfirm) {
   var modal = document.getElementById('modal-confirm');
-  document.getElementById('modal-confirm-msg').innerHTML = mensaje;
+  var msgEl = document.getElementById('modal-confirm-msg');
+  msgEl.textContent = '';
+  lineas.forEach(function(l, i) {
+    if (i > 0) msgEl.appendChild(document.createElement('br'));
+    msgEl.appendChild(document.createTextNode(l));
+  });
   modal.classList.add('active');
   var btnOk = document.getElementById('modal-confirm-ok');
   var btnCan = document.getElementById('modal-confirm-cancel');
@@ -1601,11 +1614,14 @@ function confirmarAccion(mensaje, onConfirm) {
     modal.classList.remove('active');
     btnOk.removeEventListener('click', onOk);
     btnCan.removeEventListener('click', onCancel);
+    modal.removeEventListener('click', onOverlayClick);
   }
   function onOk() { cleanup(); onConfirm(); }
   function onCancel() { cleanup(); }
+  function onOverlayClick(e) { if (e.target === modal) cleanup(); }
   btnOk.addEventListener('click', onOk);
   btnCan.addEventListener('click', onCancel);
+  modal.addEventListener('click', onOverlayClick);
   btnOk.focus();
 }
 
@@ -1797,7 +1813,7 @@ function registrarVenta() {
   }
 
   var totalStr = document.getElementById('venta-total').textContent;
-  confirmarAccion('¿Confirmar el registro de esta venta?<br>Total: ' + totalStr + '<br>Tipo: ' + tipo, function() {
+  confirmarAccion(['¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.textContent = '→ Procesando...';
 
