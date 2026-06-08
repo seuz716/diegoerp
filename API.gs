@@ -162,6 +162,9 @@ function getUserInfo() {
   try {
     AuthService.checkPermission("ver_dashboard");
     const email = Session.getActiveUser().getEmail();
+    if (!email || !email.includes("@")) {
+      throw new Error("No se pudo verificar la identidad del usuario");
+    }
     const role = AuthService.getUserRole(email);
     return { email: email, role: role };
   } catch (e) {
@@ -188,8 +191,8 @@ function procesarVenta(carrito, opciones) {
  */
 function getProductos() {
   try {
-    validateAndMapSchemas();
     AuthService.checkPermission("revisar_inventario");
+    validateAndMapSchemas();
     const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
     const data = sheet.getDataRange().getValues();
     const COL = CONFIG.COLUMNS.PRODUCTOS;

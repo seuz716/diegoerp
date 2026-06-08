@@ -60,7 +60,6 @@ const CRYPTO_UTIL = {
     }
   },
 
-  // Backward‑compatible aliases
   obfuscate(p) { return this.encrypt(p); },
   deobfuscate(c) { return this.decrypt(c); },
 };
@@ -91,14 +90,10 @@ const AuthService = {
   },
 
   getApiKey(keyName) {
-    // Primero intentar proxy externo
     const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
     if (proxyValue) return proxyValue;
-
-    // Fallback local (para no romper la instalación estándar local)
     const value = this._loadKey(keyName);
     if (value) return value;
-
     const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
     if (legacy) {
       console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a ofuscado...");
@@ -107,7 +102,6 @@ const AuthService = {
       console.log("Migración completada para '" + keyName + "'.");
       return legacy;
     }
-
     console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
     throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada en proxy ni localmente.");
   },
@@ -130,10 +124,6 @@ const AuthService = {
       const email = Session.getActiveUser().getEmail();
       if (email && email.indexOf("@") > 0) return email;
     } catch (e) {}
-    try {
-      const effective = Session.getEffectiveUser().getEmail();
-      if (effective && effective.indexOf("@") > 0) return effective;
-    } catch (e) {}
     return null;
   },
 
@@ -152,20 +142,7 @@ const AuthService = {
     }
   },
 
-  _isTriggerContext() {
-    try {
-      const email = Session.getActiveUser().getEmail();
-      return !email || email.indexOf("@") <= 0;
-    } catch (e) {
-      return true;
-    }
-  },
-
   checkPermission(accion) {
-    const isSystemAction = ["ejecutar_mantenimiento", "revisar_inventario", "enviar_alertas"].includes(accion);
-    if (isSystemAction && this._isTriggerContext()) {
-      return;
-    }
     const userEmail = this._getCurrentUser();
     if (!userEmail) {
       throw new Error("No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");

@@ -261,7 +261,7 @@ let CACHE = {
       const item = { id };
       if (columns.saldo !== undefined) {
         item.saldo = _parseMoneda(row[columns.saldo], 0);
-        item.estado = String(row[columns.estado] || "").trim();
+        item.estado = String(row[columns.estado] || "ABIERTA").trim();
         item.fecha = _safeDate(row[columns.fecha]);
         item.total = _parseMoneda(row[columns.total], 0);
       } else {
@@ -279,7 +279,7 @@ let CACHE = {
       if (r.nombre !== undefined) parts.push(r.nombre);
       if (r.saldo !== undefined) parts.push(r.saldo);
       if (r.estado !== undefined) parts.push(r.estado);
-      if (r.fecha !== undefined) parts.push(r.fecha instanceof Date ? String(r.fecha.getTime()) : String(r.fecha));
+      if (r.fecha !== undefined) parts.push(r.fecha instanceof Date ? Utilities.formatDate(r.fecha, _getTimeZone(), 'yyyy-MM-dd') : String(r.fecha));
       if (r.total !== undefined) parts.push(r.total);
       return parts.join("|");
     }).join(",");

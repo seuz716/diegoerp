@@ -22,6 +22,7 @@ const LOCK_MANAGER = {
   RESOURCE_LOCK_TIMEOUT: 25000,
   RESOURCE_TTL_MS: 45000,
   RESOURCE_LOCK_MAX_TTL_MS: 120000,
+  PROPAGATION_DELAY_MS: 50,
   LOCK_PREFIX: "LOCK_",
   _lockDepth: 0,
   _maxDepthReentrant: 10,
@@ -74,6 +75,7 @@ const LOCK_MANAGER = {
 
       if (this._safeTryLock(this.RESOURCE_LOCK_WAIT)) {
         try {
+          Utilities.sleep(this.PROPAGATION_DELAY_MS);
           const now = Date.now();
           const raw = properties.getProperty(lockKey);
           let isLocked = false;
@@ -130,6 +132,7 @@ const LOCK_MANAGER = {
       return;
     }
     try {
+      Utilities.sleep(this.PROPAGATION_DELAY_MS);
       const props = PropertiesService.getScriptProperties();
       const currentRaw = props.getProperty(lockKey);
       if (currentRaw) {
@@ -162,6 +165,7 @@ const LOCK_MANAGER = {
 
     if (this._safeTryLock(this.GLOBAL_TIMEOUT)) {
       try {
+        Utilities.sleep(this.PROPAGATION_DELAY_MS);
         const props = PropertiesService.getScriptProperties();
         const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
         scanned = keys.length;
@@ -202,6 +206,7 @@ const LOCK_MANAGER = {
       return [];
     }
     try {
+      Utilities.sleep(this.PROPAGATION_DELAY_MS);
       const props = PropertiesService.getScriptProperties();
       const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
       const orphans = [];
