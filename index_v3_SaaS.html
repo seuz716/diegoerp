@@ -970,7 +970,7 @@ function callServer(funcName) {
 
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
-  getCartera: function (filtroTipo, filtroEstado) { return callServer('getCartera', filtroTipo, filtroEstado); },
+  getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
   getTerceros: function (filtroTipo) { return callServer('getTerceros', filtroTipo); },
   registrarAbono: function (idTercero, valorAbono, referencia, tipo) { return callServer('registrarAbono', idTercero, valorAbono, referencia, tipo); },
   saveTercero: function (tercero) { return callServer('saveTercero', tercero); },
@@ -1307,28 +1307,38 @@ function analizarConGeminiFresco() {
     });
 }
 
-function cargarCartera() {
+var currentCarteraPageToken = 0;
+var carteraPageSize = 1000;
+
+function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
   var tbody = document.querySelector('#view-cartera .data-table tbody');
-  mostrarLoader(tbody);
+
+  if (append !== true) {
+    currentCarteraPageToken = 0;
+    mostrarLoader(tbody);
+  } else {
+    var loadMoreRow = document.getElementById('row-cargar-mas');
+    if (loadMoreRow) {
+      loadMoreRow.parentNode.removeChild(loadMoreRow);
+    }
+  }
 
   var filterTipoEl = document.getElementById('filter-tipo');
   var filterEstadoEl = document.getElementById('filter-estado');
   var filtroTipo = filterTipoEl.value || null;
   var filtroEstado = filterEstadoEl.value || null;
 
-  var promise;
-  if (App.data.cartera && !filtroTipo && !filtroEstado) {
-    promise = Promise.resolve(App.data.cartera);
-  } else {
-    promise = App.api.getCartera(filtroTipo, filtroEstado);
-  }
+  App.api.getCartera(filtroTipo, filtroEstado, carteraPageSize, currentCarteraPageToken)
+    .then(function (res) {
+      if (append !== true) {
+        tbody.innerHTML = '';
+      }
 
-  promise
-    .then(function (data) {
-      tbody.innerHTML = '';
+      var data = res.items || [];
+      var nextToken = res.nextPageToken;
 
-      if (!data || data.length === 0) {
+      if (!append && data.length === 0) {
         var td = document.createElement('td');
         td.colSpan = 5;
         mostrarVacio(td, 'No se encontraron registros');
@@ -1408,6 +1418,28 @@ function cargarCartera() {
 
           tbody.appendChild(tr);
         });
+
+        if (nextToken !== null && nextToken !== undefined) {
+          var trLoadMore = document.createElement('tr');
+          trLoadMore.id = 'row-cargar-mas';
+          var tdLoadMore = document.createElement('td');
+          tdLoadMore.colSpan = 5;
+          tdLoadMore.style.textAlign = 'center';
+          tdLoadMore.style.padding = 'var(--space-3)';
+
+          var btnLoadMore = document.createElement('button');
+          btnLoadMore.className = 'btn btn-outline btn-small';
+          btnLoadMore.style.margin = '0 auto';
+          btnLoadMore.textContent = 'Cargar más';
+          btnLoadMore.addEventListener('click', function () {
+            currentCarteraPageToken = nextToken;
+            cargarCartera(true);
+          });
+
+          tdLoadMore.appendChild(btnLoadMore);
+          trLoadMore.appendChild(tdLoadMore);
+          tbody.appendChild(trLoadMore);
+        }
       }
     })
     .catch(function (err) {
@@ -1416,7 +1448,9 @@ function cargarCartera() {
       btn.className = 'btn btn-sm';
       btn.textContent = '↻ Reintentar';
       btn.style.marginLeft = 'var(--space-3)';
-      btn.addEventListener('click', cargarCartera);
+      btn.addEventListener('click', function () {
+        cargarCartera(append);
+      });
       tbody.querySelector('.error-banner').appendChild(btn);
     });
 }

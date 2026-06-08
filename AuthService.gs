@@ -18,44 +18,84 @@ const PERMISSION_ROLES = {
   administrar: ROLES.ADMIN,
 };
 
-const CRYPTO_UTIL = {
-  APP_SALT: "DIEGOERP_AUTH_V1_2026",
+const APP_CRYPTO_SALT = "DIEGOERP_AES_V2_2026";
 
-  _getSecretKey() {
-    const prop = PropertiesService.getScriptProperties();
-    let key = prop.getProperty('AUTH_HMAC_KEY');
-    if (!key) {
-      key = Utilities.getUuid();
-      prop.setProperty('AUTH_HMAC_KEY', key);
-    }
-    return key;
+let _cryptoJsInstance = null;
+
+function _getCryptoJS() {
+  if (_cryptoJsInstance) return _cryptoJsInstance;
+  const url = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js";
+  eval(UrlFetchApp.fetch(url).getContentText());
+  _cryptoJsInstance = CryptoJS;
+  return _cryptoJsInstance;
+}
+
+const SecretManager = {
+  _deriveKey(part1, part2) {
+    const combined = part1 + "::" + APP_CRYPTO_SALT + "::" + part2;
+    const digest = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256, combined, Utilities.Charset.UTF_8
+    );
+    return digest.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
   },
 
+  _getLocalParts() {
+    const scriptProps = PropertiesService.getScriptProperties();
+    const userProps = PropertiesService.getUserProperties();
+    let part1 = scriptProps.getProperty('AES_KEY_PART_1');
+    if (!part1) {
+      part1 = Utilities.getUuid();
+      scriptProps.setProperty('AES_KEY_PART_1', part1);
+    }
+    let part2 = userProps.getProperty('AES_KEY_PART_2');
+    if (!part2) {
+      part2 = Utilities.getUuid();
+      userProps.setProperty('AES_KEY_PART_2', part2);
+    }
+    return { part1, part2 };
+  },
+
+  getEncryptionKey() {
+    const fromVault = PROXY_SECRET_SERVICE.resolveSecret('AES_MASTER_KEY');
+    if (fromVault) return fromVault;
+    const parts = this._getLocalParts();
+    return this._deriveKey(parts.part1, parts.part2);
+  }
+};
+
+const CRYPTO_UTIL = {
   encrypt(plaintext) {
     if (!plaintext) return "";
-    const key = this._getSecretKey();
-    const sigBytes = Utilities.computeHmacSha256Signature(plaintext, key);
-    const signature = Utilities.base64Encode(sigBytes);
-    const cipher = Utilities.base64Encode(Utilities.newBlob(plaintext).getBytes());
-    return JSON.stringify({ c: cipher, s: signature });
+    try {
+      const C = _getCryptoJS();
+      const key = C.enc.Hex.parse(SecretManager.getEncryptionKey());
+      const iv = C.lib.WordArray.random(16);
+      const encrypted = C.AES.encrypt(plaintext, key, { iv });
+      return JSON.stringify({ c: encrypted.toString(), i: C.enc.Hex.stringify(iv) });
+    } catch (e) {
+      console.error("CRYPTO_UTIL.encrypt error: " + e);
+      return "";
+    }
   },
 
   decrypt(ciphertext) {
     if (!ciphertext) return "";
     try {
       const obj = JSON.parse(ciphertext);
-      const key = this._getSecretKey();
-      const plainBytes = Utilities.base64Decode(obj.c);
-      const plain = Utilities.newBlob(plainBytes).getDataAsString();
-      const expectedSig = Utilities.base64Encode(
-        Utilities.computeHmacSha256Signature(plain, key)
-      );
-      if (expectedSig !== obj.s) {
-        throw new Error("Signature verification failed");
+      if (obj.c && obj.i) {
+        const C = _getCryptoJS();
+        const key = C.enc.Hex.parse(SecretManager.getEncryptionKey());
+        const iv = C.enc.Hex.parse(obj.i);
+        const decrypted = C.AES.decrypt(obj.c, key, { iv });
+        return C.enc.Utf8.stringify(decrypted);
       }
-      return plain;
+      if (obj.c && obj.s) {
+        const plainBytes = Utilities.base64Decode(obj.c);
+        return Utilities.newBlob(plainBytes).getDataAsString();
+      }
+      return "";
     } catch (e) {
-      console.warn("Crypto decryption error: " + e);
+      console.warn("CRYPTO_UTIL.decrypt error: " + e);
       return "";
     }
   },
@@ -85,7 +125,7 @@ const AuthService = {
   setApiKey(keyName, value) {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
     this._storeKey(keyName, value.trim());
-    console.log("API Key '" + keyName + "' almacenada (ofuscada) en PropertiesService.");
+    console.log("API Key '" + keyName + "' almacenada en PropertiesService.");
     return true;
   },
 
@@ -96,7 +136,7 @@ const AuthService = {
     if (value) return value;
     const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
     if (legacy) {
-      console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a ofuscado...");
+      console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a cifrado AES...");
       this._storeKey(keyName, legacy);
       PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
       console.log("Migración completada para '" + keyName + "'.");

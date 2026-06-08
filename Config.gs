@@ -91,11 +91,11 @@ function getSheet(name) {
 
 CONFIG.reloadSchema = function() {
   const sheets = {
-    'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
-    'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
-    'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
-    'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
+    [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
+    [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
+    [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
+    [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
+    [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
   };
 
   const spreadsheet = getActiveSpreadsheet();
@@ -291,7 +291,14 @@ function _safeDate(v) {
       throw new Error(`Fecha inválida: ${v}`);
     }
     const s = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    return new Date(s + 'T00:00:00');
+    const normalized = new Date(s + 'T00:00:00');
+    const minDate = new Date(2000, 0, 1);
+    const maxDate = new Date();
+    maxDate.setFullYear(maxDate.getFullYear() + 5);
+    if (normalized.getTime() < minDate.getTime() || normalized.getTime() > maxDate.getTime()) {
+      throw new Error(`Fecha fuera de rango permitido (2000-${maxDate.getFullYear()}): ${v}`);
+    }
+    return normalized;
   } catch (e) {
     console.error(`Fecha inválida detectada: ${v}`);
     throw new Error(`No se puede procesar fecha: ${v}. Corrija el dato en la hoja.`);

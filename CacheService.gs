@@ -50,6 +50,17 @@ let CACHE = {
     this.tercerosFailCount = 0;
     this.tercerosCircuitOpen = false;
     this.lastChecksumTerceros = "";
+
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const currentVer = Number(props.getProperty("CACHE_VERSION_TERCEROS") || 1);
+      props.setProperty("CACHE_VERSION_TERCEROS", String(currentVer + 1));
+      
+      const key = "terceros_v" + currentVer;
+      CacheService.getScriptCache().remove(key);
+    } catch (e) {
+      Logger.log("CACHE: Error invalidating native terceros cache: " + e.toString());
+    }
   },
 
   invalidateCartera() {
@@ -61,6 +72,17 @@ let CACHE = {
     this.carteraFailCount = 0;
     this.carteraCircuitOpen = false;
     this.lastChecksumCartera = "";
+
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const currentVer = Number(props.getProperty("CACHE_VERSION_CARTERA") || 1);
+      props.setProperty("CACHE_VERSION_CARTERA", String(currentVer + 1));
+      
+      const key = "cartera_v" + currentVer;
+      CacheService.getScriptCache().remove(key);
+    } catch (e) {
+      Logger.log("CACHE: Error invalidating native cartera cache: " + e.toString());
+    }
   },
 
   /**
@@ -79,6 +101,15 @@ let CACHE = {
       }
       return true;
     }
+    if (this.terceros === null) {
+      const cached = this._getNativeCache("terceros");
+      if (cached) {
+        this.terceros = cached.terceros;
+        this.terceroIndex = cached.terceroIndex;
+        this.lastRefreshTerceros = cached.lastRefreshTerceros;
+        this.lastChecksumTerceros = cached.lastChecksumTerceros;
+      }
+    }
     return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
   },
 
@@ -89,6 +120,15 @@ let CACHE = {
         return false;
       }
       return true;
+    }
+    if (this.cartera === null) {
+      const cached = this._getNativeCache("cartera");
+      if (cached) {
+        this.cartera = cached.cartera;
+        this.carteraIndex = cached.carteraIndex;
+        this.lastRefreshCartera = cached.lastRefreshCartera;
+        this.lastChecksumCartera = cached.lastChecksumCartera;
+      }
     }
     return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
   },
@@ -251,7 +291,8 @@ let CACHE = {
     const columns = columnsConfig;
     const lastRow = sheet.getLastRow();
     const numCols = Math.max(...Object.values(columns)) + 1;
-    const data = lastRow < 2 ? [] : sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const limit = Math.min(5000, lastRow - 1);
+    const data = lastRow < 2 ? [] : sheet.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
     const items = [];
     for (let i = 0; i < data.length; i++) {
@@ -298,12 +339,13 @@ let CACHE = {
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
       const lastRow = sheetTerceros.getLastRow();
       const numCols = Math.max(...Object.values(COL_T)) + 1;
-      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(2, 1, lastRow - 1, numCols).getValues();
+      const limit = Math.min(5000, lastRow - 1);
+      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
       const newTerceros = [];
       const newIndex = {};
       for (let i = 0; i < dataTerceros.length; i++) {
-        const rowIdx = i + 1;
+        const rowIdx = Math.max(2, lastRow - limit + 1) + i - 1;
         const id = String(dataTerceros[i][COL_T.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;  
@@ -326,6 +368,13 @@ let CACHE = {
       this.tercerosFailCount = 0;
       this.tercerosCircuitOpen = false;
       this.lastChecksumTerceros = this._computeChecksum(newTerceros);
+
+      this._putNativeCache("terceros", {
+        terceros: this.terceros,
+        terceroIndex: this.terceroIndex,
+        lastRefreshTerceros: this.lastRefreshTerceros,
+        lastChecksumTerceros: this.lastChecksumTerceros
+      });
     } catch (e) {
       this.tercerosFailCount++;
       Logger.log("ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
@@ -357,12 +406,13 @@ let CACHE = {
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
       const numCols = Math.max(...Object.values(COL_C)) + 1;
       const lastRow = sheetCartera.getLastRow();
-      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(2, 1, lastRow - 1, numCols).getValues();
+      const limit = Math.min(5000, lastRow - 1);
+      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
       const newCartera = [];
       const newIndex = {};
       for (let i = 0; i < dataCartera.length; i++) {
-        const rowIdx = i + 1;
+        const rowIdx = Math.max(2, lastRow - limit + 1) + i - 1;
         const id = String(dataCartera[i][COL_C.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;
@@ -389,6 +439,13 @@ let CACHE = {
       this.carteraFailCount = 0;
       this.carteraCircuitOpen = false;
       this.lastChecksumCartera = this._computeChecksum(newCartera);
+
+      this._putNativeCache("cartera", {
+        cartera: this.cartera,
+        carteraIndex: this.carteraIndex,
+        lastRefreshCartera: this.lastRefreshCartera,
+        lastChecksumCartera: this.lastChecksumCartera
+      });
     } catch (e) {
       this.carteraFailCount++;
       Logger.log("ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
@@ -427,12 +484,55 @@ let CACHE = {
   },
 
   getCarteraPorTercero(idTercero) {
-    this.refresh();
-    return this.cartera.filter(c => c.id_tercero === _sanitizeId(idTercero));
+    const idClean = _sanitizeId(idTercero);
+    if (!idClean) return [];
+
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+
+    const range = sheet.getRange(2, COL.id_tercero + 1, lastRow - 1, 1);
+    const matches = range.createTextFinder(idClean)
+      .matchEntireCell(true)
+      .useRegularExpression(false)
+      .findAll();
+
+    if (!matches || matches.length === 0) return [];
+
+    const rowIndexes = matches.map(match => match.getRow());
+    const uniqueRows = Array.from(new Set(rowIndexes)).sort((a, b) => a - b);
+    const items = [];
+
+    const groups = [];
+    let start = uniqueRows[0];
+    let end = start;
+
+    for (let i = 1; i < uniqueRows.length; i++) {
+      const row = uniqueRows[i];
+      if (row === end + 1) {
+        end = row;
+      } else {
+        groups.push({ start, end });
+        start = row;
+        end = row;
+      }
+    }
+    groups.push({ start, end });
+
+    for (const group of groups) {
+      const values = sheet.getRange(group.start, 1, group.end - group.start + 1, numCols).getValues();
+      for (let i = 0; i < values.length; i++) {
+        items.push(DAO._rowToCarteraItem(values[i], group.start + i));
+      }
+    }
+
+    return items;
   },
 
   getSaldoTercero(idTercero) {
-    this.refresh();
     return this.getCarteraPorTercero(idTercero)
       .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
       .reduce((sum, c) => sum + c.saldo, 0);
@@ -441,5 +541,39 @@ let CACHE = {
   getCarteraBase() {
     this.refresh();
     return this.cartera || [];
+  },
+
+  _getCacheKey(prefix) {
+    const version = PropertiesService.getScriptProperties().getProperty("CACHE_VERSION_" + prefix.toUpperCase()) || "1";
+    return prefix + "_v" + version;
+  },
+
+  _putNativeCache(keyPrefix, data) {
+    try {
+      const cache = CacheService.getScriptCache();
+      const serialized = JSON.stringify(data);
+      if (serialized.length < 90000) {
+        const key = this._getCacheKey(keyPrefix);
+        cache.put(key, serialized, 300); // 300 seconds = 5 minutes hardcoded TTL
+      } else {
+        Logger.log("CACHE: Data too large for native CacheService, skipping put. Size: " + serialized.length);
+      }
+    } catch (e) {
+      Logger.log("CACHE: Error in _putNativeCache: " + e.toString());
+    }
+  },
+
+  _getNativeCache(keyPrefix) {
+    try {
+      const cache = CacheService.getScriptCache();
+      const key = this._getCacheKey(keyPrefix);
+      const cached = cache.get(key);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      Logger.log("CACHE: Error in _getNativeCache: " + e.toString());
+    }
+    return null;
   }
 };

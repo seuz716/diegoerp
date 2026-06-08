@@ -36,10 +36,10 @@ function getTerceros(filtroTipo = null) {
 /**
  * API Pública: Obtener cartera con filtros
  */
-function getCartera(filtroTipo = null, filtroEstado = null) {
+function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
   try {
     AuthService.checkPermission("ver_cartera");
-    return DOMAIN.getCartera(filtroTipo, filtroEstado);
+    return DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
   } catch (e) {
     Logger.log("ERROR getCartera:" + e.toString());
     throw new Error(e.message || e.toString());
@@ -65,38 +65,62 @@ function saveTercero(tercero) {
 function getDashboardCartera() {
   try {
     AuthService.checkPermission("ver_dashboard");
-    const cartera = DOMAIN.getCartera();
-    // const hoy = _today(); // disponible para filtrar por fecha si se necesita
+    
+    let porCobrar = 0;
+    let porPagar = 0;
+    let vencidaCxC = 0;
+    let vencidaCxP = 0;
+    let allAlertas = [];
+    let totalObligaciones = 0;
 
-    const cxc = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
-    const cxp = cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
+    let pageToken = 0;
+    const pageSize = 5000;
+    let hasMore = true;
 
-    const porCobrar = cxc
-      .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
-      .reduce((s, c) => s + c.saldo, 0);
+    while (hasMore) {
+      const page = DOMAIN.getCartera(null, null, pageSize, pageToken);
+      const items = page.items || [];
+      
+      const cxc = items.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
+      const cxp = items.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
 
-    const porPagar = cxp
-      .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
-      .reduce((s, c) => s + c.saldo, 0);
+      porCobrar += cxc
+        .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
+        .reduce((s, c) => s + c.saldo, 0);
 
-    const vencidaCxC = cxc
-      .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-      .reduce((s, c) => s + c.saldo, 0);
+      porPagar += cxp
+        .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
+        .reduce((s, c) => s + c.saldo, 0);
 
-    const vencidaCxP = cxp
-      .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-      .reduce((s, c) => s + c.saldo, 0);
+      vencidaCxC += cxc
+        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
+        .reduce((s, c) => s + c.saldo, 0);
 
-    const alertas = cxc
-      .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-      .sort((a, b) => b.dias_vencido - a.dias_vencido)
-      .slice(0, 10)
-      .map(c => ({
-        id_tercero: c.id_tercero,
-        nombre: c.nombre_tercero,
-        saldo: c.saldo,
-        dias: c.dias_vencido,
-      }));
+      vencidaCxP += cxp
+        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
+        .reduce((s, c) => s + c.saldo, 0);
+
+      cxc
+        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
+        .forEach(c => allAlertas.push({
+          id_tercero: c.id_tercero,
+          nombre: c.nombre_tercero,
+          saldo: c.saldo,
+          dias: c.dias_vencido,
+        }));
+
+      totalObligaciones += cxc.length + cxp.length;
+
+      if (page.nextPageToken !== null && page.nextPageToken !== undefined) {
+        pageToken = page.nextPageToken;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const alertas = allAlertas
+      .sort((a, b) => b.dias - a.dias)
+      .slice(0, 10);
 
     return {
       porCobrar,
@@ -104,7 +128,7 @@ function getDashboardCartera() {
       vencidaCxC,
       vencidaCxP,
       alertas,
-      totalObligaciones: cxc.length + cxp.length,
+      totalObligaciones,
     };
   } catch (e) {
     console.error("ERROR getDashboardCartera:" + e.toString());

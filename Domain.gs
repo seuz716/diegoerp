@@ -158,9 +158,9 @@ const DOMAIN = {
     }
   },
 
-  getCartera(filtroTipo = null, filtroEstado = null) {
+  getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
-    const baseCartera = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado);
+    const { items: baseCartera, nextPageToken } = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado, pageSize, pageToken);
     const hoy = _today();
 
     // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
@@ -197,9 +197,10 @@ const DOMAIN = {
     });
 
     if (debeFiltrarVencida) {
-      return result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+      return { items: result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA), nextPageToken };
     }
-    return result;
+
+    return { items: result, nextPageToken };
   },
 
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {

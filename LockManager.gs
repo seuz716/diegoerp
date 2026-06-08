@@ -215,8 +215,8 @@ const LOCK_MANAGER = {
       let carteraData = null;
       try {
         const ss = getActiveSpreadsheet();
-        const tercerosSheet = ss.getSheetByName("Terceros");
-        const carteraSheet = ss.getSheetByName("Cartera");
+        const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
+        const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
         if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
         if (carteraSheet) carteraData = carteraSheet.getDataRange().getValues();
       } catch (e) {
