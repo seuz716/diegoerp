@@ -21,37 +21,48 @@ const PERMISSION_ROLES = {
 const CRYPTO_UTIL = {
   APP_SALT: "DIEGOERP_AUTH_V1_2026",
 
-  _deriveKey() {
-    const scriptId = ScriptApp.getScriptId();
-    const raw = Utilities.computeDigest(
-      Utilities.DigestAlgorithm.SHA_256,
-      scriptId + this.APP_SALT,
-      Utilities.Charset.UTF_8
-    );
-    return raw;
+  _getSecretKey() {
+    const prop = PropertiesService.getScriptProperties();
+    let key = prop.getProperty('AUTH_HMAC_KEY');
+    if (!key) {
+      key = Utilities.getUuid();
+      prop.setProperty('AUTH_HMAC_KEY', key);
+    }
+    return key;
   },
 
-  obfuscate(plaintext) {
+  encrypt(plaintext) {
     if (!plaintext) return "";
-    const key = this._deriveKey();
-    const plainBytes = Utilities.newBlob(plaintext).getBytes();
-    const result = [];
-    for (let i = 0; i < plainBytes.length; i++) {
-      result.push(plainBytes[i] ^ key[i % key.length]);
-    }
-    return Utilities.base64Encode(Utilities.newBlob(result));
+    const key = this._getSecretKey();
+    const sigBytes = Utilities.computeHmacSha256Signature(plaintext, key);
+    const signature = Utilities.base64Encode(sigBytes);
+    const cipher = Utilities.base64Encode(Utilities.newBlob(plaintext).getBytes());
+    return JSON.stringify({ c: cipher, s: signature });
   },
 
-  deobfuscate(ciphertext) {
+  decrypt(ciphertext) {
     if (!ciphertext) return "";
-    const key = this._deriveKey();
-    const cipherBytes = Utilities.base64Decode(ciphertext);
-    const result = [];
-    for (let i = 0; i < cipherBytes.length; i++) {
-      result.push(cipherBytes[i] ^ key[i % key.length]);
+    try {
+      const obj = JSON.parse(ciphertext);
+      const key = this._getSecretKey();
+      const plainBytes = Utilities.base64Decode(obj.c);
+      const plain = Utilities.newBlob(plainBytes).getDataAsString();
+      const expectedSig = Utilities.base64Encode(
+        Utilities.computeHmacSha256Signature(plain, key)
+      );
+      if (expectedSig !== obj.s) {
+        throw new Error("Signature verification failed");
+      }
+      return plain;
+    } catch (e) {
+      console.warn("Crypto decryption error: " + e);
+      return "";
     }
-    return Utilities.newBlob(result).getDataAsString();
   },
+
+  // Backward‑compatible aliases
+  obfuscate(p) { return this.encrypt(p); },
+  deobfuscate(c) { return this.decrypt(c); },
 };
 
 const AuthService = {

@@ -24,8 +24,13 @@ const LOCK_MANAGER = {
   RESOURCE_LOCK_MAX_TTL_MS: 120000,
   LOCK_PREFIX: "LOCK_",
   _lockDepth: 0,
+  _maxDepthReentrant: 10,
 
   _safeTryLock(timeoutMs) {
+    if (this._lockDepth >= this._maxDepthReentrant) {
+      Logger.log("FATAL: _lockDepth anómalo (" + this._lockDepth + "). Reseteando.");
+      this._lockDepth = 0;
+    }
     const lock = LockService.getScriptLock();
     if (this._lockDepth > 0) {
       this._lockDepth++;
@@ -62,6 +67,11 @@ const LOCK_MANAGER = {
     const startTime = Date.now();
 
     while (attempt < MAX_RETRIES) {
+      // Abort if total elapsed time exceeds timeout
+      if (Date.now() - startTime >= this.RESOURCE_LOCK_TIMEOUT) {
+        throw new Error(`Timeout (${this.RESOURCE_LOCK_TIMEOUT}ms) al adquirir bloqueo para ${resourceId}.`);
+      }
+
       if (this._safeTryLock(this.RESOURCE_LOCK_WAIT)) {
         try {
           const now = Date.now();
@@ -97,7 +107,8 @@ const LOCK_MANAGER = {
       }
 
       attempt++;
-      if (attempt < MAX_RETRIES && Date.now() - startTime < this.RESOURCE_LOCK_TIMEOUT) {
+      // Sleep between attempts (exponential backoff) regardless of timeout check above
+      if (attempt < MAX_RETRIES) {
         Utilities.sleep(this._backoffMs(attempt));
       }
     }
@@ -114,6 +125,10 @@ const LOCK_MANAGER = {
    */
   _releaseResourceLock(lockKey, expectedData) {
     const gotLock = this._safeTryLock(5000);
+    if (!gotLock) {
+      Logger.log("WARNING: No se pudo adquirir lock global para liberar " + lockKey);
+      return;
+    }
     try {
       const props = PropertiesService.getScriptProperties();
       const currentRaw = props.getProperty(lockKey);
@@ -130,9 +145,7 @@ const LOCK_MANAGER = {
       }
       props.deleteProperty(lockKey);
     } finally {
-      if (gotLock) {
-        this._safeReleaseLock();
-      }
+      this._safeReleaseLock();
     }
   },
 
@@ -184,50 +197,58 @@ const LOCK_MANAGER = {
    * @returns {string[]} List of orphan lock keys
    */
   _detectOrphanLocks() {
-    const props = PropertiesService.getScriptProperties();
-    const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
-    const orphans = [];
-
-    let tercerosData = null;
-    let carteraData = null;
+    if (!this._safeTryLock(10000)) {
+      Logger.log("WARNING: No se pudo adquirir lock global para detección de orphans.");
+      return [];
+    }
     try {
-      const ss = getActiveSpreadsheet();
-      const tercerosSheet = ss.getSheetByName("Terceros");
-      const carteraSheet = ss.getSheetByName("Cartera");
-      if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
-      if (carteraSheet) carteraData = carteraSheet.getDataRange().getValues();
-    } catch (e) {
-      Logger.log("WARNING: No se pudo acceder a las hojas para detección de orphans: " + e.message);
-    }
+      const props = PropertiesService.getScriptProperties();
+      const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
+      const orphans = [];
 
-    for (const key of keys) {
-      const resourceId = key.substring(this.LOCK_PREFIX.length);
-      let found = false;
+      let tercerosData = null;
+      let carteraData = null;
+      try {
+        const ss = getActiveSpreadsheet();
+        const tercerosSheet = ss.getSheetByName("Terceros");
+        const carteraSheet = ss.getSheetByName("Cartera");
+        if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
+        if (carteraSheet) carteraData = carteraSheet.getDataRange().getValues();
+      } catch (e) {
+        Logger.log("WARNING: No se pudo acceder a las hojas para detección de orphans: " + e.message);
+      }
 
-      if (tercerosData) {
-        for (const row of tercerosData) {
-          if (row.some(cell => String(cell) === resourceId)) {
-            found = true;
-            break;
+      for (const key of keys) {
+        const resourceId = key.substring(this.LOCK_PREFIX.length);
+        let found = false;
+
+        if (tercerosData) {
+          for (const row of tercerosData) {
+            if (row.some(cell => String(cell) === resourceId)) {
+              found = true;
+              break;
+            }
           }
         }
-      }
-      if (!found && carteraData) {
-        for (const row of carteraData) {
-          if (row.some(cell => String(cell) === resourceId)) {
-            found = true;
-            break;
+        if (!found && carteraData) {
+          for (const row of carteraData) {
+            if (row.some(cell => String(cell) === resourceId)) {
+              found = true;
+              break;
+            }
           }
+        }
+
+        if (!found) {
+          Logger.log("WARNING: Possible orphan lock. Resource " + resourceId + " (key: " + key + ") not found in Terceros or Cartera sheets.");
+          orphans.push(key);
         }
       }
 
-      if (!found) {
-        Logger.log("WARNING: Possible orphan lock. Resource " + resourceId + " (key: " + key + ") not found in Terceros or Cartera sheets.");
-        orphans.push(key);
-      }
+      return orphans;
+    } finally {
+      this._safeReleaseLock();
     }
-
-    return orphans;
   },
 
   /**
@@ -244,21 +265,33 @@ const LOCK_MANAGER = {
       Logger.log("WARNING: No se pudo verificar permiso configurar_sistema: " + e.message);
     }
 
-    const triggers = ScriptApp.getProjectTriggers();
-    triggers.forEach(t => {
-      if (t.getHandlerFunction() === "cleanupExpiredLocks") {
-        ScriptApp.deleteTrigger(t);
+    const gotLock = this._safeTryLock(10000);
+    if (!gotLock) {
+      return { success: false, message: "No se pudo adquirir lock para configurar trigger." };
+    }
+    try {
+      const triggers = ScriptApp.getProjectTriggers().filter(
+        t => t.getHandlerFunction() === "cleanupExpiredLocks"
+      );
+      // Si ya existe exactamente 1, no hacer nada
+      if (triggers.length === 1) {
+        const msg = "Trigger cleanupExpiredLocks ya existe.";
+        Logger.log(msg);
+        return { success: true, message: msg };
       }
-    });
+      triggers.forEach(t => ScriptApp.deleteTrigger(t));
 
-    ScriptApp.newTrigger("cleanupExpiredLocks")
-      .timeBased()
-      .everyHours(1)
-      .create();
+      ScriptApp.newTrigger("cleanupExpiredLocks")
+        .timeBased()
+        .everyHours(1)
+        .create();
 
-    const msg = "Trigger de limpieza de locks creado exitosamente (cada 1 hora).";
-    Logger.log(msg);
-    return { success: true, message: msg };
+      const msg = "Trigger de limpieza de locks creado exitosamente (cada 1 hora).";
+      Logger.log(msg);
+      return { success: true, message: msg };
+    } finally {
+      this._safeReleaseLock();
+    }
   },
 
   /** Fallback genérico para acciones masivas (Ej: cache refreshes generales) */
@@ -277,13 +310,15 @@ const LOCK_MANAGER = {
       }
     }
 
-    throw new Error('Servidor saturado. Intenta repitiendo un poco más tarde.');
+    throw new Error('Servidor saturado. Intenta de nuevo más tarde.');
   },
 
   _backoffMs(attempt) {
     const baseWait = Math.min(3000, this.BASE_BACKOFF * Math.pow(2, attempt - 1));
-    const jitterRatio = 0.3 + Math.random() * 0.2;
-    const jitter = baseWait * jitterRatio * (Math.random() * 2 - 1);
-    return Math.max(500, baseWait + jitter);
+    return baseWait / 2 + Math.random() * baseWait;  // [0.5, 1.5]×baseWait
   },
 };
+// Global wrapper required for time-driven trigger
+function cleanupExpiredLocks() {
+  LOCK_MANAGER.cleanupExpiredLocks();
+}

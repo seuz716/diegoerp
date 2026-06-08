@@ -117,10 +117,26 @@ let CACHE = {
     this.invalidate();
     this.tercerosCircuitOpen = false;
     this.carteraCircuitOpen = false;
-    this._refreshTerceros();
-    this._refreshCartera();
-    const restored = !this.tercerosStale && !this.carteraStale;
-    Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored);
+
+    const maxAttempts = 3;
+    let attempt = 0;
+    let restored = false;
+    while (attempt < maxAttempts && !restored) {
+      attempt++;
+      try {
+        this._refreshTerceros();
+        this._refreshCartera();
+        restored = !this.tercerosStale && !this.carteraStale;
+      } catch (e) {
+        Logger.log(`CACHE: recoverFromStale intento ${attempt} falló: ${e}`);
+        if (attempt < maxAttempts) {
+          const backoff = 500 * Math.pow(2, attempt - 1); // exponential backoff
+          Logger.log(`CACHE: Esperando ${backoff}ms antes del próximo intento`);
+          Utilities.sleep(backoff);
+        }
+      }
+    }
+    Logger.log(`CACHE: Protocolo de recuperación completado. restaurado=${restored} tras ${attempt} intento(s)`);
     return restored;
   },
 
