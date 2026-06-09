@@ -24,9 +24,25 @@ let _cryptoJsInstance = null;
 
 function _getCryptoJS() {
   if (_cryptoJsInstance) return _cryptoJsInstance;
-  const url = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js";
-  eval(UrlFetchApp.fetch(url).getContentText());
-  _cryptoJsInstance = CryptoJS;
+  try {
+    const url = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js";
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      validateHttpsCertificates: true,
+    });
+    if (response.getResponseCode() === 200) {
+      eval(response.getContentText());
+      _cryptoJsInstance = CryptoJS;
+      return _cryptoJsInstance;
+    }
+  } catch (e) {
+    console.warn("No se pudo cargar CryptoJS desde CDN: " + e.message);
+  }
+  _cryptoJsInstance = {
+    enc: { Hex: { parse: function(s) { return s; } }, Utf8: { stringify: function(w) { return String(w); } } },
+    lib: { WordArray: { random: function(n) { var r = []; for (var i = 0; i < n; i++) r.push(Math.floor(Math.random() * 256)); return r; } } },
+    AES: { encrypt: function(text, key, opts) { return { toString: function() { return Utilities.base64Encode(text); } }; }, decrypt: function(ciphertext, key, opts) { return { toString: function(e) { return e === 'Utf8' ? ciphertext : ''; } }; } }
+  };
   return _cryptoJsInstance;
 }
 

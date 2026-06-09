@@ -76,8 +76,11 @@ function getDashboardCartera() {
     let pageToken = 0;
     const pageSize = 5000;
     let hasMore = true;
+    let pageCount = 0;
+    const MAX_PAGES = 20;
 
-    while (hasMore) {
+    while (hasMore && pageCount < MAX_PAGES) {
+      pageCount++;
       const page = DOMAIN.getCartera(null, null, pageSize, pageToken);
       const items = page.items || [];
       
@@ -235,6 +238,6 @@ function getProductos() {
     return productos;
   } catch (e) {
     Logger.log("ERROR getProductos: " + e.toString());
-    return [];
+    throw new Error("Error al obtener productos: " + (e.message || e.toString()));
   }
 }

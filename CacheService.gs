@@ -291,7 +291,7 @@ let CACHE = {
     const columns = columnsConfig;
     const lastRow = sheet.getLastRow();
     const numCols = Math.max(...Object.values(columns)) + 1;
-    const limit = Math.min(5000, lastRow - 1);
+    const limit = Math.min(10000, lastRow - 1);
     const data = lastRow < 2 ? [] : sheet.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
     const items = [];
@@ -339,7 +339,7 @@ let CACHE = {
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
       const lastRow = sheetTerceros.getLastRow();
       const numCols = Math.max(...Object.values(COL_T)) + 1;
-      const limit = Math.min(5000, lastRow - 1);
+      const limit = Math.min(10000, lastRow - 1);
       const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
       const newTerceros = [];
@@ -406,7 +406,7 @@ let CACHE = {
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
       const numCols = Math.max(...Object.values(COL_C)) + 1;
       const lastRow = sheetCartera.getLastRow();
-      const limit = Math.min(5000, lastRow - 1);
+      const limit = Math.min(10000, lastRow - 1);
       const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
 
       const newCartera = [];

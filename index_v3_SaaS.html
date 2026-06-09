@@ -376,6 +376,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .btn-accent{border-color:var(--accent-border);color:var(--accent);}
 .btn-accent:hover{background:var(--accent);color:var(--inverse);}
 .btn-sm{padding:var(--space-1-5) var(--space-2);font-size:var(--text-micro);}
+.btn-outline{border-color:var(--border-med);color:var(--muted);}
+.btn-outline:hover{background:var(--bg-2);color:var(--text);}
 
 /* ── CARTERA TABLE ── */
 .table-section{border:1px solid var(--border);background:var(--bg-1);overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -986,7 +988,14 @@ App.formatearMoneda = function (centavos) {
   return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 };
 
-App.toCents = function (amount) { return Math.round(parseFloat(amount) * 100); };
+App.toCents = function (amount) {
+  var num = Number(amount);
+  if (isNaN(num) || num < 0) return 0;
+  if (num % 1 !== 0) {
+    num = Math.round(num * 100) / 100;
+  }
+  return Math.round(num * 100);
+};
 
 App.formatearFecha = function (dateObj) {
   if (!dateObj) return '\u2014';
@@ -1971,12 +1980,14 @@ document.addEventListener('DOMContentLoaded', function () {
     actualizarLabelTema();
   });
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      var modal = document.getElementById('modal-tercero');
-      if (modal.classList.contains('active')) cerrarModalTercero();
-    }
-  });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        var modalTercero = document.getElementById('modal-tercero');
+        var modalConfirm = document.getElementById('modal-confirm');
+        if (modalTercero.classList.contains('active')) cerrarModalTercero();
+        if (modalConfirm.classList.contains('active')) modalConfirm.classList.remove('active');
+      }
+    });
 });
 </script>
 </body>

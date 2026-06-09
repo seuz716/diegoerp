@@ -94,7 +94,7 @@ function testSimulatedConcurrentEdits() {
   Logger.log("Transacción A: Bloqueo liberado.");
   
   // 4. Verificaciones
-  const passBFailedCleanly = (errorB !== null && errorB.message.indexOf("El sistema está ocupado") !== -1);
+  const passBFailedCleanly = (errorB !== null && (errorB.message.indexOf("No se pudo adquirir el bloqueo") !== -1 || errorB.message.indexOf("Timeout") !== -1));
   const passNoDataLost = (lockB === null); // B nunca obtuvo el lock, evitando condiciones de carrera
   
   Logger.log("Transacción B falló con error limpio esperado: " + (passBFailedCleanly ? "SÍ" : "NO") + " - Error: " + (errorB ? errorB.message : "Ninguno"));

@@ -213,6 +213,7 @@ const IA_SERVICE = {
   MAX_OUTPUT_TOKENS: 8192,
   MAX_SAMPLE_SIZE: 500,
   MIN_CATEGORY_SAMPLE: 30,
+  _startTime: null,
   _getApiKey() {
     const fromProxy = PROXY_SECRET_SERVICE.resolveSecret("GEMINI_API_KEY");
     if (fromProxy) return fromProxy;
@@ -231,6 +232,12 @@ const IA_SERVICE = {
   },
 
   _retryablePost(url, payload, attempt = 0) {
+    if (!this._startTime) this._startTime = Date.now();
+    const elapsed = Date.now() - this._startTime;
+    if (elapsed > 300000) {
+      throw new IAError("Tiempo de ejecución de GAS casi agotado. Abortando llamada a IA.", "GAS_TIMEOUT", null);
+    }
+
     try {
       const options = {
         method: "post",

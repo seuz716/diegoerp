@@ -256,11 +256,11 @@ const DOMAIN = {
         tx.snapshotCarteraRows(plan.cambios.map(c => c.rowIndex));
         tx.markMovPreAppend();
 
+        DAO.updateCarteraBatch(plan.cambios);
+        tx.markMovPostAppend();
         if (plan.movimientos.length > 0) {
           for (const mov of plan.movimientos) { DAO.createMovimiento(mov); }
         }
-        tx.markMovPostAppend();
-        DAO.updateCarteraBatch(plan.cambios);
         tx.commit();
 
         CACHE.invalidateCartera();
@@ -279,6 +279,7 @@ const DOMAIN = {
 
       } catch (e) {
         tx.rollback();
+        CACHE.invalidateCartera();
         throw e;
       } finally {
         if (lockAcquired) lockAcquired.releaseLock();

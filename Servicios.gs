@@ -110,7 +110,9 @@ function procesarVentaV2(carrito, opciones) {
 
   const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
 
-  // Pre-condition: fast fail-fast check for CXC before acquiring global lock
+  AuthService.checkPermission("registrar_venta");
+
+  // Pre-condition: fail-fast check for CXC before acquiring global lock
   if (esCredito && idTercero) {
     CACHE.refresh();
     const tercero = CACHE.getTerceroRAW(idTercero);
@@ -129,7 +131,6 @@ function procesarVentaV2(carrito, opciones) {
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
   try {
-    AuthService.checkPermission("registrar_venta");
 
     state.transition('STOCK_VALIDATED', () => {
       const errorStock = _validarStockCarrito(carritoConsolidado);
@@ -190,7 +191,8 @@ function actualizarVencimientos() {
   AuthService.checkPermission("ejecutar_mantenimiento");
 
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) {
+  const lockAcquired = lock.tryLock(30000);
+  if (!lockAcquired) {
     LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_LOCK", "CARTERA", "BATCH",
       {}, { error: "No se pudo adquirir el lock" }, "FAILED");
     return _error("No se pudo adquirir el lock para actualizar vencimientos.");
@@ -274,7 +276,7 @@ function actualizarVencimientos() {
     return { success: true, marcados, revertidos, errores, timestamp: new Date().toISOString() };
 
   } finally {
-    lock.releaseLock();
+    if (lockAcquired) lock.releaseLock();
   }
 }
 
@@ -423,48 +425,53 @@ function _descontarInventario(carrito) {
   const data = sheet.getDataRange().getValues();
   const COL = CONFIG.COLUMNS.PRODUCTOS;
   const updates = [];
+  const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
-  // Index rows by product ID for O(N+M) instead of O(N*M)
-  const index = {};
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][COL.id] || "").trim();
-    if (id) index[id] = i;
-  }
-
-  for (const item of carrito) {
-    const id = String(item.id || "").trim();
-    const cantidad = Number(item.cantidad) || 0;
-    if (!id || cantidad <= 0) continue;
-
-    const i = index[id];
-    if (i === undefined) {
-      throw new Error(`Producto ${id} no encontrado en inventario.`);
+  try {
+    // Index rows by product ID for O(N+M) instead of O(N*M)
+    const index = {};
+    for (let i = 1; i < data.length; i++) {
+      const id = String(data[i][COL.id] || "").trim();
+      if (id) index[id] = i;
     }
 
-    const stockActual = Number(data[i][COL.stock]) || 0;
-    const currentVersion = Number(data[i][COL.version]) || 1;
+    for (const item of carrito) {
+      const id = String(item.id || "").trim();
+      const cantidad = Number(item.cantidad) || 0;
+      if (!id || cantidad <= 0) continue;
 
-    if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
-      throw new Error(
-        `OptimisticLockError: producto ${id} modificado concurrentemente ` +
-        `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
-      );
+      const i = index[id];
+      if (i === undefined) {
+        throw new Error(`Producto ${id} no encontrado en inventario.`);
+      }
+
+      const stockActual = Number(data[i][COL.stock]) || 0;
+      const currentVersion = Number(data[i][COL.version]) || 1;
+
+      if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
+        throw new Error(
+          `OptimisticLockError: producto ${id} modificado concurrentemente ` +
+          `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
+        );
+      }
+
+      data[i][COL.stock] = Math.max(0, stockActual - cantidad);
+      data[i][COL.version] = currentVersion + 1;
+      updates.push(i);
     }
 
-    data[i][COL.stock] = Math.max(0, stockActual - cantidad);
-    data[i][COL.version] = currentVersion + 1;
-    updates.push(i);
-  }
-
-  // Single batch write: all changed rows at once
-  if (updates.length > 0) {
-    const minRow = Math.min(...updates);
-    const maxRow = Math.max(...updates);
-    const batchData = [];
-    for (let r = minRow; r <= maxRow; r++) {
-      batchData.push([data[r][COL.stock], data[r][COL.version]]);
+    // Single batch write: all changed rows at once
+    if (updates.length > 0) {
+      const minRow = Math.min(...updates);
+      const maxRow = Math.max(...updates);
+      const batchData = [];
+      for (let r = minRow; r <= maxRow; r++) {
+        batchData.push([data[r][COL.stock], data[r][COL.version]]);
+      }
+      sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 2).setValues(batchData);
     }
-    sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 2).setValues(batchData);
+  } finally {
+    lock.releaseLock();
   }
 }
 
