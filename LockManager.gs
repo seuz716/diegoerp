@@ -263,12 +263,8 @@ const LOCK_MANAGER = {
    * from abandoned locks due to script interruptions.
    * @returns {{success: boolean, message: string}} Resultado de la operación
    */
-  crearTriggerLockCleanup() {
-    try {
-      AuthService.checkPermission("configurar_sistema");
-    } catch (e) {
-      Logger.log("WARNING: No se pudo verificar permiso configurar_sistema: " + e.message);
-    }
+   crearTriggerLockCleanup() {
+    AuthService.checkPermission("configurar_sistema");
 
     const gotLock = this._safeTryLock(10000);
     if (!gotLock) {

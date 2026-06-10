@@ -503,24 +503,26 @@ ${JSON.stringify(movimientosComprimidos)}`;
   },
 
   _checkCache(hash) {
-    const cached = PropertiesService.getScriptProperties().getProperty(this.CACHE_PREFIX + hash);
-    if (cached) {
-      try {
+    try {
+      const cache = CacheService.getScriptCache();
+      const cached = cache.get(this.CACHE_PREFIX + hash);
+      if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.timestamp && (Date.now() - parsed.timestamp) < this.CACHE_TTL_MS) {
           return parsed.response;
         }
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
     return null;
   },
 
   _setCache(hash, response) {
     const entry = JSON.stringify({ timestamp: Date.now(), response });
     try {
-      PropertiesService.getScriptProperties().setProperty(this.CACHE_PREFIX + hash, entry);
+      const cache = CacheService.getScriptCache();
+      cache.put(this.CACHE_PREFIX + hash, entry, Math.floor(this.CACHE_TTL_MS / 1000));
     } catch (e) {
-      PropertiesService.getScriptProperties().deleteProperty(this.CACHE_PREFIX + hash);
+      Logger.log("IA_CACHE: Error storing in CacheService: " + e.toString());
     }
   },
 

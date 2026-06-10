@@ -25,17 +25,21 @@ var _Transaction = {
       snapshotCarteraRows(rowIndexes) {
         if (!ctx.active || !rowIndexes || rowIndexes.length === 0) return;
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-        const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+        const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
         const unique = [...new Set(rowIndexes)].sort((a, b) => a - b);
         const minRow = unique[0];
         const maxRow = unique[unique.length - 1];
-        const rangeData = sheet.getRange(minRow, 1, maxRow - minRow + 1, numCols).getValues();
+        // Snapshot only columns that updateCarteraBatch modifies: saldo, estado, vencida_timestamp, version
+        const cols = [COL.saldo, COL.estado, COL.vencida_timestamp, COL.version];
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+        const rangeData = sheet.getRange(minRow, minCol + 1, maxRow - minRow + 1, maxCol - minCol + 1).getValues();
         const rowIndexSet = new Set(unique);
         ctx.carteraSnapshots = [];
         for (let i = 0; i < rangeData.length; i++) {
           const actualRow = minRow + i;
           if (rowIndexSet.has(actualRow)) {
-            ctx.carteraSnapshots.push({ rowIndex: actualRow, values: rangeData[i] });
+            ctx.carteraSnapshots.push({ rowIndex: actualRow, values: rangeData[i], startCol: minCol });
           }
         }
       },
@@ -59,11 +63,11 @@ var _Transaction = {
 
       rollback() {
         if (!ctx.active) return;
-        // Restaurar filas de cartera a su estado previo
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-        const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
         for (const snap of ctx.carteraSnapshots) {
-          sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+          const restoredRow = snap.values.slice();
+          const numCols = restoredRow.length;
+          sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
         }
         // Eliminar filas de movimientos añadidas durante la transacción
         if (ctx.movPostRows > ctx.movPreRows) {
@@ -131,7 +135,7 @@ const DOMAIN = {
 
       const nombre = String(tercero.nombre || "S.N.").trim().slice(0, 100);
       const telefono = String(tercero.telefono || "").trim().slice(0, 20);
-      const tipo = ["CLIENTE", "PROVEEDOR"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
+      const tipo = ["CLIENTE", "PROVEEDOR", "AMBOS"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
@@ -303,7 +307,7 @@ const DOMAIN = {
         if (attempt < MAX_RETRIES - 1) {
           CACHE.refresh(true);
           const delay = 100 * Math.pow(2, attempt) + Math.random() * 50;
-          Logger.warn(`registrarAbonoAtomic retry #${attempt + 1} para ${idTerceroLimpio} tras OptimisticLockError`);
+          Logger.log("WARN: registrarAbonoAtomic retry #" + (attempt + 1) + " para " + idTerceroLimpio + " tras OptimisticLockError");
           Utilities.sleep(delay);
         }
       }

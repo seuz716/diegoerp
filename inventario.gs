@@ -59,6 +59,7 @@ function revisarInventario() {
     };
 
   } catch (e) {
+    _notificarErrorTrigger("revisarInventario", e);
     Logger.log("ERROR revisarInventario: " + e.toString());
     return { 
       success: false, 
@@ -178,9 +179,13 @@ function enviarAlertasInventario(resultado) {
     const alertasCriticas = resultado.alertas.filter(a => a.includes("🚨"));
     if (alertasCriticas.length === 0) return false;
     
-    // 👉 Configura este email en tu entorno
-    const emailDestino = PropertiesService.getScriptProperties().getProperty("EMAIL_ALERTAS") || "admin@tuempresa.com";
+    const emailDestino = PropertiesService.getScriptProperties().getProperty("EMAIL_ALERTAS");
+    if (!emailDestino) {
+      Logger.log("WARN: EMAIL_ALERTAS no configurado en ScriptProperties. Alertas de inventario no enviadas.");
+      return false;
+    }
     
+    Logger.log(`INFO: Enviando ${alertasCriticas.length} alertas a ${emailDestino}`);
     MailApp.sendEmail({
       to: emailDestino,
       subject: `🚨 Alerta de inventario - ${new Date().toLocaleDateString("es-CO")}`,

@@ -96,9 +96,9 @@ const DAO = {
     if (lastRow < 2) return [];
 
     const range = sheet.getRange(2, colIndex + 1, lastRow - 1, 1);
-    const matches = range.createTextFinder(String(value))
-      .matchEntireCell(true)
-      .useRegularExpression(false)
+    // Use regex to match value with or without leading ' prefix
+    const matches = range.createTextFinder("^'?" + String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$")
+      .useRegularExpression(true)
       .findAll();
 
     if (!matches || matches.length === 0) return [];

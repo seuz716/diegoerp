@@ -3,16 +3,60 @@
  * Exposición de endpoints para ser llamados externamente o desde el Frontend.
  */
 
+let _errorCounter = 0;
+
+function _safeError(context, error) {
+  _errorCounter++;
+  var tz = 'UTC';
+  try { tz = Session.getScriptTimeZone(); } catch (_) {}
+  const correlationId = 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
+  const message = error && error.message ? error.message : String(error || 'Error desconocido');
+  console.error('[' + correlationId + '] ' + context + ': ' + message + (error && error.stack ? ' | stack: ' + error.stack : ''));
+  Logger.log('[' + correlationId + '] ' + context + ': ' + message);
+  throw new Error('Error interno del servidor. Ref: ' + correlationId);
+}
+
+const RATE_LIMITER = {
+  WINDOW_MS: 60000,
+  MAX_REQUESTS: 30,
+  PREFIX: 'RL_',
+
+  _userId() {
+    try {
+      const email = Session.getActiveUser().getEmail();
+      if (email) return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, email).map(b => (b & 0xFF).toString(16)).slice(0, 8).join('');
+    } catch (_) {}
+    return 'anon';
+  },
+
+  check(action) {
+    const cache = CacheService.getScriptCache();
+    const key = this.PREFIX + this._userId() + '_' + action;
+    const raw = cache.get(key);
+    let count = 0;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      count = parsed.count || 0;
+    }
+    count++;
+    if (count > this.MAX_REQUESTS) {
+      throw new Error('Demasiadas solicitudes. Espera antes de intentar de nuevo.');
+    }
+    cache.put(key, JSON.stringify({ count: count }), 60);
+    return count;
+  },
+};
+
 /**
  * API Pública: Registrar abono
  */
 function registrarAbono(idTercero, valorAbono, referencia, tipo) {
   try {
+    RATE_LIMITER.check("registrarAbono");
     AuthService.checkPermission("registrar_abono");
     return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
   } catch (e) {
-    Logger.log("ERROR registrarAbono: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("registrarAbono", e);
   }
 }
 
@@ -28,8 +72,7 @@ function getTerceros(filtroTipo = null) {
     }
     return resultado;
   } catch (e) {
-    Logger.log("ERROR getTerceros:" + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getTerceros", e);
   }
 }
 
@@ -41,8 +84,7 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     AuthService.checkPermission("ver_cartera");
     return DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
   } catch (e) {
-    Logger.log("ERROR getCartera:" + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getCartera", e);
   }
 }
 
@@ -51,11 +93,11 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
  */
 function saveTercero(tercero) {
   try {
+    RATE_LIMITER.check("saveTercero");
     AuthService.checkPermission("guardar_tercero");
     return DOMAIN.saveTercero(tercero);
   } catch (e) {
-    Logger.log("ERROR saveTercero: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("saveTercero", e);
   }
 }
 
@@ -134,8 +176,7 @@ function getDashboardCartera() {
       totalObligaciones,
     };
   } catch (e) {
-    console.error("ERROR getDashboardCartera:" + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getDashboardCartera", e);
   }
 }
 
@@ -147,8 +188,7 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
     AuthService.checkPermission("ver_auditoria");
     return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
   } catch (e) {
-    Logger.log("ERROR getAuditHistory: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getAuditHistory", e);
   }
 }
 
@@ -164,8 +204,7 @@ function getCacheHealth() {
       timestamp: new Date().toISOString(),
     };
   } catch (e) {
-    Logger.log("ERROR getCacheHealth: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getCacheHealth", e);
   }
 }
 
@@ -174,11 +213,11 @@ function getCacheHealth() {
  */
 function analizarConGeminiFresco() {
   try {
+    RATE_LIMITER.check("analizarGemini");
     AuthService.checkPermission("analizar_ia");
     return IA_SERVICE.ejecutarAnalisisFresco();
   } catch (e) {
-    Logger.log("ERROR analizarConGeminiFresco: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("analizarConGeminiFresco", e);
   }
 }
 
@@ -195,8 +234,7 @@ function getUserInfo() {
     const role = AuthService.getUserRole(email);
     return { email: email, role: role };
   } catch (e) {
-    Logger.log("ERROR getUserInfo: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("getUserInfo", e);
   }
 }
 
@@ -205,11 +243,11 @@ function getUserInfo() {
  */
 function procesarVenta(carrito, opciones) {
   try {
+    RATE_LIMITER.check("procesarVenta");
     AuthService.checkPermission("registrar_venta");
     return procesarVentaV2(carrito, opciones);
   } catch (e) {
-    Logger.log("ERROR procesarVenta: " + e.toString());
-    throw new Error(e.message || e.toString());
+    _safeError("procesarVenta", e);
   }
 }
 
@@ -237,7 +275,6 @@ function getProductos() {
     }
     return productos;
   } catch (e) {
-    Logger.log("ERROR getProductos: " + e.toString());
-    throw new Error("Error al obtener productos: " + (e.message || e.toString()));
+    _safeError("getProductos", e);
   }
 }

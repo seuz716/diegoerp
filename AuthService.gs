@@ -23,27 +23,7 @@ const APP_CRYPTO_SALT = "DIEGOERP_AES_V2_2026";
 let _cryptoJsInstance = null;
 
 function _getCryptoJS() {
-  if (_cryptoJsInstance) return _cryptoJsInstance;
-  try {
-    const url = "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js";
-    const response = UrlFetchApp.fetch(url, {
-      muteHttpExceptions: true,
-      validateHttpsCertificates: true,
-    });
-    if (response.getResponseCode() === 200) {
-      eval(response.getContentText());
-      _cryptoJsInstance = CryptoJS;
-      return _cryptoJsInstance;
-    }
-  } catch (e) {
-    console.warn("No se pudo cargar CryptoJS desde CDN: " + e.message);
-  }
-  _cryptoJsInstance = {
-    enc: { Hex: { parse: function(s) { return s; } }, Utf8: { stringify: function(w) { return String(w); } } },
-    lib: { WordArray: { random: function(n) { var r = []; for (var i = 0; i < n; i++) r.push(Math.floor(Math.random() * 256)); return r; } } },
-    AES: { encrypt: function(text, key, opts) { return { toString: function() { return Utilities.base64Encode(text); } }; }, decrypt: function(ciphertext, key, opts) { return { toString: function(e) { return e === 'Utf8' ? ciphertext : ''; } }; } }
-  };
-  return _cryptoJsInstance;
+  return null;
 }
 
 const SecretManager = {
@@ -83,11 +63,29 @@ const CRYPTO_UTIL = {
   encrypt(plaintext) {
     if (!plaintext) return "";
     try {
-      const C = _getCryptoJS();
-      const key = C.enc.Hex.parse(SecretManager.getEncryptionKey());
-      const iv = C.lib.WordArray.random(16);
-      const encrypted = C.AES.encrypt(plaintext, key, { iv });
-      return JSON.stringify({ c: encrypted.toString(), i: C.enc.Hex.stringify(iv) });
+      const key = SecretManager.getEncryptionKey();
+      const iv = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
+      const textBytes = Utilities.newBlob(plaintext).getBytes();
+      const keyStream = [];
+      let round = 0;
+      let offset = 0;
+      while (offset < textBytes.length) {
+        const roundInput = iv + round.toString();
+        const roundKey = Utilities.computeHmacSha256Signature(key, roundInput);
+        for (let j = 0; j < roundKey.length && offset < textBytes.length; j++) {
+          keyStream.push(roundKey[j] & 0xFF);
+          offset++;
+        }
+        round++;
+      }
+      const result = [];
+      for (let i = 0; i < textBytes.length; i++) {
+        result.push(textBytes[i] ^ keyStream[i]);
+      }
+      const hmac = Utilities.computeHmacSha256Signature(result, key);
+      const hmacHex = hmac.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+      const encoded = Utilities.base64Encode(result);
+      return JSON.stringify({ c: encoded, i: iv, h: hmacHex });
     } catch (e) {
       console.error("CRYPTO_UTIL.encrypt error: " + e);
       return "";
@@ -98,18 +96,43 @@ const CRYPTO_UTIL = {
     if (!ciphertext) return "";
     try {
       const obj = JSON.parse(ciphertext);
-      if (obj.c && obj.i) {
-        const C = _getCryptoJS();
-        const key = C.enc.Hex.parse(SecretManager.getEncryptionKey());
-        const iv = C.enc.Hex.parse(obj.i);
-        const decrypted = C.AES.decrypt(obj.c, key, { iv });
-        return C.enc.Utf8.stringify(decrypted);
-      }
+
+      // Legacy format v1 (XOR plain) — migración transparente
       if (obj.c && obj.s) {
         const plainBytes = Utilities.base64Decode(obj.c);
         return Utilities.newBlob(plainBytes).getDataAsString();
       }
-      return "";
+
+      if (!obj.c || !obj.i) return "";
+      const key = SecretManager.getEncryptionKey();
+      const encryptedBytes = Utilities.base64Decode(obj.c);
+
+      if (obj.h) {
+        const expectedHmac = Utilities.computeHmacSha256Signature(encryptedBytes, key);
+        const expectedHex = expectedHmac.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+        if (expectedHex !== obj.h) {
+          console.error("CRYPTO_UTIL: HMAC mismatch — ciphertext manipulado o clave incorrecta");
+          return "";
+        }
+      }
+
+      const keyStream = [];
+      let round = 0;
+      let offset = 0;
+      while (offset < encryptedBytes.length) {
+        const roundInput = obj.i + round.toString();
+        const roundKey = Utilities.computeHmacSha256Signature(key, roundInput);
+        for (let j = 0; j < roundKey.length && offset < encryptedBytes.length; j++) {
+          keyStream.push(roundKey[j] & 0xFF);
+          offset++;
+        }
+        round++;
+      }
+      const result = [];
+      for (let i = 0; i < encryptedBytes.length; i++) {
+        result.push(encryptedBytes[i] ^ keyStream[i]);
+      }
+      return Utilities.newBlob(result).getDataAsString();
     } catch (e) {
       console.warn("CRYPTO_UTIL.decrypt error: " + e);
       return "";

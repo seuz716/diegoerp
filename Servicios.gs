@@ -188,17 +188,19 @@ function procesarVentaV2(carrito, opciones) {
  * @returns {Object} { success, marcados, revertidos, timestamp }
  */
 function actualizarVencimientos() {
-  AuthService.checkPermission("ejecutar_mantenimiento");
-
-  const lock = LockService.getScriptLock();
-  const lockAcquired = lock.tryLock(30000);
-  if (!lockAcquired) {
-    LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_LOCK", "CARTERA", "BATCH",
-      {}, { error: "No se pudo adquirir el lock" }, "FAILED");
-    return _error("No se pudo adquirir el lock para actualizar vencimientos.");
-  }
-
+  let lock = null;
+  let lockAcquired = false;
   try {
+    AuthService.checkPermission("ejecutar_mantenimiento");
+
+    lock = LockService.getScriptLock();
+    lockAcquired = lock.tryLock(30000);
+    if (!lockAcquired) {
+      LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_LOCK", "CARTERA", "BATCH",
+        {}, { error: "No se pudo adquirir el lock" }, "FAILED");
+      return _error("No se pudo adquirir el lock para actualizar vencimientos.");
+    }
+
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
@@ -275,8 +277,13 @@ function actualizarVencimientos() {
 
     return { success: true, marcados, revertidos, errores, timestamp: new Date().toISOString() };
 
+  } catch (e) {
+    _notificarErrorTrigger("actualizarVencimientos", e);
+    return _error("Error en actualización de vencimientos: " + e.message);
   } finally {
-    if (lockAcquired) lock.releaseLock();
+    if (lockAcquired && lock) {
+      try { lock.releaseLock(); } catch (_) {}
+    }
   }
 }
 
@@ -422,12 +429,12 @@ function _validarStockCarrito(carrito) {
 
 function _descontarInventario(carrito) {
   const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-  const data = sheet.getDataRange().getValues();
   const COL = CONFIG.COLUMNS.PRODUCTOS;
   const updates = [];
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
   try {
+    const data = sheet.getDataRange().getValues();
     // Index rows by product ID for O(N+M) instead of O(N*M)
     const index = {};
     for (let i = 1; i < data.length; i++) {

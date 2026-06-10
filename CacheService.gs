@@ -339,13 +339,12 @@ let CACHE = {
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
       const lastRow = sheetTerceros.getLastRow();
       const numCols = Math.max(...Object.values(COL_T)) + 1;
-      const limit = Math.min(10000, lastRow - 1);
-      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
+      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(2, 1, lastRow - 1, numCols).getValues();
 
       const newTerceros = [];
       const newIndex = {};
       for (let i = 0; i < dataTerceros.length; i++) {
-        const rowIdx = Math.max(2, lastRow - limit + 1) + i - 1;
+        const rowIdx = 1 + i;
         const id = String(dataTerceros[i][COL_T.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;  
@@ -356,7 +355,7 @@ let CACHE = {
           telefono: String(dataTerceros[i][COL_T.telefono] || "").trim(),
           tipo: String(dataTerceros[i][COL_T.tipo] || "CLIENTE").toUpperCase(),
           limite_credito: _parseMoneda(dataTerceros[i][COL_T.limite_credito], 0),
-          activo: String(dataTerceros[i][COL_T.activo] || "ACTIVO").toUpperCase() !== "INACTIVO",
+          activo: String(dataTerceros[i][COL_T.activo] || "").replace(/^'/, "").toUpperCase() !== "INACTIVO",
         });
       }
 
@@ -406,13 +405,12 @@ let CACHE = {
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
       const numCols = Math.max(...Object.values(COL_C)) + 1;
       const lastRow = sheetCartera.getLastRow();
-      const limit = Math.min(10000, lastRow - 1);
-      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
+      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(2, 1, lastRow - 1, numCols).getValues();
 
       const newCartera = [];
       const newIndex = {};
       for (let i = 0; i < dataCartera.length; i++) {
-        const rowIdx = Math.max(2, lastRow - limit + 1) + i - 1;
+        const rowIdx = 1 + i;
         const id = String(dataCartera[i][COL_C.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;

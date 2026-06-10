@@ -312,3 +312,15 @@ function _safeDate(v) {
 function _formatMoneda(centavos) {
   return (centavos / 100).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 }
+
+function crearBackup() {
+  AuthService.checkPermission("ejecutar_mantenimiento");
+  const ss = getActiveSpreadsheet();
+  const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
+  const backupId = ss.getId();
+  const backupFolder = DriveApp.getRootFolder();
+  const backupFile = DriveApp.getFileById(backupId).makeCopy(backupName, backupFolder);
+  const backupUrl = backupFile.getUrl();
+  Logger.log('Backup creado: ' + backupName + ' -> ' + backupUrl);
+  return { success: true, name: backupName, url: backupUrl };
+}
