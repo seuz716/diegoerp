@@ -763,7 +763,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 
         <div class="form-row">
           <label class="form-label">Monto</label>
-          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="1">
+          <!-- === INICIO FIX m-06 === -->
+          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="100" required>
+          <!-- === FIN FIX m-06 -->
         </div>
 
         <div class="form-row" style="margin-bottom:var(--space-6)">

@@ -429,20 +429,31 @@ ${JSON.stringify(movimientosComprimidos)}`;
 
     let cartera = (CACHE.cartera || [])
       .filter(c => c.fecha && c.fecha.getTime() >= doceMesesAtras.getTime())
-      .map(c => ({
-        id: c.id,
-        fecha: Utilities.formatDate(c.fecha, _getTimeZone(), "yyyy-MM-dd"),
-        id_tercero: c.id_tercero,
-        total: c.total,
-        saldo: c.saldo,
-        tipo: c.tipo,
-        estado: c.estado,
-        fecha_vencimiento: c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0
-          ? Utilities.formatDate(c.fecha_vencimiento, _getTimeZone(), "yyyy-MM-dd") : null,
-        dias_vencido: c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0
-          ? Math.floor((hoy.getTime() - c.fecha_vencimiento.getTime()) / 86400000) : null,
-        vencida_timestamp: c.vencida_timestamp || null,
-      }));
+      .map(c => {
+        // === INICIO FIX C-01 ===
+        // Convertir centavos a pesos para Gemini (el prompt usa notación COP $)
+        const saldoPesos = Math.round((c.saldo || 0) / 100);
+        const totalPesos = Math.round((c.total || 0) / 100);
+        const diasVencido = c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0
+          ? Math.round(((hoy.getTime() - c.fecha_vencimiento.getTime()) / 86400000) || 0)
+          : 0;
+        const tieneVencimiento = c.fecha_vencimiento && c.fecha_vencimiento.getTime() > 0;
+        // === FIN FIX C-01 ===
+        return {
+          id: c.id,
+          fecha: Utilities.formatDate(c.fecha, _getTimeZone(), "yyyy-MM-dd"),
+          id_tercero: c.id_tercero,
+          total: totalPesos,
+          saldo: saldoPesos,
+          tipo: c.tipo,
+          estado: c.estado,
+          fecha_vencimiento: tieneVencimiento
+            ? Utilities.formatDate(c.fecha_vencimiento, _getTimeZone(), "yyyy-MM-dd") : null,
+          dias_vencido: diasVencido,
+          vencida_timestamp: c.vencida_timestamp || null,
+        };
+      });
+    Logger.log("[FIX-C-01] Cartera convertida a pesos: " + cartera.length + " items");
 
     const sheetMov = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
     let movimientos = [];
@@ -455,12 +466,16 @@ ${JSON.stringify(movimientosComprimidos)}`;
         movimientos = raw
           .map(r => {
             const f = _safeDate(r[COL.fecha]);
+            // === INICIO FIX C-01 ===
+            // Convertir valor de centavos a pesos
+            const valorPesos = Math.round(_parseMoneda(r[COL.valor], 0) / 100);
+            // === FIN FIX C-01 ===
             return {
               id: String(r[COL.id] || "").trim(),
               fecha: f.getTime() > 0 ? Utilities.formatDate(f, _getTimeZone(), "yyyy-MM-dd") : null,
               id_cartera: String(r[COL.id_cartera] || "").trim(),
               id_tercero: String(r[COL.id_tercero] || "").trim(),
-              valor: _parseMoneda(r[COL.valor], 0),
+              valor: valorPesos,
               tipo_mov: String(r[COL.tipo_mov] || "").trim(),
               referencia: String(r[COL.referencia] || "").trim(),
             };

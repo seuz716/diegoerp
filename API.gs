@@ -107,7 +107,76 @@ function saveTercero(tercero) {
 function getDashboardCartera() {
   try {
     AuthService.checkPermission("ver_dashboard");
-    
+
+    // === INICIO FIX M-05 ===
+    // Ensure cache is fresh
+    CACHE.refresh();
+
+    const hoy = _today();
+
+    // Try to use CACHE.cartera if available
+    if (CACHE.cartera && CACHE.cartera.length > 0) {
+      // Build tercero name map
+      const tercerosMap = {};
+      if (CACHE.terceros) {
+        CACHE.terceros.forEach(t => { tercerosMap[t.id] = t.nombre; });
+      }
+
+      const cxc = CACHE.cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
+      const cxp = CACHE.cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
+      const totalObligaciones = cxc.length + cxp.length;
+
+      const activeCxc = cxc.filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA);
+      const activeCxp = cxp.filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA);
+
+      let porCobrar = 0;
+      for (let i = 0; i < activeCxc.length; i++) {
+        porCobrar += activeCxc[i].saldo;
+      }
+
+      let porPagar = 0;
+      for (let i = 0; i < activeCxp.length; i++) {
+        porPagar += activeCxp[i].saldo;
+      }
+
+      const vencidasCxc = cxc.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+      const vencidasCxp = cxp.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+
+      let vencidaCxC = 0;
+      for (let i = 0; i < vencidasCxc.length; i++) {
+        vencidaCxC += vencidasCxc[i].saldo;
+      }
+
+      let vencidaCxP = 0;
+      for (let i = 0; i < vencidasCxp.length; i++) {
+        vencidaCxP += vencidasCxp[i].saldo;
+      }
+
+      const allAlertas = [];
+      for (let i = 0; i < vencidasCxc.length; i++) {
+        const c = vencidasCxc[i];
+        const dias = c.fecha_vencimiento && _isValidDate(c.fecha_vencimiento)
+          ? Math.floor((hoy.getTime() - _safeDate(c.fecha_vencimiento).getTime()) / 86400000)
+          : 0;
+        allAlertas.push({
+          id_tercero: c.id_tercero,
+          nombre: tercerosMap[c.id_tercero] || "DESCONOCIDO",
+          saldo: c.saldo,
+          dias: dias,
+        });
+      }
+
+      allAlertas.sort((a, b) => b.dias - a.dias);
+      const alertas = allAlertas.slice(0, 10);
+
+      Logger.log("[FIX-M-05] getDashboardCartera from cache: %s items, %s CxC, %s CxP",
+        CACHE.cartera.length, cxc.length, cxp.length);
+
+      return { porCobrar, porPagar, vencidaCxC, vencidaCxP, alertas, totalObligaciones };
+    }
+
+    // Fallback: limited pagination if cache not available
+    Logger.log("[FIX-M-05] getDashboardCartera cache miss, using limited sheet pagination");
     let porCobrar = 0;
     let porPagar = 0;
     let vencidaCxC = 0;
@@ -119,40 +188,35 @@ function getDashboardCartera() {
     const pageSize = 5000;
     let hasMore = true;
     let pageCount = 0;
-    const MAX_PAGES = 20;
+    const MAX_PAGES = 3;
 
     while (hasMore && pageCount < MAX_PAGES) {
       pageCount++;
       const page = DOMAIN.getCartera(null, null, pageSize, pageToken);
       const items = page.items || [];
-      
+
       const cxc = items.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
       const cxp = items.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
 
-      porCobrar += cxc
-        .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
-        .reduce((s, c) => s + c.saldo, 0);
+      for (let i = 0; i < cxc.length; i++) {
+        const c = cxc[i];
+        if (c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA) porCobrar += c.saldo;
+        if (c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA) {
+          vencidaCxC += c.saldo;
+          allAlertas.push({
+            id_tercero: c.id_tercero,
+            nombre: c.nombre_tercero,
+            saldo: c.saldo,
+            dias: c.dias_vencido,
+          });
+        }
+      }
 
-      porPagar += cxp
-        .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
-        .reduce((s, c) => s + c.saldo, 0);
-
-      vencidaCxC += cxc
-        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-        .reduce((s, c) => s + c.saldo, 0);
-
-      vencidaCxP += cxp
-        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-        .reduce((s, c) => s + c.saldo, 0);
-
-      cxc
-        .filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA)
-        .forEach(c => allAlertas.push({
-          id_tercero: c.id_tercero,
-          nombre: c.nombre_tercero,
-          saldo: c.saldo,
-          dias: c.dias_vencido,
-        }));
+      for (let i = 0; i < cxp.length; i++) {
+        const c = cxp[i];
+        if (c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA) porPagar += c.saldo;
+        if (c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA) vencidaCxP += c.saldo;
+      }
 
       totalObligaciones += cxc.length + cxp.length;
 
@@ -163,9 +227,8 @@ function getDashboardCartera() {
       }
     }
 
-    const alertas = allAlertas
-      .sort((a, b) => b.dias - a.dias)
-      .slice(0, 10);
+    allAlertas.sort((a, b) => b.dias - a.dias);
+    const alertas = allAlertas.slice(0, 10);
 
     return {
       porCobrar,
@@ -175,6 +238,7 @@ function getDashboardCartera() {
       alertas,
       totalObligaciones,
     };
+    // === FIN FIX M-05 ===
   } catch (e) {
     _safeError("getDashboardCartera", e);
   }

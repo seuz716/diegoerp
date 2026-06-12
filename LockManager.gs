@@ -185,6 +185,16 @@ const LOCK_MANAGER = {
             }
           }
         }
+
+        // === INICIO FIX C-05 ===
+        // Also remove orphan locks during cleanup
+        try {
+          const orphanResult = this.removeOrphanLocks();
+          cleaned += orphanResult.removed;
+        } catch (e) {
+          Logger.log("[FIX-C-05] Error during orphan removal in cleanup: " + e.toString());
+        }
+        // === FIN FIX C-05 ===
       } finally {
         this._safeReleaseLock();
       }
@@ -245,7 +255,7 @@ const LOCK_MANAGER = {
         }
 
         if (!found) {
-          Logger.log("WARNING: Possible orphan lock. Resource " + resourceId + " (key: " + key + ") not found in Terceros or Cartera sheets.");
+          Logger.log("[FIX-C-05] Orphan lock detected: Resource " + resourceId + " (key: " + key + ")");
           orphans.push(key);
         }
       }
@@ -255,6 +265,36 @@ const LOCK_MANAGER = {
       this._safeReleaseLock();
     }
   },
+
+  // === INICIO FIX C-05 ===
+  /**
+   * Removes physically orphan locks from ScriptProperties.
+   * Calls _detectOrphanLocks() to identify orphans, then deletes them.
+   * @returns {{removed: number, orphans: string[]}} Resultado de la operación
+   */
+  removeOrphanLocks() {
+    const orphans = this._detectOrphanLocks();
+    if (orphans.length === 0) {
+      Logger.log("[FIX-C-05] No orphan locks found");
+      return { removed: 0, orphans: [] };
+    }
+
+    let removed = 0;
+    const props = PropertiesService.getScriptProperties();
+    for (const key of orphans) {
+      try {
+        props.deleteProperty(key);
+        Logger.log("[FIX-C-05] Deleted orphan lock: " + key);
+        removed++;
+      } catch (e) {
+        Logger.log("[FIX-C-05] Error deleting orphan lock " + key + ": " + e.toString());
+      }
+    }
+
+    Logger.log("[FIX-C-05] Removed " + removed + " orphan locks out of " + orphans.length + " detected");
+    return { removed, orphans };
+  },
+  // === FIN FIX C-05 ===
 
   /**
    * Creates a time-driven trigger to run cleanupExpiredLocks every hour.
@@ -297,6 +337,17 @@ const LOCK_MANAGER = {
 
   /** Fallback genérico para acciones masivas (Ej: cache refreshes generales) */
   acquireGlobalLock(timeout = this.GLOBAL_TIMEOUT) {
+    // === INICIO FIX M-04 ===
+    if (this._lockDepth > 0) {
+      Logger.log("[FIX-M-04] Reentrant acquireGlobalLock detected (depth=%s), returning dummy lock", this._lockDepth);
+      return {
+        releaseLock: () => {
+          Logger.log("[FIX-M-04] Dummy lock released (no-op), depth remains %s", this._lockDepth);
+        }
+      };
+    }
+    // === FIN FIX M-04 ===
+
     let attempt = 0;
 
     while (attempt < this.MAX_RETRIES) {
@@ -327,3 +378,54 @@ function cleanupExpiredLocks() {
     Logger.log("FATAL cleanupExpiredLocks trigger: " + e.toString());
   }
 }
+
+// === INICIO FIX C-05 ===
+/**
+ * Global wrapper for time-driven trigger to remove orphan locks daily.
+ */
+function removeOrphanLocksTrigger() {
+  try {
+    const result = LOCK_MANAGER.removeOrphanLocks();
+    Logger.log("[FIX-C-05] removeOrphanLocksTrigger completed: " + JSON.stringify(result));
+  } catch (e) {
+    Logger.log("FATAL removeOrphanLocksTrigger trigger: " + e.toString());
+  }
+}
+
+/**
+ * Creates a time-driven trigger to run removeOrphanLocks daily at 3:00 AM.
+ * Requires "configurar_sistema" permission.
+ * @returns {{success: boolean, message: string}}
+ */
+function crearTriggerOrphanCleanup() {
+  AuthService.checkPermission("configurar_sistema");
+
+  const gotLock = LOCK_MANAGER._safeTryLock(10000);
+  if (!gotLock) {
+    return { success: false, message: "No se pudo adquirir lock para configurar trigger." };
+  }
+  try {
+    const triggers = ScriptApp.getProjectTriggers().filter(
+      t => t.getHandlerFunction() === "removeOrphanLocksTrigger"
+    );
+    if (triggers.length === 1) {
+      const msg = "Trigger removeOrphanLocksTrigger ya existe.";
+      Logger.log(msg);
+      return { success: true, message: msg };
+    }
+    triggers.forEach(t => ScriptApp.deleteTrigger(t));
+
+    ScriptApp.newTrigger("removeOrphanLocksTrigger")
+      .timeBased()
+      .everyDays(1)
+      .atHour(3)
+      .create();
+
+    const msg = "Trigger de limpieza de locks huérfanos creado (diario, 3:00 AM).";
+    Logger.log(msg);
+    return { success: true, message: msg };
+  } finally {
+    LOCK_MANAGER._safeReleaseLock();
+  }
+}
+// === FIN FIX C-05 ===

@@ -12,7 +12,7 @@
  */
 var _Transaction = {
   create() {
-    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, active: false };
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], active: false };
 
     return {
       begin() {
@@ -20,6 +20,16 @@ var _Transaction = {
         ctx.carteraSnapshots = [];
         ctx.movPreRows = 0;
         ctx.movPostRows = 0;
+        ctx.terceroSnapshots = [];
+      },
+
+      snapshotTerceroRow(rowIndex) {
+        if (!ctx.active || !rowIndex) return;
+        const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+        const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
+        const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
+        const rangeData = sheet.getRange(rowIndex, 1, 1, numCols).getValues();
+        ctx.terceroSnapshots.push({ rowIndex: rowIndex, values: rangeData[0] });
       },
 
       snapshotCarteraRows(rowIndexes) {
@@ -29,7 +39,6 @@ var _Transaction = {
         const unique = [...new Set(rowIndexes)].sort((a, b) => a - b);
         const minRow = unique[0];
         const maxRow = unique[unique.length - 1];
-        // Snapshot only columns that updateCarteraBatch modifies: saldo, estado, vencida_timestamp, version
         const cols = [COL.saldo, COL.estado, COL.vencida_timestamp, COL.version];
         const minCol = Math.min(...cols);
         const maxCol = Math.max(...cols);
@@ -59,17 +68,28 @@ var _Transaction = {
         ctx.carteraSnapshots = [];
         ctx.movPreRows = 0;
         ctx.movPostRows = 0;
+        ctx.terceroSnapshots = [];
       },
 
       rollback() {
         if (!ctx.active) return;
+        // === INICIO FIX M-02 ===
+        // Rollback de Terceros (nuevo)
+        if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
+          const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+          for (const snap of ctx.terceroSnapshots) {
+            const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
+            sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+          }
+          Logger.log("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
+        }
+        // === FIN FIX M-02 ===
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
         for (const snap of ctx.carteraSnapshots) {
           const restoredRow = snap.values.slice();
           const numCols = restoredRow.length;
           sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
         }
-        // Eliminar filas de movimientos añadidas durante la transacción
         if (ctx.movPostRows > ctx.movPreRows) {
           const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
           const startRow = ctx.movPreRows + 1;
@@ -126,6 +146,7 @@ function _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia) {
 const DOMAIN = {
   saveTercero(tercero) {
     let lockAcquired = null;
+    const tx = _Transaction.create();
     try {
       if (!tercero || typeof tercero !== 'object') return _error('Datos inválidos.');
       const id = _sanitizeId(tercero.id);
@@ -133,15 +154,26 @@ const DOMAIN = {
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(id);
 
+      // === INICIO FIX M-02 ===
+      // Tomar snapshot de la fila existente para posible rollback
+      const cachedRow = CACHE.terceroIndex ? CACHE.terceroIndex[id] : null;
+      if (cachedRow) {
+        tx.snapshotTerceroRow(cachedRow + 1); // +1 porque rowIndex es 1-based de datos
+        Logger.log("[FIX-M-02] Snapshot tomado para fila existente: " + (cachedRow + 1));
+      }
+      // === FIN FIX M-02 ===
+
+      tx.begin();
+
       const nombre = String(tercero.nombre || "S.N.").trim().slice(0, 100);
       const telefono = String(tercero.telefono || "").trim().slice(0, 20);
       const tipo = ["CLIENTE", "PROVEEDOR", "AMBOS"].includes(String(tercero.tipo || "").toUpperCase()) ? String(tercero.tipo).toUpperCase() : "CLIENTE";
       const limite = Math.max(0, _parseMoneda(tercero.limite_credito, 0));
       const activo = tercero.activo !== false ? "ACTIVO" : "INACTIVO";
 
-      // 2. Operaciones Database — la caché debe estar poblada para que DAO valide unicidad
       const resultado = DAO.saveTerceroImpl(tercero, id, nombre, telefono, tipo, limite, activo);
 
+      tx.commit();
       CACHE.invalidateTerceros();
 
       if (resultado.isUpdate) {
@@ -153,6 +185,8 @@ const DOMAIN = {
       return { success: true, id };
 
     } catch (e) {
+      tx.rollback();
+      CACHE.invalidateTerceros();
       if(tercero && tercero.id) {
          LOG_ENGINE.logEvent("ERROR_TERCERO", "TERCEROS", tercero.id, {}, {}, "ERROR: " + e.toString());
       }
@@ -282,12 +316,19 @@ const DOMAIN = {
         };
 
       } catch (e) {
-        tx.rollback();
+        // === INICIO FIX C-04 ===
+        try {
+          tx.rollback();
+          Logger.log("[FIX-C-04] Rollback completado exitosamente");
+        } catch (rbErr) {
+          Logger.log("[FIX-C-04] ERROR: Rollback falló - " + rbErr.message);
+        }
         CACHE.invalidateCartera();
         throw e;
       } finally {
         if (lockAcquired) lockAcquired.releaseLock();
       }
+      // === FIN FIX C-04 ===
     };
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {

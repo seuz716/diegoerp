@@ -221,18 +221,37 @@ const AuthService = {
     }
   },
 
-  checkPermission(accion) {
-    const userEmail = this._getCurrentUser();
-    if (!userEmail) {
+  checkPermission(accion, userEmail) {
+    // === INICIO FIX M-08 ===
+    // Permite pasar email explícito para triggers donde getActiveUser() retorna null
+    let email = userEmail;
+    if (!email) {
+      email = this._getCurrentUser();
+    }
+    if (!email) {
+      // Fallback para triggers: obtener owner del spreadsheet
+      try {
+        const ss = SpreadsheetApp.getActive();
+        const owner = ss.getOwner();
+        if (owner) {
+          email = owner.getEmail();
+          Logger.log("[FIX-M-08] Usando owner del spreadsheet como fallback: " + email);
+        }
+      } catch (e) {
+        Logger.log("[FIX-M-08] WARNING: No se pudo obtener owner del spreadsheet");
+      }
+    }
+    // === FIN FIX M-08 ===
+    if (!email) {
       throw new Error("No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");
     }
     const requiredRole = PERMISSION_ROLES[accion];
     if (!requiredRole) {
       throw new Error("Acción desconocida: '" + accion + "'. Revisa la configuración de PERMISSION_ROLES.");
     }
-    const userRole = this.getUserRole(userEmail);
+    const userRole = this.getUserRole(email);
     if (!userRole) {
-      throw new Error("Acceso denegado. El usuario '" + userEmail + "' no tiene ningún rol asignado para la acción '" + accion + "'.");
+      throw new Error("Acceso denegado. El usuario '" + email + "' no tiene ningún rol asignado para la acción '" + accion + "'.");
     }
     const requiredLevel = ROLE_HIERARCHY[requiredRole];
     const userLevel = ROLE_HIERARCHY[userRole];
@@ -243,6 +262,10 @@ const AuthService = {
 };
 
 const PROXY_SECRET_SERVICE = {
+  // === INICIO FIX m-04 ===
+  // SECURITY WARNING: Este proxy NO implementa autenticación. Cualquiera con la URL puede solicitar secrets.
+  // Recomendación: El endpoint debe requerir un token HMAC o API key en los headers.
+  // Ver: https://cloud.google.com/endpoints/docs/openapi/client-authentication
   DEFAULT_ENDPOINT_CONFIG_KEY: "SECRET_PROXY_URL",
 
   _getEndpointUrl() {
@@ -254,6 +277,9 @@ const PROXY_SECRET_SERVICE = {
 
   _callSecretEndpoint(endpointUrl, secretName) {
     try {
+      // WARNING: La solicitud actual carece de autenticación. Se recomienda:
+      // 1. Agregar header Authorization: Bearer <token> desde PropertiesService
+      // 2. O usar HMAC signature en el body
       const response = UrlFetchApp.fetch(endpointUrl, {
         method: "post",
         contentType: "application/json",
@@ -275,6 +301,7 @@ const PROXY_SECRET_SERVICE = {
     }
     return null;
   },
+  // === FIN FIX m-04 ===
 
   setEndpointUrl(url) {
     if (!url || url.trim() === "") throw new Error("URL de Secret Proxy requerida.");

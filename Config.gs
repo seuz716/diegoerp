@@ -46,8 +46,46 @@ const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
 // ─ GLOBALES DE ESQUEMA ─
 
+// === INICIO FIX m-03 ===
 let _schemaVersion = 0;
 let _schemaValidated = false;
+
+// Load persisted schema version at startup (avoids re-computation every execution)
+(function _initSchemaVersion() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const stored = props.getProperty('SCHEMA_VERSION');
+    if (stored) {
+      _schemaVersion = Number(stored);
+      Logger.log("[FIX-m-03] Loaded persisted schema version: " + _schemaVersion);
+    }
+  } catch (e) {
+    Logger.log("[FIX-m-03] Error loading schema version at startup: " + e.toString());
+  }
+})();
+
+function _loadSchemaVersion() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const stored = props.getProperty('SCHEMA_VERSION');
+    if (stored) {
+      _schemaVersion = Number(stored);
+      return _schemaVersion;
+    }
+  } catch (e) {
+    Logger.log("[FIX-m-03] Error loading schema version: " + e.toString());
+  }
+  return 0;
+}
+
+function _saveSchemaVersion(version) {
+  try {
+    PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', String(version));
+  } catch (e) {
+    Logger.log("[FIX-m-03] Error saving schema version: " + e.toString());
+  }
+}
+// === FIN FIX m-03 ===
 
 // ─ UTILIDADES BÁSICAS ─
 
@@ -141,11 +179,20 @@ CONFIG.reloadSchema = function() {
 
   _schemaVersion = Date.now();
   _schemaValidated = true;
+  // === INICIO FIX m-03 ===
+  _saveSchemaVersion(_schemaVersion);
+  // === FIN FIX m-03 ===
 
   return { success: true, changes: changes };
 };
 
 CONFIG.isSchemaStale = function(maxAgeMs) {
+  // === INICIO FIX m-03 ===
+  // Load persisted version if not loaded
+  if (!_schemaVersion) {
+    _loadSchemaVersion();
+  }
+  // === FIN FIX m-03 ===
   if (maxAgeMs === undefined) maxAgeMs = 3600000;
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;

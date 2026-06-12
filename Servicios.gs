@@ -189,17 +189,18 @@ function procesarVentaV2(carrito, opciones) {
  */
 function actualizarVencimientos() {
   let lock = null;
-  let lockAcquired = false;
   try {
     AuthService.checkPermission("ejecutar_mantenimiento");
 
-    lock = LockService.getScriptLock();
-    lockAcquired = lock.tryLock(30000);
-    if (!lockAcquired) {
+    // === INICIO FIX m-01 ===
+    try {
+      lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    } catch (e) {
       LOG_ENGINE.logEvent("ERROR_VENCIMIENTOS_LOCK", "CARTERA", "BATCH",
-        {}, { error: "No se pudo adquirir el lock" }, "FAILED");
+        {}, { error: "No se pudo adquirir el lock: " + e.message }, "FAILED");
       return _error("No se pudo adquirir el lock para actualizar vencimientos.");
     }
+    // === FIN FIX m-01 ===
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
@@ -281,9 +282,11 @@ function actualizarVencimientos() {
     _notificarErrorTrigger("actualizarVencimientos", e);
     return _error("Error en actualización de vencimientos: " + e.message);
   } finally {
-    if (lockAcquired && lock) {
+    // === INICIO FIX m-01 ===
+    if (lock) {
       try { lock.releaseLock(); } catch (_) {}
     }
+    // === FIN FIX m-01 ===
   }
 }
 
@@ -483,6 +486,10 @@ function _descontarInventario(carrito) {
 }
 
 function _revertirDescuentoInventario(carrito) {
+  // === INICIO FIX M-07 ===
+  const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+  try {
+  // === FIN FIX M-07 ===
   const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
   const data = sheet.getDataRange().getValues();
   const COL = CONFIG.COLUMNS.PRODUCTOS;
@@ -516,4 +523,9 @@ function _revertirDescuentoInventario(carrito) {
     }
     sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 1).setValues(batchData);
   }
+  // === INICIO FIX M-07 ===
+  } finally {
+    lock.releaseLock();
+  }
+  // === FIN FIX M-07 ===
 }

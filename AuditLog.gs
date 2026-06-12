@@ -36,12 +36,27 @@ const LOG_ENGINE = {
       }
       sheetAudit.getRange(sheetAudit.getLastRow() + 1, 1, 1, 9).setValues([rowData]);
 
-      // Purge: si excede MAX_LOG_ROWS + margen, eliminar las filas más viejas
+      // === INICIO FIX C-03 ===
+      // Purge con lock para evitar race condition
       const totalRows = sheetAudit.getLastRow();
       if (totalRows > MAX_LOG_ROWS + 100) {
-        const rowsToDelete = totalRows - MAX_LOG_ROWS;
-        sheetAudit.deleteRows(2, rowsToDelete);
+        let lock = null;
+        try {
+          lock = LOCK_MANAGER.acquireGlobalLock(5000);
+          Logger.log("[FIX-C-03] Lock adquirido para purge de AuditLog");
+          const currentTotal = sheetAudit.getLastRow();
+          if (currentTotal > MAX_LOG_ROWS + 100) {
+            const rowsToDelete = currentTotal - MAX_LOG_ROWS;
+            sheetAudit.deleteRows(2, rowsToDelete);
+            Logger.log("[FIX-C-03] Purge completado: " + rowsToDelete + " filas borradas");
+          }
+        } catch (lockErr) {
+          Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para purge: " + lockErr.message);
+        } finally {
+          if (lock) lock.releaseLock();
+        }
       }
+      // === FIN FIX C-03 ===
 
       return true;
     } catch (e) {

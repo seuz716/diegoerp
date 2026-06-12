@@ -33,6 +33,11 @@ let CACHE = {
   carteraFailCount: 0,
   tercerosCircuitOpen: false,
   carteraCircuitOpen: false,
+  // === INICIO FIX C-02 ===
+  _circuitOpenTercerosTimestamp: 0,
+  _circuitOpenCarteraTimestamp: 0,
+  CIRCUIT_AUTO_CLOSE_MS: 300000, // 5 minutes
+  // === FIN FIX C-02 ===
   lastChecksumTerceros: "",
   lastChecksumCartera: "",
   _refreshingTerceros: false,
@@ -93,8 +98,40 @@ let CACHE = {
     this.invalidateCartera();
   },
 
+  // === INICIO FIX C-02 ===
+  _autoRecoverCircuitBreaker(kind) {
+    const props = PropertiesService.getScriptProperties();
+    const timestampKey = kind === 'terceros' ? 'CIRCUIT_OPEN_TERCEROS_TS' : 'CIRCUIT_OPEN_CARTERA_TS';
+    const storedTs = Number(props.getProperty(timestampKey) || '0');
+    
+    if (kind === 'terceros' && this.tercerosCircuitOpen) {
+      if (storedTs > 0 && (Date.now() - storedTs) > this.CIRCUIT_AUTO_CLOSE_MS) {
+        Logger.log("[FIX-C-02] Circuit breaker auto-closed for terceros after 5 minutes");
+        this.tercerosCircuitOpen = false;
+        this.tercerosFailCount = 0;
+        this._circuitOpenTercerosTimestamp = 0;
+        props.deleteProperty(timestampKey);
+      }
+    }
+    if (kind === 'cartera' && this.carteraCircuitOpen) {
+      if (storedTs > 0 && (Date.now() - storedTs) > this.CIRCUIT_AUTO_CLOSE_MS) {
+        Logger.log("[FIX-C-02] Circuit breaker auto-closed for cartera after 5 minutes");
+        this.carteraCircuitOpen = false;
+        this.carteraFailCount = 0;
+        this._circuitOpenCarteraTimestamp = 0;
+        props.deleteProperty(timestampKey);
+      }
+    }
+  },
+  // === FIN FIX C-02 ===
+
   isTercerosValid() {
-    if (this.tercerosCircuitOpen) return false;
+    // === INICIO FIX C-02 ===
+    if (this.tercerosCircuitOpen) {
+      this._autoRecoverCircuitBreaker('terceros');
+      if (this.tercerosCircuitOpen) return false;
+    }
+    // === FIN FIX C-02 ===
     if (this.tercerosStale) {
       if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
         return false;
@@ -114,7 +151,12 @@ let CACHE = {
   },
 
   isCarteraValid() {
-    if (this.carteraCircuitOpen) return false;
+    // === INICIO FIX C-02 ===
+    if (this.carteraCircuitOpen) {
+      this._autoRecoverCircuitBreaker('cartera');
+      if (this.carteraCircuitOpen) return false;
+    }
+    // === FIN FIX C-02 ===
     if (this.carteraStale) {
       if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
         return false;
@@ -286,14 +328,37 @@ let CACHE = {
     };
   },
 
+  _readSheetRaw(sheet, startRow, totalRows, numCols) {
+    if (totalRows <= 0) return [];
+    // === INICIO FIX M-06 ===
+    const ITEMS_PER_BLOCK = 20000;
+    if (totalRows <= 50000) {
+      return sheet.getRange(startRow, 1, totalRows, numCols).getValues();
+    }
+    Logger.log("[FIX-M-06] Large sheet: %s rows, reading in blocks of %s", totalRows, ITEMS_PER_BLOCK);
+    let result = [];
+    for (let offset = 0; offset < totalRows; offset += ITEMS_PER_BLOCK) {
+      const blockSize = Math.min(ITEMS_PER_BLOCK, totalRows - offset);
+      const block = sheet.getRange(startRow + offset, 1, blockSize, numCols).getValues();
+      result = result.concat(block);
+    }
+    // === FIN FIX M-06 ===
+    return result;
+  },
+
   _readSheetItems(sheetName, columnsConfig) {
     const sheet = getSheet(sheetName);
     const columns = columnsConfig;
     const lastRow = sheet.getLastRow();
     const numCols = Math.max(...Object.values(columns)) + 1;
-    const limit = Math.min(10000, lastRow - 1);
-    const data = lastRow < 2 ? [] : sheet.getRange(Math.max(2, lastRow - limit + 1), 1, limit, numCols).getValues();
+    if (lastRow < 2) return [];
+    const totalDataRows = lastRow - 1;
+    const data = this._readSheetRaw(sheet, 2, totalDataRows, numCols);
+    return this._parseSheetData(data, columns);
+  },
 
+  // === INICIO FIX M-06 ===
+  _parseSheetData(data, columns) {
     const items = [];
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
@@ -312,6 +377,7 @@ let CACHE = {
     }
     return items;
   },
+  // === FIN FIX M-06 ===
 
   _computeChecksum(data) {
     if (!data || data.length === 0) return "";
@@ -339,7 +405,8 @@ let CACHE = {
       const COL_T = CARTERA_CONFIG.COLUMNS.TERCEROS;
       const lastRow = sheetTerceros.getLastRow();
       const numCols = Math.max(...Object.values(COL_T)) + 1;
-      const dataTerceros = lastRow < 2 ? [] : sheetTerceros.getRange(2, 1, lastRow - 1, numCols).getValues();
+      const totalDataRows = lastRow - 1;
+      const dataTerceros = this._readSheetRaw(sheetTerceros, 2, totalDataRows, numCols);
 
       const newTerceros = [];
       const newIndex = {};
@@ -387,6 +454,14 @@ let CACHE = {
       }
       if (this.tercerosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
         this.tercerosCircuitOpen = true;
+        // === INICIO FIX C-02 ===
+        this._circuitOpenTercerosTimestamp = Date.now();
+        try {
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
+        } catch (e) {
+          Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+        }
+        // === FIN FIX C-02 ===
         Logger.log("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
       }
     } finally {
@@ -405,7 +480,8 @@ let CACHE = {
       const COL_C = CARTERA_CONFIG.COLUMNS.CARTERA;
       const numCols = Math.max(...Object.values(COL_C)) + 1;
       const lastRow = sheetCartera.getLastRow();
-      const dataCartera = lastRow < 2 ? [] : sheetCartera.getRange(2, 1, lastRow - 1, numCols).getValues();
+      const totalDataRows = lastRow - 1;
+      const dataCartera = this._readSheetRaw(sheetCartera, 2, totalDataRows, numCols);
 
       const newCartera = [];
       const newIndex = {};
@@ -457,6 +533,14 @@ let CACHE = {
       }
       if (this.carteraFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
         this.carteraCircuitOpen = true;
+        // === INICIO FIX C-02 ===
+        this._circuitOpenCarteraTimestamp = Date.now();
+        try {
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
+        } catch (e) {
+          Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+        }
+        // === FIN FIX C-02 ===
         Logger.log("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
       }
     } finally {
@@ -531,9 +615,27 @@ let CACHE = {
   },
 
   getSaldoTercero(idTercero) {
-    return this.getCarteraPorTercero(idTercero)
+    // === INICIO FIX M-03 ===
+    const idClean = _sanitizeId(idTercero);
+    if (!idClean) return 0;
+
+    // Try cache first
+    if (this.cartera && this.cartera.length > 0) {
+      const items = this.cartera.filter(c =>
+        c.id_tercero === idClean &&
+        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA
+      );
+      const saldo = items.reduce((sum, c) => sum + c.saldo, 0);
+      Logger.log("[FIX-M-03] getSaldoTercero(%s) from cache: %s items, saldo=%s", idClean, items.length, saldo);
+      return saldo;
+    }
+
+    // Fallback to sheet-based query if cache not available
+    Logger.log("[FIX-M-03] getSaldoTercero(%s) cache miss, falling back to sheet", idClean);
+    return this.getCarteraPorTercero(idClean)
       .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
       .reduce((sum, c) => sum + c.saldo, 0);
+    // === FIN FIX M-03 ===
   },
 
   getCarteraBase() {
@@ -550,12 +652,14 @@ let CACHE = {
     try {
       const cache = CacheService.getScriptCache();
       const serialized = JSON.stringify(data);
+      // === INICIO FIX m-02 ===
       if (serialized.length < 90000) {
         const key = this._getCacheKey(keyPrefix);
-        cache.put(key, serialized, 300); // 300 seconds = 5 minutes hardcoded TTL
+        cache.put(key, serialized, 300);
       } else {
-        Logger.log("CACHE: Data too large for native CacheService, skipping put. Size: " + serialized.length);
+        Logger.log("[FIX-m-02] [WARN] Cache data size %s bytes exceeds 90KB limit, not stored", serialized.length);
       }
+      // === FIN FIX m-02 ===
     } catch (e) {
       Logger.log("CACHE: Error in _putNativeCache: " + e.toString());
     }
