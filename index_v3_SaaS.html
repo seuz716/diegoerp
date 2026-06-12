@@ -23,7 +23,7 @@
   --green: #3DA35D;
   --green-dim: rgba(61,163,93,0.10);
   --green-border: rgba(61,163,93,0.22);
-  --muted: rgba(60,55,50,0.60);
+  --muted: rgba(60,55,50,0.72);
   --muted-2: rgba(60,55,50,0.24);
   --text: #1A1814;
   --border: rgba(0,0,0,0.07);
@@ -86,7 +86,7 @@
   --shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:700px;line-height:1.5}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:100dvh;line-height:1.5}
 
 /* ── SIDEBAR ── */
 #sidebar{
@@ -478,7 +478,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .ia-progress-bar-active{animation:ia-progress-indeterminate 1.4s ease-in-out infinite;width:40%!important;background:var(--accent);}
 
 /* ── TOAST ── */
-#toast-container{position:fixed;bottom:80px;right:var(--space-4);z-index:3000;display:flex;flex-direction:column;gap:var(--space-2);pointer-events:none;}
+#toast-container{position:fixed;bottom:var(--space-4);right:var(--space-4);z-index:3000;display:flex;flex-direction:column;gap:var(--space-2);pointer-events:none;}
 .toast{pointer-events:auto;padding:var(--space-3) var(--space-4);border-left:3px solid var(--accent);background:var(--bg-1);color:var(--text);font-size:var(--text-sm);letter-spacing:0.04em;box-shadow:var(--shadow);animation:toast-in .3s ease forwards;max-width:360px;}
 .toast.error{border-left-color:var(--red);}
 .toast.success{border-left-color:var(--green);}
@@ -566,7 +566,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   .alert-row { grid-template-columns: 24px 1fr auto; gap: 8px; padding: 10px 12px; }
   .data-table { min-width: 600px; }
   .abono-form { padding: 16px; max-width: 100%; }
-  .modal-box { padding: 20px; margin: 12px; }
+  .modal-box { padding: 20px; margin: 12px; max-height: 85dvh; overflow-y: auto; }
   .ia-panel { padding: 16px; }
   .form-panel { padding: 0; }
   .btn { min-height: 44px; }
@@ -590,8 +590,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   .btn { font-size: 11px; letter-spacing: 0.06em; }
 }
 @media (max-width: 600px) {
-  .venta-producto-row { grid-template-columns: 1fr 70px 90px 36px !important; }
+  .venta-producto-row { grid-template-columns: 1fr 80px 100px 36px; }
   .ia-results .ir-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  #view-cartera .page-header > div { width: 100%; display: flex; gap: 8px; }
+  #view-cartera .page-header > div select { flex: 1; min-width: 0; }
+  #modal-confirm .btn-sm { min-height: 44px; padding: 10px 16px; }
 }
 </style>
 </head>
@@ -846,7 +852,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     </div>
 
     <div class="form-panel">
-      <div style="padding:var(--space-6);">
+      <div class="abono-form">
         <div class="form-panel-title">Nueva venta</div>
         <div class="form-panel-desc">
           Registra ventas al contado o a crédito. Los productos se cargan desde la hoja "Productos".
@@ -880,7 +886,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
           <div id="venta-productos"></div>
 
           <template id="row-template">
-            <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 100px 120px 40px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
+            <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 80px 100px 36px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
               <div>
                 <label class="form-label">Producto</label>
                 <select class="form-field venta-producto-select" style="font-size:var(--text-sm);">
@@ -1984,6 +1990,16 @@ function cargarUserInfo() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+  // Sincronizar active del bottom-nav al cargar
+  (function() {
+    var activeView = document.querySelector('#sidebar .nav-item.active');
+    if (activeView) {
+      var viewId = activeView.dataset.view;
+      var bottomItem = document.querySelector('#bottom-nav .nav-item[data-view="' + viewId + '"]');
+      if (bottomItem) bottomItem.classList.add('active');
+    }
+  })();
+
   cargarUserInfo();
   cargarDashboard().then(function() {
     cargarCartera();
