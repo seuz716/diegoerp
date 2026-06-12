@@ -36,13 +36,7 @@ const CONFIG = {
   },
 };
 
-const ROLES = {
-  ADMIN: 'ADMIN',
-  OPERATOR: 'OPERATOR',
-  VIEWER: 'VIEWER',
-};
 
-const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
 // ─ GLOBALES DE ESQUEMA ─
 
@@ -95,7 +89,12 @@ let _SPREADSHEET_CACHE = null;
 
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
-    _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
+    var ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+    if (ssId) {
+      _SPREADSHEET_CACHE = SpreadsheetApp.openById(ssId);
+    } else {
+      _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
+    }
   }
   return _SPREADSHEET_CACHE;
 }

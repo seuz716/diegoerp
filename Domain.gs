@@ -158,8 +158,8 @@ const DOMAIN = {
       // Tomar snapshot de la fila existente para posible rollback
       const cachedRow = CACHE.terceroIndex ? CACHE.terceroIndex[id] : null;
       if (cachedRow) {
-        tx.snapshotTerceroRow(cachedRow + 1); // +1 porque rowIndex es 1-based de datos
-        Logger.log("[FIX-M-02] Snapshot tomado para fila existente: " + (cachedRow + 1));
+        tx.snapshotTerceroRow(cachedRow);
+        Logger.log("[FIX-M-02] Snapshot tomado para fila existente: " + cachedRow);
       }
       // === FIN FIX M-02 ===
 
@@ -388,17 +388,17 @@ const DOMAIN = {
       const tercero = DAO.getTerceroById(idTerceroLimpio);
       if (!tercero) { throw new Error(`Tercero ${idTerceroLimpio} no existe.`); }
 
+      const consistency = CACHE.verifyConsistency();
+      if (consistency.mismatched) {
+        Logger.log("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
+        CACHE.recoverFromStale();
+      }
+
       if (tipo === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
         const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
         if ((saldoActual + totalLimpio) > tercero.limite_credito) {
           throw new Error(`Límite de crédito superado. Disponible: $${_formatMoneda(tercero.limite_credito - saldoActual)}`);
         }
-      }
-
-      const consistency = CACHE.verifyConsistency();
-      if (consistency.mismatched) {
-        Logger.log("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
-        CACHE.recoverFromStale();
       }
 
       const idCartera = (tipo === CARTERA_CONFIG.TIPOS.CXC ? "CXC" : "CXP") + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);

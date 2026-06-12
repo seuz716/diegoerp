@@ -3,7 +3,6 @@
  */
 function doGet(e) {
   try {
-    // Health check endpoint
     if (e && e.parameter && e.parameter.health !== undefined) {
       return handleHealthCheck();
     }
@@ -14,8 +13,7 @@ function doGet(e) {
   }
   return HtmlService.createTemplateFromFile('index_v3_SaaS')
     .evaluate()
-    .setTitle('MicroERP · Cartera Pro')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.SAMEORIGIN);
+    .setTitle('MicroERP · Cartera Pro');
 }
 
 function handleHealthCheck() {
@@ -30,7 +28,7 @@ function handleHealthCheck() {
 
   try {
     // Check sheets exist
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getActiveSpreadsheet();
     const sheetNames = ["Terceros", "Cartera", "Movimientos_Cartera", "AUDIT_LOG", "Productos"];
     for (const name of sheetNames) {
       const sheet = ss.getSheetByName(name);

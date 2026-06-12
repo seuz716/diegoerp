@@ -231,8 +231,14 @@ function actualizarVencimientos() {
 
       if (estadoActual === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
 
-      const fv = _safeDate(row[COL.fecha_vencimiento]);
-      if (fv.getTime() <= 0) {
+      let fv = null;
+      try {
+        fv = _safeDate(row[COL.fecha_vencimiento]);
+      } catch (_) {
+        errores++;
+        continue;
+      }
+      if (!fv || fv.getTime() <= 0) {
         errores++;
         continue;
       }

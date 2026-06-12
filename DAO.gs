@@ -199,7 +199,7 @@ const DAO = {
         const cachedRow = CACHE.terceroIndex[id];
 
         if (cachedRow) {
-          sheet.getRange(cachedRow + 1, 1, 1, 6).setValues([rowData]);
+          sheet.getRange(cachedRow, 1, 1, 6).setValues([rowData]);
           return { isUpdate: true };
         }
 

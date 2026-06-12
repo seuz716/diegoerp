@@ -411,7 +411,7 @@ let CACHE = {
       const newTerceros = [];
       const newIndex = {};
       for (let i = 0; i < dataTerceros.length; i++) {
-        const rowIdx = 1 + i;
+        const rowIdx = 2 + i;
         const id = String(dataTerceros[i][COL_T.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;  
@@ -486,7 +486,7 @@ let CACHE = {
       const newCartera = [];
       const newIndex = {};
       for (let i = 0; i < dataCartera.length; i++) {
-        const rowIdx = 1 + i;
+        const rowIdx = 2 + i;
         const id = String(dataCartera[i][COL_C.id]).trim();
         if (!id) continue;
         newIndex[id] = rowIdx;

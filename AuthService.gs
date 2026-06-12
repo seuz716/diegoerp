@@ -1,3 +1,6 @@
+const ROLES = { ADMIN: 'ADMIN', OPERATOR: 'OPERATOR', VIEWER: 'VIEWER' };
+const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
+
 const PERMISSION_ROLES = {
   ver_terceros: ROLES.VIEWER,
   ver_cartera: ROLES.VIEWER,

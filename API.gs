@@ -122,6 +122,17 @@ function getDashboardCartera() {
         CACHE.terceros.forEach(t => { tercerosMap[t.id] = t.nombre; });
       }
 
+      const _recalcEstado = function(c) {
+        if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) return c.estado;
+        if (_isValidDate(c.fecha_vencimiento)) {
+          try {
+            const fv = _safeDate(c.fecha_vencimiento);
+            if (fv.getTime() < hoy.getTime()) return CARTERA_CONFIG.ESTADOS.VENCIDA;
+          } catch (_) {}
+        }
+        return c.estado;
+      };
+
       const cxc = CACHE.cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXC);
       const cxp = CACHE.cartera.filter(c => c.tipo === CARTERA_CONFIG.TIPOS.CXP);
       const totalObligaciones = cxc.length + cxp.length;
@@ -139,8 +150,8 @@ function getDashboardCartera() {
         porPagar += activeCxp[i].saldo;
       }
 
-      const vencidasCxc = cxc.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
-      const vencidasCxp = cxp.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+      const vencidasCxc = cxc.filter(c => _recalcEstado(c) === CARTERA_CONFIG.ESTADOS.VENCIDA);
+      const vencidasCxp = cxp.filter(c => _recalcEstado(c) === CARTERA_CONFIG.ESTADOS.VENCIDA);
 
       let vencidaCxC = 0;
       for (let i = 0; i < vencidasCxc.length; i++) {
