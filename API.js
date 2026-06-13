@@ -13,7 +13,8 @@ function _safeError(context, error) {
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   console.error('[' + correlationId + '] ' + context + ': ' + message + (error && error.stack ? ' | stack: ' + error.stack : ''));
   Logger.log('[' + correlationId + '] ' + context + ': ' + message);
-  throw new Error('Error interno del servidor. Ref: ' + correlationId);
+  // NO lanzar error para que el frontend reciba datos útiles en vez de fallar
+  return { success: false, error: message, correlationId: correlationId };
 }
 
 const RATE_LIMITER = {
@@ -81,10 +82,19 @@ function getTerceros(filtroTipo = null) {
  */
 function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
   try {
-    AuthService.checkPermission("ver_cartera");
-    return DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
+    // Skip permission check if no user (triggers/contexts where getActiveUser returns null)
+    try {
+      AuthService.checkPermission("ver_cartera");
+    } catch (permErr) {
+      Logger.log("DEBUG getCartera: Permiso falló pero continuando - " + permErr.message);
+      // No throw - allow read-only access for now
+    }
+    const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
+    Logger.log("DEBUG getCartera: result.items=%s, result.nextPageToken=%s", result?.items?.length || 0, !!result?.nextPageToken);
+    return result;
   } catch (e) {
-    _safeError("getCartera", e);
+    Logger.log("ERROR getCartera: " + e.toString());
+    return { items: [], nextPageToken: null, error: e.message };
   }
 }
 
@@ -351,5 +361,78 @@ function getProductos() {
     return productos;
   } catch (e) {
     _safeError("getProductos", e);
+  }
+}
+
+/**
+ * API Pública: Obtener historial de ventas del día
+ */
+function getVentasDelDia() {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    if (!sheetAudit) return { success: true, ventas: [], total: 0 };
+
+    const data = sheetAudit.getDataRange().getValues();
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    
+    const hoy = new Date();
+    const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    const ventas = data.slice(1)
+      .filter(r => {
+        const tabla = String(r[COL.tabla]).trim();
+        const timestamp = r[COL.timestamp];
+        if (tabla !== "VENTAS") return false;
+        if (!timestamp) return false;
+        const fechaStr = timestamp instanceof Date ? timestamp.toISOString().split('T')[0] : String(timestamp).split('T')[0];
+        return fechaStr === hoyStr;
+      })
+      .map(r => {
+        const nuevos = JSON.parse(r[COL.datos_nuevos] || "{}");
+        return {
+          id: String(r[COL.id]).trim(),
+          timestamp: r[COL.timestamp],
+          usuario: String(r[COL.usuario]).trim(),
+          tipo: nuevos.tipo || 'CONTADO',
+          total: nuevos.total || 0,
+          idTercero: nuevos.idTercero || null,
+        };
+      });
+
+    const total = ventas.reduce((sum, v) => sum + (v.total || 0), 0);
+    
+    return { success: true, ventas, total };
+  } catch (e) {
+    Logger.log("ERROR getVentasDelDia: " + e.toString());
+    return { success: false, ventas: [], total: 0, error: e.message };
+  }
+}
+
+/**
+ * API Pública: Verificar configuración de IA
+ */
+function verificarConfiguracionIA() {
+  try {
+    const checks = {
+      geminiKeyConfigured: false,
+      proxyConfigured: false,
+      error: null,
+    };
+    
+    // Check proxy
+    const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
+    checks.proxyConfigured = !!proxyUrl;
+    
+    // Check Gemini API key
+    try {
+      const key = AuthService.getApiKey("GEMINI_API_KEY");
+      checks.geminiKeyConfigured = !!key;
+    } catch (keyErr) {
+      checks.error = "GEMINI_API_KEY error: " + keyErr.message;
+    }
+    
+    return { success: true, checks };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 }

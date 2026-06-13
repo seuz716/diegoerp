@@ -94,6 +94,37 @@ const LOG_ENGINE = {
       return [];
     }
   },
+
+  /**
+   * Obtiene historial de ventas recientes
+   */
+  getVentasHistory(limit = 100) {
+    try {
+      const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      if (!sheetAudit) return { success: false, ventas: [] };
+
+      const data = sheetAudit.getDataRange().getValues();
+      const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+
+      const ventas = data.slice(1)
+        .filter(r => String(r[COL.tabla]).trim() === "VENTAS")
+        .map(r => ({
+          id: String(r[COL.id]).trim(),
+          timestamp: r[COL.timestamp],
+          operacion: String(r[COL.operacion]).trim(),
+          usuario: String(r[COL.usuario]).trim(),
+          nuevos: JSON.parse(r[COL.datos_nuevos] || "{}"),
+          estado: String(r[COL.estado]).trim(),
+        }))
+        .slice(-limit)
+        .reverse();
+
+      return { success: true, ventas: ventas };
+    } catch (e) {
+      Logger.log("ERROR LOG_ENGINE.getVentasHistory:" + e.toString());
+      return { success: false, ventas: [], error: e.message };
+    }
+  },
 };
 
 function _sanitizeForLog(obj) {
@@ -119,4 +150,16 @@ function _sanitizeForLog(obj) {
   };
   sanitize(safe);
   return safe;
+}
+
+/**
+ * Obtiene historial reciente de ventas desde AUDIT_LOG
+ */
+function getVentasHistory(limit = 100) {
+  try {
+    return LOG_ENGINE.getVentasHistory(limit);
+  } catch (e) {
+    Logger.log("ERROR getVentasHistory:" + e.toString());
+    return { success: false, ventas: [], error: e.message };
+  }
 }

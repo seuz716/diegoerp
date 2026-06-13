@@ -8,6 +8,7 @@ const PERMISSION_ROLES = {
   ver_auditoria: ROLES.VIEWER,
   ver_analisis_ia: ROLES.VIEWER,
   ver_configuracion: ROLES.VIEWER,
+  ver_ventas: ROLES.VIEWER,
   registrar_abono: ROLES.OPERATOR,
   guardar_tercero: ROLES.OPERATOR,
   analizar_ia: ROLES.OPERATOR,

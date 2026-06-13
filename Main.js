@@ -111,3 +111,97 @@ function _notificarErrorTrigger(context, error) {
 function getHealthStatus() {
   return JSON.parse(handleHealthCheck().getContent());
 }
+
+/**
+ * Diagnostico: Verificar datos de cartera directamente desde console GAS
+ */
+function debugCartera() {
+  try {
+    CACHE.invalidate(); // Forzar refresh fresco
+    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    var lastRow = sheet.getLastRow();
+    var colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+    
+    Logger.log("DEBUG CARTERA: sheet=%s, lastRow=%s, cols=%s", 
+      CARTERA_CONFIG.SHEETS.CARTERA, lastRow, colCount);
+    
+    if (lastRow < 2) {
+      Logger.log("DEBUG CARTERA: No hay datos (lastRow < 2)");
+      return { success: true, count: 0, message: "No hay datos en hoja Cartera", sheetRows: 0 };
+    }
+    
+    // Leer directamente de la hoja
+    var data = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
+    Logger.log("DEBUG CARTERA: datos leidos=%s", data.length);
+    
+    // Verificar DAO
+    var daoResult = DAO.getCartera();
+    Logger.log("DEBUG CARTERA: DAO getCartera returned items=%s", daoResult?.items?.length || 0);
+    
+    return { 
+      success: true, 
+      count: daoResult?.items?.length || 0,
+      sheetRows: lastRow - 1,
+      rawRows: data.length,
+      sample: data.slice(0, 2).map(r => ({id: r[0], id_tercero: r[2]}))
+    };
+  } catch (e) {
+    Logger.log("DEBUG CARTERA ERROR: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+function testCarteraSimple() {
+  try {
+    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    var lastRow = sheet.getLastRow();
+    Logger.log("testCarteraSimple: Sheet exists, lastRow=%s", lastRow);
+    return lastRow;
+  } catch(e) {
+    Logger.log("testCarteraSimple ERROR: " + e.toString());
+    throw e;
+  }
+}
+
+/**
+ * Verificar configuración de IA - diagnóstico
+ */
+function checkIAKey() {
+  try {
+    const hasKey = AuthService.hasApiKey("GEMINI_API_KEY");
+    Logger.log("checkIAKey: hasApiKey=%s", hasKey);
+    
+    if (hasKey) {
+      const key = AuthService.getApiKey("GEMINI_API_KEY");
+      Logger.log("checkIAKey: Key length=%s (masked)", key ? key.length : 0);
+      return { 
+        success: true, 
+        hasKey: true, 
+        keyLength: key ? key.length : 0,
+        proxyUrl: PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL") ? "CONFIGURED" : null
+      };
+    }
+    return { success: true, hasKey: false };
+  } catch (e) {
+    Logger.log("checkIAKey ERROR: " + e.toString());
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Configurar Gemini API Key - Guárdala desde el editor
+ * ⚠️ Ejecutar desde el editor con el usuario que la usará
+ */
+function setupGeminiKeyFromPrompt() {
+  const key = Browser.inputBox("Configurar Gemini API Key", "Pega tu API key de Gemini:", Browser.Buttons.OK_CANCEL);
+  if (key === "cancel") return { success: false, cancelled: true };
+  
+  try {
+    AuthService.setApiKey("GEMINI_API_KEY", key);
+    Logger.log("✅ Gemini API Key configurada correctamente");
+    return { success: true, message: "API Key configurada correctamente" };
+  } catch (e) {
+    Logger.log("ERROR setupGeminiKeyFromPrompt: " + e.toString());
+    return { success: false, error: e.message };
+  }
+}
