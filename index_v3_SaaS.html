@@ -2,25 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>
-/* GAS IFRAME VIEWPORT FIX — debe ejecutarse antes que cualquier CSS */
-(function(){
-  'use strict';
-  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-  if(!isMobile) return;
-  var w = window.innerWidth || document.documentElement.clientWidth;
-  console.log('[GAS] viewport innerWidth='+w+' screen.width='+(window.screen.width));
-  if(w > 500){
-    /* El iframe de GAS está renderizando a ancho desktop (>500px en móvil).
-       El browser escala todo hacia abajo y se ve minúsculo.
-       Forzamos el viewport dinámicamente */
-    var m = document.querySelector('meta[name="viewport"]');
-    if(m) m.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-    document.documentElement.style.width = (window.screen.width || 375) + 'px';
-    document.documentElement.style.overflowX = 'hidden';
-  }
-})();
+/* GAS: forzar reflow para que el iframe recalcule su altura */
+function gasReflow(){
+  try {
+    var d = document.createElement('div');
+    d.style.cssText = 'width:1px;height:1px;position:absolute;left:-9999px';
+    document.body.appendChild(d);
+    requestAnimationFrame(function(){ document.body.removeChild(d); });
+  } catch(e){}
+}
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1215,6 +1207,7 @@ function cargarDashboard() {
       }
 
       view.classList.remove('is-loading');
+      gasReflow();
     })
     .catch(function (err) {
       mostrarError(alertsBody, err.message || err);
@@ -1527,6 +1520,7 @@ function cargarCartera(append) {
           tbody.appendChild(trLoadMore);
         }
       }
+      gasReflow();
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
@@ -1678,6 +1672,7 @@ function cargarTerceros() {
           tbody.appendChild(tr);
         });
       }
+      gasReflow();
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
@@ -2021,14 +2016,14 @@ function cargarUserInfo() {
 }
 
 /* ── GAS POST-LOAD ──
-   Refuerzo de font-size base en móvil.
-   El viewport ya se fijó en el <head> vía script inline.
-   Aquí solo aseguramos que el fontSize base se mantenga.
+   Forzar reflow después de carga inicial para que GAS recalcule
+   la altura del iframe (contenido asíncrono ya renderizado)
 */
 (function(){
-  if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)){
-    document.documentElement.style.fontSize = '16px';
-  }
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  if(isMobile) document.documentElement.style.fontSize = '16px';
+  setTimeout(gasReflow, 100);
+  setTimeout(gasReflow, 500);
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
