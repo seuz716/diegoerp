@@ -2,7 +2,26 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+/* GAS IFRAME VIEWPORT FIX — debe ejecutarse antes que cualquier CSS */
+(function(){
+  'use strict';
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  if(!isMobile) return;
+  var w = window.innerWidth || document.documentElement.clientWidth;
+  console.log('[GAS] viewport innerWidth='+w+' screen.width='+(window.screen.width));
+  if(w > 500){
+    /* El iframe de GAS está renderizando a ancho desktop (>500px en móvil).
+       El browser escala todo hacia abajo y se ve minúsculo.
+       Forzamos el viewport dinámicamente */
+    var m = document.querySelector('meta[name="viewport"]');
+    if(m) m.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    document.documentElement.style.width = (window.screen.width || 375) + 'px';
+    document.documentElement.style.overflowX = 'hidden';
+  }
+})();
+</script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,16 +51,16 @@
   --display: 'Libre Baskerville', Georgia, serif;
   --font-body: 'Sora', sans-serif;
   --radius: 0px;
-  --text-xs: clamp(11px, 2.5vw, 12px);
-  --text-micro: clamp(11px, 2.5vw, 12px);
-  --text-data: clamp(11px, 2.5vw, 12px);
-  --text-sm: clamp(12px, 2.8vw, 13px);
-  --text-label: clamp(13px, 3vw, 14px);
-  --text-base: clamp(13px, 3vw, 14px);
-  --text-body: clamp(14px, 3.2vw, 15px);
-  --text-lg: clamp(15px, 3.5vw, 17px);
-  --text-stat-hero: clamp(1.8rem, 7vw, 2.6rem);
-  --text-stat-normal: clamp(1.3rem, 5vw, 1.6rem);
+  --text-xs: clamp(12px, 3vw, 13px);
+  --text-micro: clamp(12px, 3vw, 13px);
+  --text-data: clamp(12px, 3vw, 13px);
+  --text-sm: clamp(13px, 3.2vw, 14px);
+  --text-label: clamp(14px, 3.5vw, 15px);
+  --text-base: clamp(14px, 3.5vw, 15px);
+  --text-body: clamp(15px, 4vw, 16px);
+  --text-lg: clamp(16px, 4.5vw, 18px);
+  --text-stat-hero: clamp(2rem, 8vw, 2.8rem);
+  --text-stat-normal: clamp(1.4rem, 6vw, 1.8rem);
   --toggle-w: 32px;
   --toggle-h: 16px;
   --space-half: 2px;
@@ -598,13 +617,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 }
 
 @media (max-width: 480px) {
-  .page-title { font-size: clamp(1.15rem, 5vw, 1.4rem); }
-  .btn-sm { padding: 10px 14px; min-height: 40px; }
+  .page-title { font-size: clamp(1.3rem, 5.5vw, 1.5rem); }
+  .btn-sm { padding: 10px 14px; min-height: 44px; font-size: clamp(11px, 3vw, 13px); }
+  #main { padding: 14px 12px 76px 12px; }
+  .stat-hero { padding: 16px 14px; }
+  .stat-normal { padding: 14px; }
 }
 
 @media (max-width: 360px) {
-  .stat-hero .stat-value { font-size: 1.5rem; }
+  .stat-hero .stat-value { font-size: clamp(1.6rem, 8vw, 1.8rem); }
   .alert-row { padding: 10px 10px; }
+  #main { padding: 12px 10px 72px 10px; }
 }
 #view-ventas .abono-form { max-width: 600px; }
 </style>
@@ -1997,24 +2020,14 @@ function cargarUserInfo() {
     });
 }
 
-/* ── GAS IFRAME FIX ──
-   En GAS, el HTML se sirve dentro de un iframe. El <meta viewport>
-   del HTML interno NO controla el zoom del navegador porque el viewport
-   solo aplica al documento raíz. Este script:
-   1. Fuerza font-size base en móvil (JS tiene más especificidad que CSS heredado)
-   2. Notifica al host de GAS cambios de altura via ResizeObserver
+/* ── GAS POST-LOAD ──
+   Refuerzo de font-size base en móvil.
+   El viewport ya se fijó en el <head> vía script inline.
+   Aquí solo aseguramos que el fontSize base se mantenga.
 */
 (function(){
-  var ua = navigator.userAgent;
-  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  if(isMobile){
+  if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)){
     document.documentElement.style.fontSize = '16px';
-  }
-  if(window.ResizeObserver){
-    new ResizeObserver(function(){
-      var h = document.body.scrollHeight;
-      try { google.script.run.withFailureHandler(function(){}).setHeight(h); } catch(e) {}
-    }).observe(document.body);
   }
 })();
 
