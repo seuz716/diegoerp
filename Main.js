@@ -115,6 +115,44 @@ function getHealthStatus() {
 /**
  * Diagnostico: Verificar datos de cartera directamente desde console GAS
  */
+function Main_getCarteraDebug(filtroTipo, filtroEstado) {
+  var result = { checks: {}, errors: [] };
+  try {
+    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    result.checks.sheetExists = !!sheet;
+    if (!sheet) {
+      result.errors.push("La hoja Cartera no existe");
+      return result;
+    }
+    result.checks.sheetLastRow = sheet.getLastRow();
+    var colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+    if (result.checks.sheetLastRow < 2) {
+      result.errors.push("La hoja Cartera está vacía");
+      return result;
+    }
+    var rawData = sheet.getRange(2, 1, result.checks.sheetLastRow - 1, colCount).getValues();
+    result.checks.rawDataCount = rawData.length;
+    var tiposSet = {};
+    for (var i = 0; i < rawData.length; i++) {
+      var tipo = String(rawData[i][CARTERA_CONFIG.COLUMNS.CARTERA.tipo] || '').trim();
+      if (tipo) tiposSet[tipo] = (tiposSet[tipo] || 0) + 1;
+    }
+    result.checks.tiposEnHoja = Object.keys(tiposSet);
+    try {
+      var apiResult = DOMAIN.getCartera(filtroTipo, filtroEstado, 5, 0);
+      result.checks.apiResult = {
+        itemsCount: apiResult && apiResult.items ? apiResult.items.length : 0,
+        error: null
+      };
+    } catch (e) {
+      result.checks.apiResult = { itemsCount: 0, error: e.message };
+    }
+  } catch (e) {
+    result.errors.push(e.message);
+  }
+  return result;
+}
+
 function debugCartera() {
   try {
     CACHE.invalidate(); // Forzar refresh fresco

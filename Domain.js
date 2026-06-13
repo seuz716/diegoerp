@@ -198,7 +198,15 @@ const DOMAIN = {
 
   getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
-    const { items: baseCartera, nextPageToken } = DAO.getCartera(filtroTipo, debeFiltrarVencida ? null : filtroEstado, pageSize, pageToken);
+    
+    Logger.log("[DOMAIN.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", debeFiltrarVencida=" + debeFiltrarVencida);
+    
+    // Cuando filtramos por VENCIDA, leemos todos los registros y filtramos en memoria (el estado se calcula dinámicamente)
+    const estadoParaDAO = debeFiltrarVencida ? null : filtroEstado;
+    const { items: baseCartera, nextPageToken } = DAO.getCartera(filtroTipo, estadoParaDAO, pageSize, pageToken);
+    
+    Logger.log("[DOMAIN.getCartera] baseCartera items: " + (baseCartera ? baseCartera.length : 0));
+
     const hoy = _today();
 
     // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
@@ -206,6 +214,12 @@ const DOMAIN = {
     const tercerosMap = new Map();
     if (CACHE.terceros) {
       CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
+      Logger.log("[DOMAIN.getCartera] tercerosMap size: " + tercerosMap.size);
+    }
+
+    // Debug: Mostrar la primera fila si existe
+    if (baseCartera && baseCartera.length > 0) {
+      Logger.log("[DOMAIN.getCartera] Sample row: tipo=" + baseCartera[0].tipo + ", estado=" + baseCartera[0].estado);
     }
 
     const result = baseCartera.map(c => {
@@ -235,7 +249,9 @@ const DOMAIN = {
     });
 
     if (debeFiltrarVencida) {
-      return { items: result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA), nextPageToken };
+      const vencidas = result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
+      Logger.log("[DOMAIN.getCartera] Filtrando VENCIDA: " + vencidas.length + " de " + result.length);
+      return { items: vencidas, nextPageToken };
     }
 
     return { items: result, nextPageToken };

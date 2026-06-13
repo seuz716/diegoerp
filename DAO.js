@@ -38,6 +38,8 @@ const DAO = {
     const numCols = Math.max(...Object.values(COL)) + 1;
     const lastRow = sheet.getLastRow();
 
+    console.log("[DAO.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", lastRow=" + lastRow);
+
     if (!filtroTipo && !filtroEstado) {
       if (lastRow < 2) return { items: [], nextPageToken: null };
       const startRow = 2 + pageToken;
@@ -46,25 +48,32 @@ const DAO = {
       const values = sheet.getRange(startRow, 1, limit, numCols).getValues();
       const items = values.map((row, idx) => this._rowToCarteraItem(row, startRow + idx));
       const nextPageToken = (startRow + limit - 2 < lastRow - 1) ? (pageToken + limit) : null;
+      console.log("[DAO.getCartera] sin filtro: devolviendo " + items.length + " items");
       return { items, nextPageToken };
     }
 
     let rowIndexes = null;
     if (filtroTipo) {
+      console.log("[DAO.getCartera] Buscando por tipo: " + filtroTipo);
       rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.tipo, filtroTipo);
+      console.log("[DAO.getCartera] Encontrados " + (rowIndexes ? rowIndexes.length : 0) + " por tipo");
     }
 
     if (filtroEstado) {
+      console.log("[DAO.getCartera] Buscando por estado: " + filtroEstado);
       const estadoRows = this._findRowIndexesByColumnValue(sheet, COL.estado, filtroEstado);
+      console.log("[DAO.getCartera] Encontrados " + (estadoRows ? estadoRows.length : 0) + " por estado");
       if (rowIndexes === null) {
         rowIndexes = estadoRows;
       } else {
         const estadoSet = new Set(estadoRows);
         rowIndexes = rowIndexes.filter(row => estadoSet.has(row));
+        console.log("[DAO.getCartera] Después del filtro combinado: " + rowIndexes.length);
       }
     }
 
     if (!rowIndexes || rowIndexes.length === 0) {
+      console.log("[DAO.getCartera] Retornando vacío - no hay coincidencias");
       return { items: [], nextPageToken: null };
     }
 
@@ -72,6 +81,7 @@ const DAO = {
     const totalCount = rowIndexes.length;
     const paginatedRows = rowIndexes.slice(pageToken, pageToken + pageSize);
     const items = this._fetchCarteraItemsFromRows(sheet, paginatedRows, numCols);
+    console.log("[DAO.getCartera] Items finales: " + items.length);
     const nextPageToken = (pageToken + paginatedRows.length < totalCount) ? (pageToken + paginatedRows.length) : null;
 
     return { items, nextPageToken };
@@ -96,12 +106,37 @@ const DAO = {
     if (lastRow < 2) return [];
 
     const range = sheet.getRange(2, colIndex + 1, lastRow - 1, 1);
+    const searchValue = String(value).trim();
     // Use regex to match value with or without leading ' prefix
-    const matches = range.createTextFinder("^'?" + String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$")
+    const regexPattern = "^'?" + searchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$";
+    console.log("[DAO._findRowIndexes] Buscando en col=" + colIndex + ", valor='" + searchValue + "', regex='" + regexPattern + "'");
+    
+    const matches = range.createTextFinder(regexPattern)
       .useRegularExpression(true)
       .findAll();
 
-    if (!matches || matches.length === 0) return [];
+    if (!matches || matches.length === 0) {
+      // Debug: intentar leer valores crudos para diagnosticar
+      console.log("_findRowIndexesByColumnValue: No matches para colIndex=" + colIndex + ", valor=" + searchValue + ". Intentando lectura directa...");
+      
+      // Fallback: leer valores directamente y buscar coincidencia simple
+      const rawValues = range.getValues();
+      const directMatches = [];
+      for (let i = 0; i < rawValues.length; i++) {
+        const cellValue = String(rawValues[i][0] || "").trim();
+        if (cellValue === searchValue || cellValue === "'" + searchValue) {
+          directMatches.push(i + 2);
+        }
+      }
+      if (directMatches.length > 0) {
+        console.log("_findRowIndexesByColumnValue: Fallback directo encontró " + directMatches.length + " coincidencias");
+        return directMatches;
+      }
+      
+      return [];
+    }
+    
+    console.log("_findRowIndexesByColumnValue: Found " + matches.length + " matches para colIndex=" + colIndex);
     return matches.map(match => match.getRow());
   },
 

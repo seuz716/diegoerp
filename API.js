@@ -82,7 +82,7 @@ function getTerceros(filtroTipo = null) {
  */
 function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
   try {
-    // Skip permission check if no user (triggers/contexts where getActiveUser returns null)
+    // Skip permission check if no user (triggers/contexts donde getActiveUser retorna null)
     try {
       AuthService.checkPermission("ver_cartera");
     } catch (permErr) {
@@ -91,6 +91,10 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     }
     const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
     Logger.log("DEBUG getCartera: result.items=%s, result.nextPageToken=%s", result?.items?.length || 0, !!result?.nextPageToken);
+    if (!result || typeof result !== 'object') {
+      Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
+      return { items: [], nextPageToken: null, error: "Resultado inválido del dominio" };
+    }
     return result;
   } catch (e) {
     Logger.log("ERROR getCartera: " + e.toString());
@@ -432,6 +436,17 @@ function verificarConfiguracionIA() {
     }
     
     return { success: true, checks };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * API Pública: Diagnóstico avanzado de cartera
+ */
+function getCarteraDebug(filtroTipo, filtroEstado) {
+  try {
+    return Main_getCarteraDebug(filtroTipo || null, filtroEstado || null);
   } catch (e) {
     return { success: false, error: e.message };
   }

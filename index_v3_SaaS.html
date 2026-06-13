@@ -1025,6 +1025,7 @@ function callServer(funcName) {
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
   getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
+  getCarteraDebug: function (filtroTipo, filtroEstado) { return callServer('getCarteraDebug', filtroTipo, filtroEstado); },
   getTerceros: function (filtroTipo) { return callServer('getTerceros', filtroTipo); },
   registrarAbono: function (idTercero, valorAbono, referencia, tipo) { return callServer('registrarAbono', idTercero, valorAbono, referencia, tipo); },
   saveTercero: function (tercero) { return callServer('saveTercero', tercero); },
@@ -1061,6 +1062,17 @@ App.mapearEstadoCartera = function (estado) {
   var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-partial' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
   return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
 };
+
+/**
+ * Mostrar respuesta del servidor para diagnóstico
+ */
+function mostrarRespuestaServidor(res, container) {
+  container.innerHTML = '';
+  var pre = document.createElement('pre');
+  pre.style.cssText = 'font-size:var(--text-xs);color:var(--text);padding:var(--space-3);background:var(--bg-2);overflow:auto;max-height:400px;';
+  pre.textContent = JSON.stringify(res, null, 2);
+  container.appendChild(pre);
+}
 
 App.mapearTipoTercero = function (tipo) {
   var map = { CLIENTE: { label: 'Cliente', cls: 'badge-open' }, PROVEEDOR: { label: 'Proveedor', cls: '' }, AMBOS: { label: 'Ambos', cls: 'badge-open' } };
@@ -1261,7 +1273,20 @@ function renderizarAnalisis(analisis) {
       glabel.textContent = k.replace(/_/g, ' ');
       var gvalue = document.createElement('div');
       gvalue.className = 'ir-gvalue';
-      gvalue.textContent = String(r[k]);
+      var val = r[k];
+      // Formatear arrays como lista legible
+      if (Array.isArray(val)) {
+        gvalue.innerHTML = val.map(function(item) {
+          if (typeof item === 'object' && item !== null) {
+            return item.nombre || item.id_tercero || JSON.stringify(item);
+          }
+          return item;
+        }).join(', ');
+      } else if (typeof val === 'object' && val !== null) {
+        gvalue.textContent = Object.values(val).join(', ');
+      } else {
+        gvalue.textContent = String(val);
+      }
       gridItem.appendChild(glabel);
       gridItem.appendChild(gvalue);
       grid.appendChild(gridItem);
@@ -1284,7 +1309,20 @@ function renderizarAnalisis(analisis) {
       glabel.textContent = k.replace(/_/g, ' ');
       var gvalue = document.createElement('div');
       gvalue.className = 'ir-gvalue';
-      gvalue.textContent = String(s[k]);
+      var val = s[k];
+      // Formatear arrays como lista legible
+      if (Array.isArray(val)) {
+        gvalue.innerHTML = val.map(function(item) {
+          if (typeof item === 'object' && item !== null) {
+            return item.nombre || item.id || JSON.stringify(item);
+          }
+          return item;
+        }).join(', ');
+      } else if (typeof val === 'object' && val !== null) {
+        gvalue.textContent = Object.values(val).join(', ');
+      } else {
+        gvalue.textContent = String(val);
+      }
       gridItem.appendChild(glabel);
       gridItem.appendChild(gvalue);
       gridSeg.appendChild(gridItem);
@@ -1405,10 +1443,42 @@ function cargarCartera(append) {
         tbody.innerHTML = '';
       }
 
-      if (!res) {
-        mostrarError(tbody, 'Respuesta vacía del servidor');
+      // Caso: respuesta es null/undefined u objeto vacío sin items
+      if (!res || (typeof res === 'object' && !res.items)) {
+        var errorMsg = 'Respuesta vacía del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
+        // Diagnóstico: verificar qué está fallando
+        App.api.getCarteraDebug(filtroTipo, filtroEstado)
+          .then(function (debug) {
+            var diagMsg = '';
+            if (res && res.permissionDenied) {
+              diagMsg = 'Acceso denegado. Verifique que su usuario tenga rol asignado (VIEWER o superior).';
+            } else if (debug.checks && debug.checks.sheetExists === false) {
+              diagMsg = 'Error: Hoja "Cartera" no encontrada en el spreadsheet.';
+            } else if (debug.checks && debug.checks.sheetLastRow < 2) {
+              diagMsg = 'La hoja Cartera existe pero no tiene datos. Agregue registros a la cartera.';
+            } else if (debug.checks && debug.checks.rawDataCount === 0) {
+              diagMsg = 'No se pudieron leer datos de la hoja Cartera.';
+            } else if (debug.checks && debug.checks.apiResult && debug.checks.apiResult.error) {
+              diagMsg = 'Error en API: ' + debug.checks.apiResult.error;
+            } else if (debug.errors && debug.errors.length > 0) {
+              diagMsg = 'Errores detectados: ' + debug.errors.join(' | ');
+            } else if (debug.checks && debug.checks.rawDataCount > 0 && (!debug.checks.apiResult || debug.checks.apiResult.itemsCount === 0)) {
+              diagMsg = 'La hoja tiene ' + debug.checks.rawDataCount + ' filas, pero el filtro no coincide. Verifique los valores de los campos Tipo (debe ser CxC/CxP) y Estado.';
+              if (debug.checks.tiposEnHoja) {
+                diagMsg += '<br><br>Tipos encontrados en hoja: ' + JSON.stringify(debug.checks.tiposEnHoja);
+              }
+            } else {
+              diagMsg = errorMsg;
+            }
+            mostrarError(tbody, diagMsg + '</span>');
+          })
+          .catch(function () {
+            mostrarError(tbody, 'Respuesta vacía del servidor - diagnóstico falló');
+          });
         return;
       }
+      
+      // Caso: hay error explícito en la respuesta
       if (res.error) {
         mostrarError(tbody, res.error);
         return;
@@ -1420,7 +1490,7 @@ function cargarCartera(append) {
       if (!append && data.length === 0) {
         var td = document.createElement('td');
         td.colSpan = 5;
-        mostrarVacio(td, 'No se encontraron registros');
+        mostrarVacio(td, 'No se encontraron registros con los filtros actuales');
         var tr = document.createElement('tr');
         tr.appendChild(td);
         tbody.appendChild(tr);
