@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "adm-zip": "^0.5.17",
-    "puppeteer": "^25.1.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
-  }
-}

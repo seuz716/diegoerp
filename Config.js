@@ -334,7 +334,7 @@ function _safeDate(v) {
     const tz = _getTimeZone();
     const d = v instanceof Date ? v : new Date(v);
     if (!_isValidDate(d)) {
-      throw new Error(`Fecha inválida: ${v}`);
+      return null;
     }
     const s = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
     const normalized = new Date(s + 'T00:00:00');
@@ -342,12 +342,11 @@ function _safeDate(v) {
     const maxDate = new Date();
     maxDate.setFullYear(maxDate.getFullYear() + 5);
     if (normalized.getTime() < minDate.getTime() || normalized.getTime() > maxDate.getTime()) {
-      throw new Error(`Fecha fuera de rango permitido (2000-${maxDate.getFullYear()}): ${v}`);
+      return null;
     }
     return normalized;
   } catch (e) {
-    console.error(`Fecha inválida detectada: ${v}`);
-    throw new Error(`No se puede procesar fecha: ${v}. Corrija el dato en la hoja.`);
+    return null;
   }
 }
 

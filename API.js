@@ -57,7 +57,7 @@ function registrarAbono(idTercero, valorAbono, referencia, tipo) {
     AuthService.checkPermission("registrar_abono");
     return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
   } catch (e) {
-    _safeError("registrarAbono", e);
+    return _safeError("registrarAbono", e);
   }
 }
 
@@ -73,7 +73,7 @@ function getTerceros(filtroTipo = null) {
     }
     return resultado;
   } catch (e) {
-    _safeError("getTerceros", e);
+    return _safeError("getTerceros", e);
   }
 }
 
@@ -107,7 +107,7 @@ function saveTercero(tercero) {
     AuthService.checkPermission("guardar_tercero");
     return DOMAIN.saveTercero(tercero);
   } catch (e) {
-    _safeError("saveTercero", e);
+    return _safeError("saveTercero", e);
   }
 }
 
@@ -261,7 +261,7 @@ function getDashboardCartera() {
     };
     // === FIN FIX M-05 ===
   } catch (e) {
-    _safeError("getDashboardCartera", e);
+    return _safeError("getDashboardCartera", e);
   }
 }
 
@@ -273,7 +273,7 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
     AuthService.checkPermission("ver_auditoria");
     return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
   } catch (e) {
-    _safeError("getAuditHistory", e);
+    return _safeError("getAuditHistory", e);
   }
 }
 
@@ -289,7 +289,7 @@ function getCacheHealth() {
       timestamp: new Date().toISOString(),
     };
   } catch (e) {
-    _safeError("getCacheHealth", e);
+    return _safeError("getCacheHealth", e);
   }
 }
 
@@ -302,7 +302,7 @@ function analizarConGeminiFresco() {
     AuthService.checkPermission("analizar_ia");
     return IA_SERVICE.ejecutarAnalisisFresco();
   } catch (e) {
-    _safeError("analizarConGeminiFresco", e);
+    return _safeError("analizarConGeminiFresco", e);
   }
 }
 
@@ -319,7 +319,7 @@ function getUserInfo() {
     const role = AuthService.getUserRole(email);
     return { email: email, role: role };
   } catch (e) {
-    _safeError("getUserInfo", e);
+    return _safeError("getUserInfo", e);
   }
 }
 
@@ -332,7 +332,7 @@ function procesarVenta(carrito, opciones) {
     AuthService.checkPermission("registrar_venta");
     return procesarVentaV2(carrito, opciones);
   } catch (e) {
-    _safeError("procesarVenta", e);
+    return _safeError("procesarVenta", e);
   }
 }
 
@@ -360,7 +360,7 @@ function getProductos() {
     }
     return productos;
   } catch (e) {
-    _safeError("getProductos", e);
+    return _safeError("getProductos", e);
   }
 }
 
