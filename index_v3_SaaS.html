@@ -32,16 +32,16 @@
   --display: 'Libre Baskerville', Georgia, serif;
   --font-body: 'Sora', sans-serif;
   --radius: 0px;
-  --text-xs: 10px;
-  --text-micro: 10px;
-  --text-data: 10px;
-  --text-sm: 11px;
-  --text-label: 12px;
-  --text-base: 13px;
-  --text-body: 14px;
-  --text-lg: 15px;
-  --text-stat-hero: clamp(2rem, 4vw + 1rem, 2.6rem);
-  --text-stat-normal: clamp(1.2rem, 2vw + .6rem, 1.4rem);
+  --text-xs: clamp(11px, 2.5vw, 12px);
+  --text-micro: clamp(11px, 2.5vw, 12px);
+  --text-data: clamp(11px, 2.5vw, 12px);
+  --text-sm: clamp(12px, 2.8vw, 13px);
+  --text-label: clamp(13px, 3vw, 14px);
+  --text-base: clamp(13px, 3vw, 14px);
+  --text-body: clamp(14px, 3.2vw, 15px);
+  --text-lg: clamp(15px, 3.5vw, 17px);
+  --text-stat-hero: clamp(1.8rem, 7vw, 2.6rem);
+  --text-stat-normal: clamp(1.3rem, 5vw, 1.6rem);
   --toggle-w: 32px;
   --toggle-h: 16px;
   --space-half: 2px;
@@ -86,7 +86,8 @@
   --shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:100dvh;line-height:1.5}
+html{font-size:16px;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:100dvh;line-height:1.5;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 
 /* ── SIDEBAR ── */
 #sidebar{
@@ -525,79 +526,85 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   .view.is-loading::before { animation: none; }
 }
 
-/* ── RESPONSIVE: TABLET / MOBILE ── */
+/* ── RESPONSIVE MOBILE — BLOQUE ÚNICO CONSOLIDADO ── */
 @media (max-width: 768px) {
+  /* Layout */
   #sidebar { display: none; }
-  #bottom-nav { display: flex; }
-  #main { padding: var(--space-4); }
-  body { min-height: 100dvh; }
-}
-@media (max-width: 768px) {
   #bottom-nav {
+    display: flex;
     position: fixed; bottom: 0; left: 0; right: 0;
-    height: 56px; background: var(--bg-1);
+    height: 60px; background: var(--bg-1);
     border-top: 1px solid var(--border);
-    display: flex; justify-content: space-around; align-items: center;
+    justify-content: space-around; align-items: center;
     z-index: 2000; padding: 0 var(--space-2);
   }
   #bottom-nav .nav-item {
     display: flex; flex-direction: column; align-items: center;
-    padding: var(--space-1); font-size: var(--text-data); border: none; gap: var(--space-half);
-    min-height: 44px; justify-content: center;
+    padding: var(--space-1); border: none; gap: 2px;
+    min-height: 48px; justify-content: center;
+    font-size: clamp(10px, 2.4vw, 12px);
   }
-}
+  #bottom-nav .nav-icon { font-size: 16px; opacity: 1; }
 
-@media (max-width: 480px) {
-  .form-field { font-size: 16px; }
-  .btn { min-height: 44px; padding: var(--space-3) var(--space-4); }
-}
-@media (max-width: 600px) {
-  .stats-asymmetric { grid-template-columns: 1fr 1fr; }
-  .stat-hero { grid-column: 1 / -1; }
-}
+  /* Main area */
+  #main { padding: 16px 14px 76px 14px; }
+  body { min-height: 100dvh; }
 
-/* ── RESPONSIVE: REFUERZO MÓVIL ── */
-@media (max-width: 768px) {
-  #main { padding: 12px 12px 80px 12px; }
-  .page-title { font-size: 1.4rem; }
+  /* Encabezado de página */
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .page-title { font-size: clamp(1.3rem, 5.5vw, 1.7rem); }
+
+  /* Stats */
   .stats-asymmetric { grid-template-columns: 1fr; }
   .stat-hero { grid-column: auto; }
-  .stat-hero .stat-value { font-size: clamp(1.6rem, 6vw, 2rem); }
-  .alert-row { grid-template-columns: 24px 1fr auto; gap: 8px; padding: 10px 12px; }
-  .data-table { min-width: 600px; }
+  .stat-hero .stat-value { font-size: clamp(1.8rem, 7vw, 2.4rem); }
+  .stat-normal .stat-value { font-size: clamp(1.2rem, 5vw, 1.5rem); }
+  .stat-hero { padding: 20px 16px; }
+  .stat-normal { padding: 16px; }
+
+  /* Alertas */
+  .alert-row { grid-template-columns: 28px 1fr auto; gap: 10px; padding: 12px 14px; }
+  .section-header { padding: 10px 14px; }
+
+  /* Tabla */
+  .data-table { min-width: 580px; }
+  .data-table thead th { padding: 10px 12px; }
+  .data-table tbody td { padding: 10px 12px; }
+
+  /* Formularios */
   .abono-form { padding: 16px; max-width: 100%; }
-  .modal-box { padding: 20px; margin: 12px; max-height: 85dvh; overflow-y: auto; }
+  .form-field { font-size: 16px; }
+  .btn { min-height: 48px; font-size: clamp(11px, 2.8vw, 13px); }
+
+  /* IA panel */
   .ia-panel { padding: 16px; }
-  .form-panel { padding: 0; }
-  .btn { min-height: 44px; }
-  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
-}
-@media (max-width: 480px) {
-  body { font-size: 13px; }
-  .page-title { font-size: 1.2rem; }
-  .stat-label { font-size: 10px; letter-spacing: 0.10em; }
-  .alert-name { font-size: 12px; }
-  .alert-amount { font-size: 13px; }
-  .section-header { padding: 8px 12px; font-size: 10px; }
-  .btn-sm { padding: 8px 12px; min-height: 36px; }
+  .ia-results { padding: 16px; }
+  .ia-results .ir-grid { grid-template-columns: 1fr; }
+
+  /* Modal */
+  .modal-box { padding: 20px; margin: 12px; max-height: 88dvh; overflow-y: auto; width: calc(100% - 24px); }
+  #modal-confirm .btn-sm { min-height: 48px; padding: 10px 16px; }
+
+  /* Toast */
   #toast-container { bottom: 68px; right: 8px; left: 8px; }
   .toast { max-width: 100%; }
-  .modal-box { width: calc(100% - 24px); }
-}
-@media (max-width: 360px) {
-  .stat-hero .stat-value { font-size: 1.4rem; }
-  .alert-row { padding: 8px 10px; }
-  .btn { font-size: 11px; letter-spacing: 0.06em; }
-}
-@media (max-width: 600px) {
-  .venta-producto-row { grid-template-columns: 1fr 80px 100px 36px; }
-  .ia-results .ir-grid { grid-template-columns: 1fr; }
-}
 
-@media (max-width: 768px) {
+  /* Cartera filtros */
   #view-cartera .page-header > div { width: 100%; display: flex; gap: 8px; }
   #view-cartera .page-header > div select { flex: 1; min-width: 0; }
-  #modal-confirm .btn-sm { min-height: 44px; padding: 10px 16px; }
+
+  /* Ventas */
+  .venta-producto-row { grid-template-columns: 1fr 72px 90px 36px; }
+}
+
+@media (max-width: 480px) {
+  .page-title { font-size: clamp(1.15rem, 5vw, 1.4rem); }
+  .btn-sm { padding: 10px 14px; min-height: 40px; }
+}
+
+@media (max-width: 360px) {
+  .stat-hero .stat-value { font-size: 1.5rem; }
+  .alert-row { padding: 10px 10px; }
 }
 #view-ventas .abono-form { max-width: 600px; }
 </style>
@@ -1989,6 +1996,27 @@ function cargarUserInfo() {
       userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
     });
 }
+
+/* ── GAS IFRAME FIX ──
+   En GAS, el HTML se sirve dentro de un iframe. El <meta viewport>
+   del HTML interno NO controla el zoom del navegador porque el viewport
+   solo aplica al documento raíz. Este script:
+   1. Fuerza font-size base en móvil (JS tiene más especificidad que CSS heredado)
+   2. Notifica al host de GAS cambios de altura via ResizeObserver
+*/
+(function(){
+  var ua = navigator.userAgent;
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  if(isMobile){
+    document.documentElement.style.fontSize = '16px';
+  }
+  if(window.ResizeObserver){
+    new ResizeObserver(function(){
+      var h = document.body.scrollHeight;
+      try { google.script.run.withFailureHandler(function(){}).setHeight(h); } catch(e) {}
+    }).observe(document.body);
+  }
+})();
 
 document.addEventListener('DOMContentLoaded', function () {
   // Sincronizar active del bottom-nav al cargar
