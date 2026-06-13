@@ -210,7 +210,7 @@ const IA_SERVICE = {
   CACHE_PREFIX: "IA_CACHE_",
   CACHE_TTL_MS: 3600000,
   MAX_INPUT_TOKENS: 90000,
-  MAX_OUTPUT_TOKENS: 8192,
+  MAX_OUTPUT_TOKENS: 65536,
   MAX_SAMPLE_SIZE: 500,
   MIN_CATEGORY_SAMPLE: 30,
   _startTime: null,
@@ -685,13 +685,12 @@ REGLAS DE NEGOCIO:
     const candidate = raw.candidates[0];
     if (candidate.finishReason && candidate.finishReason !== "STOP") {
       const reason = candidate.finishReason;
-      if (reason === "MAX_TOKENS") {
-        throw new IAError("Análisis incompleto: se excedió el límite de tokens de salida", "TRUNCATED", null);
-      }
       if (reason === "SAFETY") {
         throw new IAError("Contenido bloqueado por filtros de seguridad de Gemini", "SAFETY_BLOCK", null);
       }
-      throw new IAError("Gemini finalizó con razón: " + reason, "FINISH_REASON", null);
+      if (reason !== "MAX_TOKENS") {
+        throw new IAError("Gemini finalizó con razón: " + reason, "FINISH_REASON", null);
+      }
     }
 
     let text = candidate.content?.parts?.[0]?.text || "";

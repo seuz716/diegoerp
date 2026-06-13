@@ -40,17 +40,16 @@ const SecretManager = {
   },
 
   _getLocalParts() {
-    const scriptProps = PropertiesService.getScriptProperties();
-    const userProps = PropertiesService.getUserProperties();
-    let part1 = scriptProps.getProperty('AES_KEY_PART_1');
+    const props = PropertiesService.getScriptProperties();
+    let part1 = props.getProperty('AES_KEY_PART_1');
     if (!part1) {
       part1 = Utilities.getUuid();
-      scriptProps.setProperty('AES_KEY_PART_1', part1);
+      props.setProperty('AES_KEY_PART_1', part1);
     }
-    let part2 = userProps.getProperty('AES_KEY_PART_2');
+    let part2 = props.getProperty('AES_KEY_PART_2');
     if (!part2) {
       part2 = Utilities.getUuid();
-      userProps.setProperty('AES_KEY_PART_2', part2);
+      props.setProperty('AES_KEY_PART_2', part2);
     }
     return { part1, part2 };
   },
