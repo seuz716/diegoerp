@@ -184,6 +184,11 @@ const AuthService = {
       console.log("Migración completada para '" + keyName + "'.");
       return legacy;
     }
+    if (typeof __GEMINI_FALLBACK_KEY__ !== "undefined" && __GEMINI_FALLBACK_KEY__) {
+      console.warn("Usando fallback key de variable global. Migrando a cifrado AES...");
+      this._storeKey(keyName, __GEMINI_FALLBACK_KEY__);
+      return __GEMINI_FALLBACK_KEY__;
+    }
     console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
     throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada en proxy ni localmente.");
   },
