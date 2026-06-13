@@ -4,15 +4,26 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>
-/* GAS: forzar reflow para que el iframe recalcule su altura */
-function gasReflow(){
+/* GAS IFRAME FIX — notificar altura real al host para que el iframe
+   no se quede con alto fijo y escale el contenido */
+function gasSetHeight(){
   try {
-    var d = document.createElement('div');
-    d.style.cssText = 'width:1px;height:1px;position:absolute;left:-9999px';
-    document.body.appendChild(d);
-    requestAnimationFrame(function(){ document.body.removeChild(d); });
+    if(typeof google !== 'undefined' && google.script && google.script.host){
+      google.script.host.setHeight(document.body.scrollHeight);
+    }
   } catch(e){}
 }
+(function(){
+  'use strict';
+  if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)){
+    document.documentElement.style.fontSize = '16px';
+  }
+  gasSetHeight();
+  if(window.ResizeObserver){
+    new ResizeObserver(gasSetHeight).observe(document.body);
+  }
+  window.addEventListener('resize', gasSetHeight);
+})();
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1207,7 +1218,7 @@ function cargarDashboard() {
       }
 
       view.classList.remove('is-loading');
-      gasReflow();
+      gasSetHeight();
     })
     .catch(function (err) {
       mostrarError(alertsBody, err.message || err);
@@ -1520,7 +1531,7 @@ function cargarCartera(append) {
           tbody.appendChild(trLoadMore);
         }
       }
-      gasReflow();
+      gasSetHeight();
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
@@ -1672,7 +1683,7 @@ function cargarTerceros() {
           tbody.appendChild(tr);
         });
       }
-      gasReflow();
+      gasSetHeight();
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
@@ -2022,8 +2033,8 @@ function cargarUserInfo() {
 (function(){
   var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   if(isMobile) document.documentElement.style.fontSize = '16px';
-  setTimeout(gasReflow, 100);
-  setTimeout(gasReflow, 500);
+  setTimeout(gasSetHeight, 100);
+  setTimeout(gasSetHeight, 500);
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -2082,6 +2093,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 });
+setTimeout(gasSetHeight, 2000);
 </script>
 </body>
 </html>
