@@ -1405,7 +1405,11 @@ function cargarCartera(append) {
         tbody.innerHTML = '';
       }
 
-      if (res && res.error) {
+      if (!res) {
+        mostrarError(tbody, 'Respuesta vacía del servidor');
+        return;
+      }
+      if (res.error) {
         mostrarError(tbody, res.error);
         return;
       }
