@@ -89,16 +89,33 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
       Logger.log("DEBUG getCartera: Permiso falló pero continuando - " + permErr.message);
       // No throw - allow read-only access for now
     }
+    
+    // Diagnóstico inicial
+    Logger.log("DEBUG getCartera: Iniciando búsqueda - filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado);
+    
     const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
-    Logger.log("DEBUG getCartera: result.items=%s, result.nextPageToken=%s", result?.items?.length || 0, !!result?.nextPageToken);
+    
+    // Diagnóstico del resultado
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
-      return { items: [], nextPageToken: null, error: "Resultado inválido del dominio" };
+      return { items: [], nextPageToken: null, error: "Resultado inválido del dominio", debug: "DOMAIN.getCartera no retornó objeto válido" };
     }
+    
+    Logger.log("DEBUG getCartera: result.items=%s, result.nextPageToken=%s", result?.items?.length || 0, !!result?.nextPageToken);
+    
+    // Agregar información de diagnóstico
+    if (!result.debug) {
+      result.debug = {
+        filtroTipo: filtroTipo,
+        filtroEstado: filtroEstado,
+        itemsCount: result.items ? result.items.length : 0
+      };
+    }
+    
     return result;
   } catch (e) {
     Logger.log("ERROR getCartera: " + e.toString());
-    return { items: [], nextPageToken: null, error: e.message };
+    return { items: [], nextPageToken: null, error: e.message, debug: "Excepción: " + e.toString() };
   }
 }
 

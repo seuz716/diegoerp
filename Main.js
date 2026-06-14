@@ -3,13 +3,42 @@
  */
 function doGet(e) {
   try {
+    // Auto-configurar SPREADSHEET_ID si viene como parámetro en la URL
+    if (e && e.parameter && e.parameter.ssid) {
+      PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", e.parameter.ssid);
+      Logger.log("INFO: SPREADSHEET_ID configurado desde parámetro URL");
+    }
+    
+    // Verificar si ya hay SPREADSHEET_ID configurado
+    const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+    
+    if (!ssId && !e.parameter?.ssid) {
+      // Intentar obtener del spreadsheet activo si está vinculado
+      try {
+        const activeSs = SpreadsheetApp.getActiveSpreadsheet();
+        if (activeSs) {
+          PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", activeSs.getId());
+          Logger.log("INFO: SPREADSHEET_ID auto-detectado del spreadsheet activo");
+        }
+      } catch (e) {
+        Logger.log("WARN: No se pudo obtener spreadsheet activo: " + e.message);
+      }
+    }
+    
     if (e && e.parameter && e.parameter.health !== undefined) {
       return handleHealthCheck();
     }
     validateAndMapSchemas();
   } catch (err) {
-    Logger.log("ERROR doGet schema validation: " + err.message);
-    return HtmlService.createHtmlOutput("Error de inicialización. Contacte al administrador.");
+    Logger.log("ERROR doGet: " + err.message);
+    const html = HtmlService.createHtmlOutput(
+      '<html><body><h2>Error de configuración</h2>' +
+      '<p>' + err.message + '</p>' +
+      '<p><strong>Solución:</strong> Visita esta URL con el parámetro ssid:</p>' +
+      '<code>https://script.google.com/macros/s/AKfycbzM7IMFbsWlzD3tmDgQtD6FytBpxEQupohTMylvH7I/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
+      '</body></html>'
+    );
+    return html;
   }
   return HtmlService.createTemplateFromFile('index_v3_SaaS')
     .evaluate()
@@ -172,16 +201,44 @@ function debugCartera() {
     var data = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
     Logger.log("DEBUG CARTERA: datos leidos=%s", data.length);
     
-    // Verificar DAO
+    // Analizar tipos reales en la hoja
+    const tiposEncontrados = {};
+    const estadosEncontrados = {};
+    for (let i = 0; i < data.length; i++) {
+      const tipo = String(data[i][6] || "").trim(); // Columna Tipo
+      const estado = String(data[i][7] || "").trim(); // Columna Estado
+      if (tipo) tiposEncontrados[tipo] = (tiposEncontrados[tipo] || 0) + 1;
+      if (estado) estadosEncontrados[estado] = (estadosEncontrados[estado] || 0) + 1;
+    }
+    Logger.log("DEBUG CARTERA: tipos en hoja=%s", JSON.stringify(tiposEncontrados));
+    Logger.log("DEBUG CARTERA: estados en hoja=%s", JSON.stringify(estadosEncontrados));
+    
+    // Verificar DAO sin filtro
     var daoResult = DAO.getCartera();
-    Logger.log("DEBUG CARTERA: DAO getCartera returned items=%s", daoResult?.items?.length || 0);
+    Logger.log("DEBUG CARTERA: DAO getCartera() returned items=%s", daoResult?.items?.length || 0);
+    
+    // Verificar Domain sin filtro
+    var domainResult = DOMAIN.getCartera();
+    Logger.log("DEBUG CARTERA: DOMAIN getCartera() returned items=%s", domainResult?.items?.length || 0);
+    
+    // Test con filtro CxC específico
+    var cxcResult = DAO.getCartera("CxC", null);
+    Logger.log("DEBUG CARTERA: DAO getCartera('CxC') returned items=%s", cxcResult?.items?.length || 0);
     
     return { 
       success: true, 
       count: daoResult?.items?.length || 0,
       sheetRows: lastRow - 1,
       rawRows: data.length,
-      sample: data.slice(0, 2).map(r => ({id: r[0], id_tercero: r[2]}))
+      tiposEnHoja: tiposEncontrados,
+      estadosEnHoja: estadosEncontrados,
+      sample: data.slice(0, 5).map(r => ({
+        id: r[0], 
+        id_tercero: r[2], 
+        tipo: r[6], 
+        estado: r[7],
+        saldo: r[5]
+      }))
     };
   } catch (e) {
     Logger.log("DEBUG CARTERA ERROR: " + e.toString());
@@ -242,4 +299,44 @@ function setupGeminiKeyFromPrompt() {
     Logger.log("ERROR setupGeminiKeyFromPrompt: " + e.toString());
     return { success: false, error: e.message };
   }
+}
+
+/**
+ * Auto-configurar SPREADSHEET_ID basado en la hoja vinculada al script
+ */
+function autoConfigureSpreadsheetId() {
+  try {
+    // Obtener la hoja activa del script
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      // Intentar desde la hoja activa si existe
+      const activeSs = SpreadsheetApp.getActive();
+      if (activeSs) {
+        const ssId = activeSs.getId();
+        PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssId);
+        Logger.log("✅ SPREADSHEET_ID auto-configurado: " + ssId);
+        return { success: true, spreadsheetId: ssId, message: "SPREADSHEET_ID configurado automáticamente" };
+      }
+      return { success: false, error: "No se encontró spreadsheet activo. Vincule el script a una hoja." };
+    }
+    const ssId = ss.getId();
+    PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssId);
+    Logger.log("✅ SPREADSHEET_ID auto-configurado: " + ssId);
+    return { success: true, spreadsheetId: ssId, message: "SPREADSHEET_ID configurado automáticamente" };
+  } catch (e) {
+    Logger.log("ERROR autoConfigureSpreadsheetId: " + e.toString());
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Configurar SPREADSHEET_ID manualmente
+ */
+function setSpreadsheetId(ssId) {
+  if (!ssId || ssId.length < 10) {
+    return { success: false, error: "ID de spreadsheet inválido" };
+  }
+  PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssId);
+  Logger.log("✅ SPREADSHEET_ID configurado: " + ssId);
+  return { success: true, spreadsheetId: ssId };
 }

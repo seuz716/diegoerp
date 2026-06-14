@@ -87,11 +87,26 @@ function _saveSchemaVersion(version) {
 let _SHEETS_CACHE = {};
 let _SPREADSHEET_CACHE = null;
 
+/**
+ * SPREADSHEET_ID HARDCODED - Para funcionamiento inmediato
+ * Reemplaza con el ID de tu spreadsheet si es necesario
+ */
+const SPREADSHEET_ID_FALLBACK = "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc";
+
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
     var ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
     if (ssId) {
       _SPREADSHEET_CACHE = SpreadsheetApp.openById(ssId);
+    } else if (SPREADSHEET_ID_FALLBACK) {
+      // Fallback hardcoded
+      try {
+        _SPREADSHEET_CACHE = SpreadsheetApp.openById(SPREADSHEET_ID_FALLBACK);
+        Logger.log("[FALLBACK] Usando SPREADSHEET_ID hardcoded: " + SPREADSHEET_ID_FALLBACK);
+      } catch (fallbackErr) {
+        Logger.log("[FALLBACK ERROR] No se pudo abrir spreadsheet: " + fallbackErr.message);
+        throw new Error("Error al abrir spreadsheet con ID hardcoded. Comparte el spreadsheet con el script o configura SPREADSHEET_ID manualmente.");
+      }
     } else {
       _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
     }
@@ -332,7 +347,15 @@ function _safeDate(v) {
   }
   try {
     const tz = _getTimeZone();
-    const d = v instanceof Date ? v : new Date(v);
+    let d = v instanceof Date ? v : new Date(v);
+    
+    // Si es string en formato dd/mm/yyyy, convertir
+    if (typeof v === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v.trim())) {
+      const parts = v.trim().split('/');
+      d = new Date(parts[2] + '-' + parts[1].padStart(2, '0') + '-' + parts[0].padStart(2, '0'));
+      Logger.log("_safeDate: convirtió formato dd/mm/yyyy '" + v + "' a '" + d.toISOString() + "'");
+    }
+    
     if (!_isValidDate(d)) {
       return null;
     }
