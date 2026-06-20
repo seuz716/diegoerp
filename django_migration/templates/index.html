@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MicroERP · Django Backend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F7F5F0; --bg-1: #EFECE5; --bg-2: #E8E4DC; --accent: #D4A82A;
+  --red: #CC3333; --green: #3DA35D; --text: #1A1814; --muted: rgba(60,55,50,0.72);
+  --border: rgba(0,0,0,0.07);
+  --mono: 'DM Mono', monospace;
+  --display: 'Libre Baskerville', Georgia, serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { 
+  font-family: 'Sora', sans-serif; 
+  background: var(--bg); 
+  color: var(--text); 
+  line-height: 1.5;
+  padding: 20px;
+}
+h1, h2 { font-family: var(--display); margin-bottom: 16px; }
+.container { max-width: 900px; margin: 0 auto; }
+.btn { 
+  padding: 8px 16px; 
+  border: 1px solid var(--border); 
+  background: var(--accent); 
+  color: white; 
+  cursor: pointer; 
+  font-family: var(--mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.btn-outline { 
+  background: transparent; 
+  color: var(--text); 
+  border-color: var(--border);
+}
+.table { 
+  width: 100%; 
+  border-collapse: collapse; 
+  margin: 16px 0;
+}
+.table th, .table td { 
+  padding: 12px; 
+  border-bottom: 1px solid var(--border); 
+  text-align: left; 
+}
+.table th { 
+  background: var(--bg-1); 
+  font-size: 11px; 
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.error { 
+  color: var(--red); 
+  padding: 10px; 
+  background: rgba(204,51,51,0.1); 
+  margin: 10px 0; 
+  display: none; 
+  border: 1px solid var(--red);
+}
+.error.show { display: block; }
+.form-row { margin-bottom: 16px; }
+.form-label { 
+  display: block; 
+  font-size: 11px; 
+  text-transform: uppercase; 
+  color: var(--muted); 
+  margin-bottom: 4px;
+}
+.form-field { 
+  width: 100%; 
+  padding: 8px 12px; 
+  border: 1px solid var(--border); 
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.stats { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+  gap: 16px; 
+  margin: 20px 0;
+}
+.stat-card { 
+  background: var(--bg-1); 
+  padding: 20px; 
+  border: 1px solid var(--border);
+}
+.stat-label { 
+  font-size: 11px; 
+  text-transform: uppercase; 
+  color: var(--muted);
+}
+.stat-value { 
+  font-family: var(--mono); 
+  font-size: 1.8rem; 
+  color: var(--accent);
+  margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>MicroERP · Cartera Pro <em style="color:var(--accent)">(Django)</em></h1>
+  
+  <div id="error-banner" class="error"></div>
+  
+  <!-- Dashboard -->
+  <section id="dashboard-section">
+    <h2>Dashboard</h2>
+    <div class="stats" id="dashboard-stats">
+      <div class="stat-card">
+        <div class="stat-label">Por Cobrar · CxC</div>
+        <div class="stat-value" id="stat-cobrar">$0</div>
+        <div>Vencido: <span id="stat-vencido-cxc" style="color:#CC3333">$0</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Por Pagar · CxP</div>
+        <div class="stat-value" id="stat-pagar">$0</div>
+        <div>Vencido: <span id="stat-vencido-cxp">$0</span></div>
+      </div>
+    </div>
+    <button class="btn" onclick="cargarDashboard()">Actualizar</button>
+  </section>
+
+  <!-- Terceros -->
+  <section id="terceros-section" style="margin-top: 30px;">
+    <h2>Terceros</h2>
+    <table class="table" id="terceros-table">
+      <thead>
+        <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite</th>
+      </tr>
+    </thead>
+      <tbody><tr><td colspan="4" style="text-align:center;color:var(--muted)">Cargando...</td></tr></tbody>
+    </table>
+    <button class="btn btn-outline" onclick="cargarTerceros()">Cargar Terceros</button>
+  </section>
+
+  <!-- Cartera -->
+  <section id="cartera-section" style="margin-top: 30px;">
+    <h2>Cartera</h2>
+    <table class="table" id="cartera-table">
+      <thead>
+        <tr><th>Fecha</th><th>Tercero</th><th>Saldo</th><th>Estado</th><th>Vencimiento</th>
+      </tr>
+    </thead>
+      <tbody><tr><td colspan="5" style="text-align:center;color:var(--muted)">Cargando...</td></tr></tbody>
+    </table>
+    <button class="btn btn-outline" onclick="cargarCartera()">Cargar Cartera</button>
+  </section>
+
+  <!-- Registrar Abono -->
+  <section id="abono-section" style="margin-top: 30px;">
+    <h2>Registrar Pago</h2>
+    <div style="max-width: 400px;">
+      <div class="form-row">
+        <label class="form-label">Tercero</label>
+        <select class="form-field" id="abono-cliente">
+          <option value="">Seleccione un tercero...</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Tipo de movimiento</label>
+        <select class="form-field" id="abono-tipo">
+          <option value="CxC">Cobro a Cliente (CxC)</option>
+          <option value="CxP">Pago a Proveedor (CxP)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Monto (en COP)</label>
+        <input type="number" class="form-field" id="abono-monto" placeholder="0" min="1">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Referencia</label>
+        <input type="text" class="form-field" id="abono-referencia" placeholder="Ej: Recibo 001" maxlength="100">
+      </div>
+      <button class="btn" onclick="registrarAbono()">Ejecutar Abono</button>
+    </div>
+    <div id="abono-result" style="margin-top: 16px;"></div>
+  </section>
+
+  <!-- Ventas -->
+  <section id="ventas-section" style="margin-top: 30px;">
+    <h2>Registrar Venta</h2>
+    <div style="max-width: 400px;">
+      <div class="form-row">
+        <label class="form-label">Tipo de venta</label>
+        <select class="form-field" id="venta-tipo" onchange="toggleVentaCliente()">
+          <option value="CONTADO">Contado</option>
+          <option value="CxC">Crédito</option>
+        </select>
+      </div>
+      <div class="form-row" id="venta-tercero-row" style="display:none;">
+        <label class="form-label">Cliente</label>
+        <select class="form-field" id="venta-cliente">
+          <option value="">Seleccione un cliente...</option>
+        </select>
+      </div>
+      <button class="btn" onclick="cargarProductosParaVenta()">Cargar Productos</button>
+      <div id="venta-productos">
+        <!-- Productos dinámicos -->
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// --- DJANGO API ADAPTER ---
+const API_BASE = '/api/';
+
+function showError(msg) {
+  var banner = document.getElementById('error-banner');
+  banner.textContent = msg;
+  banner.classList.add('show');
+}
+
+function hideError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+App = {
+  api: {
+    getDashboard: function() { 
+      return fetch(API_BASE + 'dashboard/').then(r => r.json()); 
+    },
+    getCartera: function(tipo, estado) { 
+      var url = API_BASE + 'cartera/';
+      if (tipo || estado) url += '?' + new URLSearchParams({tipo, estado});
+      return fetch(url).then(r => r.json()); 
+    },
+    getTerceros: function(filtroTipo) { 
+      var url = API_BASE + 'terceros/';
+      if (filtroTipo) url += '?tipo=' + filtroTipo;
+      return fetch(url).then(r => r.json()); 
+    },
+    registrarAbono: function(data) { 
+      return fetch(API_BASE + 'abono/registrar/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      }).then(r => r.json());
+    },
+    getProductos: function() {
+      return fetch(API_BASE + 'productos/').then(r => r.json());
+    }
+  },
+  
+  // Equivalente a _formatMoneda Apps Script
+  formatearMoneda: function(centavos) {
+    if (centavos == null || isNaN(centavos)) return '$0';
+    return (centavos / 100).toLocaleString('es-CO', { 
+      style: 'currency', 
+      currency: 'COP', 
+      maximumFractionDigits: 0 
+    });
+  },
+  
+  // Equivalente a App.toCents
+  toCents: function(amount) {
+    var num = Number(amount);
+    if (isNaN(num) || num < 0) return 0;
+    return Math.round(num * 100);
+  }
+};
+
+// CARGAR DASHBOARD
+function cargarDashboard() {
+  hideError();
+  App.api.getDashboard()
+    .then(function(data) {
+      document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
+      document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
+      document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC || 0);
+      document.getElementById('stat-vencido-cxp').textContent = App.formatearMoneda(data.vencidaCxP || 0);
+    })
+    .catch(function(err) { showError(err.message); });
+}
+
+// CARGAR TERCEROS
+function cargarTerceros() {
+  hideError();
+  var select = document.getElementById('abono-cliente');
+  var ventaSelect = document.getElementById('venta-cliente');
+  
+  App.api.getTerceros()
+    .then(function(data) {
+      var tbody = document.querySelector('#terceros-table tbody');
+      tbody.innerHTML = '';
+      
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin terceros</td></tr>';
+        return;
+      }
+      
+      data.forEach(function(t) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + t.id + '</td><td>' + t.nombre + '</td><td>' + t.tipo + '</td><td>' + App.formatearMoneda(t.limite_credito) + '</td>';
+        tbody.appendChild(tr);
+      });
+      
+      // Poblar dropdowns
+      select.innerHTML = '<option value="">Seleccione...</option>';
+      ventaSelect.innerHTML = '<option value="">Seleccione un cliente...</option>';
+      data.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.nombre;
+        select.appendChild(opt.cloneNode(true));
+        ventaSelect.appendChild(opt);
+      });
+    })
+    .catch(function(err) { showError(err.message); });
+}
+
+// CARGAR CARTERA
+function cargarCartera() {
+  hideError();
+  App.api.getCartera()
+    .then(function(res) {
+      var tbody = document.querySelector('#cartera-table tbody');
+      tbody.innerHTML = '';
+      
+      if (!res || !res.items || res.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Sin registros</td></tr>';
+        return;
+      }
+      
+      res.items.forEach(function(c) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + (c.fecha || '') + '</td><td>' + (c.nombre_tercero || '') + '</td><td>' + App.formatearMoneda(c.saldo) + '</td><td>' + (c.estado || '') + '</td><td>' + (c.fecha_vencimiento || '') + '</td>';
+        tbody.appendChild(tr);
+      });
+    })
+    .catch(function(err) { showError(err.message); });
+}
+
+// REGISTRAR ABONO
+function registrarAbono() {
+  var cliente = document.getElementById('abono-cliente').value;
+  var monto = document.getElementById('abono-monto').value;
+  var tipo = document.getElementById('abono-tipo').value;
+  var ref = document.getElementById('abono-referencia').value;
+  
+  if (!cliente || !monto) {
+    showError('Complete tercero y monto');
+    return;
+  }
+  
+  var data = {
+    id_tercero: cliente,
+    valor: App.toCents(monto),
+    tipo: tipo,
+    referencia: ref || 'Abono'
+  };
+  
+  App.api.registrarAbono(data)
+    .then(function(res) {
+      var resultDiv = document.getElementById('abono-result');
+      if (res.success) {
+        resultDiv.innerHTML = '<p style="color:var(--green)">✓ Abono procesado: ' + App.formatearMoneda(res.aplicado) + '</p>';
+        cargarDashboard(); // Refrescar stats
+        cargarCartera();   // Refrescar cartera
+      } else {
+        resultDiv.innerHTML = '<p style="color:var(--red)">✗ Error: ' + res.error + '</p>';
+      }
+    })
+    .catch(function(err) { showError(err.message); });
+}
+
+// VENTAS
+function toggleVentaCliente() {
+  var tipo = document.getElementById('venta-tipo').value;
+  var row = document.getElementById('venta-tercero-row');
+  row.style.display = tipo === 'CxC' ? 'block' : 'none';
+}
+
+function cargarProductosParaVenta() {
+  App.api.getProductos()
+    .then(function(data) {
+      var container = document.getElementById('venta-productos');
+      container.innerHTML = '<p style="margin-top:16px;color:var(--muted)">' + (data.length || 0) + ' productos cargados</p>';
+    })
+    .catch(function(err) { showError(err.message); });
+}
+
+// AUTOLOAD on startup
+document.addEventListener('DOMContentLoaded', function() {
+  cargarDashboard();
+  cargarTerceros();
+  cargarCartera();
+});
+</script>
+</body>
+</html>

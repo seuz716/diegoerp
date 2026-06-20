@@ -7,3 +7,10 @@ node_modules/
 *.xlsx
 *.xlsx:Zone.Identifier
 _key.js
+
+# Django
+__pycache__/
+*.pyc
+.env
+db.sqlite3
+staticfiles/

@@ -1,0 +1,7 @@
+Django>=4.2,<5.0
+dj-database-url>=1.4.0
+psycopg2-binary>=2.9.0
+django-cors-headers>=4.0.0
+supabase>=2.0.0
+python-dotenv>=1.0.0
+gunicorn>=21.0.0
