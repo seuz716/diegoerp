@@ -340,3 +340,70 @@ function setSpreadsheetId(ssId) {
   Logger.log("✅ SPREADSHEET_ID configurado: " + ssId);
   return { success: true, spreadsheetId: ssId };
 }
+
+/**
+ * Inicializa el sistema después del renombrado de archivos .js → .gs.
+ * Recarga esquemas, valida estructura de hojas y registra el resultado.
+ * Ejecutar UNA SOLA VEZ desde el editor de Apps Script después de la migración.
+ */
+function inicializarSistema() {
+  try {
+    Logger.log("[MIGRACION] Iniciando inicializarSistema()...");
+    var resultado = CONFIG.reloadSchema();
+    Logger.log("[MIGRACION] reloadSchema ejecutado: " + JSON.stringify(resultado));
+    var reporte = CONFIG.getSchemaReport();
+    Logger.log("[MIGRACION] Reporte de esquemas: " + JSON.stringify(reporte));
+    Logger.log("[MIGRACION] Sistema inicializado correctamente.");
+    return {
+      success: true,
+      schemaChanges: resultado,
+      schemaReport: reporte,
+      message: "Sistema inicializado correctamente. Todos los esquemas están validados."
+    };
+  } catch (e) {
+    Logger.log("[MIGRACION] Error en inicializarSistema: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Migración de estructura: agrega columnas nuevas a la hoja Cartera de forma segura.
+ * Idempotente: se puede ejecutar varias veces sin dañar datos existentes.
+ * Agrega Numero_Factura después de la columna Origen_ID.
+ */
+function migrarEstructuraCompras() {
+  try {
+    Logger.log("[MIGRACION] Iniciando migrarEstructuraCompras()...");
+    var ss = getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
+    if (!sheet) {
+      return { success: false, error: "Hoja Cartera no encontrada" };
+    }
+    var lastCol = sheet.getLastColumn();
+    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    var headerNames = headers.map(function(h) { return String(h || "").trim(); });
+    var cambios = [];
+
+    // --- Agregar Numero_Factura ---
+    if (headerNames.indexOf("Numero_Factura") === -1) {
+      var colIdx = headerNames.indexOf("Origen_ID");
+      if (colIdx === -1) colIdx = headerNames.length;
+      var insertAt = colIdx + 1;
+      sheet.insertColumnAfter(insertAt);
+      sheet.getRange(1, insertAt).setValue("Numero_Factura");
+      cambios.push("Numero_Factura agregada en columna " + insertAt);
+      Logger.log("[MIGRACION] Columna Numero_Factura agregada en posición " + insertAt);
+    } else {
+      Logger.log("[MIGRACION] Numero_Factura ya existe, saltando.");
+    }
+
+    // Recargar esquemas después de los cambios
+    CONFIG.reloadSchema();
+
+    Logger.log("[MIGRACION] migrarEstructuraCompras() completado: " + JSON.stringify(cambios));
+    return { success: true, cambios: cambios };
+  } catch (e) {
+    Logger.log("[MIGRACION] Error en migrarEstructuraCompras: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
