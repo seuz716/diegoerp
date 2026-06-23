@@ -239,6 +239,27 @@ Reinstalar si es necesario.
 
 ---
 
+## Migración desde versión anterior (archivos .js → .gs)
+
+A partir de esta versión, todos los archivos de script usan extensión `.gs` en lugar de `.js`, conforme al estándar de Google Apps Script.
+
+### Pasos para migrar
+
+1. **Actualizar los archivos**: Si usas `clasp`, ejecuta `clasp push` para subir los nuevos archivos `.gs`.
+2. **Ejecutar `inicializarSistema()`**: Desde el editor de Apps Script, ejecuta esta función una sola vez para recargar los esquemas y validar la estructura de las hojas.
+3. **Verificar**: Revisa los logs para confirmar que todo está correcto.
+
+### Detalle de cambios
+
+- Todos los archivos `.js` fueron renombrados a `.gs`.
+- Se agregó `inicializarSistema()` en `Main.gs` para validación post-migración.
+- Se agregó `migrarEstructuraCompras()` para preparar columnas nuevas (Fase 2).
+- Se actualizó `.clasp.json` para usar extensión `.gs`.
+
+Para más detalles, consulta `MIGRACION.md`.
+
+---
+
 ## Arquitectura
 
 ```
