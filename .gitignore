@@ -7,3 +7,4 @@ node_modules/
 *.xlsx
 *.xlsx:Zone.Identifier
 _key.js
+_key.gs
