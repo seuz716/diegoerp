@@ -12,7 +12,7 @@
  */
 var _Transaction = {
   create() {
-    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], active: false };
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], active: false };
 
     return {
       begin() {
@@ -21,6 +21,7 @@ var _Transaction = {
         ctx.movPreRows = 0;
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
+        ctx.productoSnapshots = [];
       },
 
       snapshotTerceroRow(rowIndex) {
@@ -63,12 +64,34 @@ var _Transaction = {
         ctx.movPostRows = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA).getLastRow();
       },
 
+      snapshotProductoRows(rowIndexes) {
+        if (!ctx.active || !rowIndexes || rowIndexes.length === 0) return;
+        const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const COL = CONFIG.COLUMNS.PRODUCTOS;
+        const unique = [...new Set(rowIndexes)].sort((a, b) => a - b);
+        const minRow = unique[0];
+        const maxRow = unique[unique.length - 1];
+        const cols = [COL.stock, COL.version];
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+        const rangeData = sheet.getRange(minRow, minCol + 1, maxRow - minRow + 1, maxCol - minCol + 1).getValues();
+        const rowIndexSet = new Set(unique);
+        ctx.productoSnapshots = [];
+        for (let i = 0; i < rangeData.length; i++) {
+          const actualRow = minRow + i;
+          if (rowIndexSet.has(actualRow)) {
+            ctx.productoSnapshots.push({ rowIndex: actualRow, values: rangeData[i], startCol: minCol });
+          }
+        }
+      },
+
       commit() {
         ctx.active = false;
         ctx.carteraSnapshots = [];
         ctx.movPreRows = 0;
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
+        ctx.productoSnapshots = [];
       },
 
       rollback() {
@@ -95,6 +118,15 @@ var _Transaction = {
           const startRow = ctx.movPreRows + 1;
           const count = ctx.movPostRows - ctx.movPreRows;
           movSheet.deleteRows(startRow, count);
+        }
+        // Producto stock rollback
+        if (ctx.productoSnapshots && ctx.productoSnapshots.length > 0) {
+          const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+          for (const snap of ctx.productoSnapshots) {
+            const numCols = snap.values.length;
+            sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
+          }
+          Logger.log("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
         }
         ctx.active = false;
       },

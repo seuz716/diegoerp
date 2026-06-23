@@ -3,6 +3,7 @@
 **Tech:** Google Apps Script V8 + Google Sheets (DB) + Gemini 2.5 Flash + Vanilla SPA HTML
 **Patrones:** Transacciones write-ahead, Caché con checksum, RBAC, Lock distribuido, Auditoría tipo append-only
 **Branch model:** `main` (producción) / `feature/*` (desarrollo) / `django-migration` (futuro Django)
+**⚠️ ESTADO REAL:** main branch tiene Fase 1 completo + parcial Fase 2 (DAOCompras.gs, migrarDatosCompras.gs, COMPRAS_CONFIG en Config.gs). Las funciones marcadas como "Fase 2+3" (registrarCompraAtomic, procesarPagoProveedorAtomic, reportes, endpoints API de compras, permisos ver_compras/ver_vencimientos/registrar_compra/registrar_pago_proveedor, frontend views Compras/Vencimientos, y `_Transaction` con snapshotCompraRows) existen en `feature/modulo-compras-reportes` pero **no existen en main**. Este documento describe la arquitectura objetivo completa.
 
 ---
 
@@ -12,12 +13,12 @@
 |------|-----|-------|-----------------|
 | `Config.gs` | 394 | L1 | Constantes, SPREADSHEET_ID_FALLBACK, getActiveSpreadsheet(), getSheet(), CONFIG.reloadSchema(), COMPRAS_CONFIG, _sanitizeId(), _parseMoneda(), _safeDate(), SPREADSHEET_ID_FALLBACK |
 | `LockManager.gs` | 431 | L2 | LOCK_MANAGER: acquireResourceLock(id, timeout, maxAttempts), releaseResourceLock(id), cleanupExpiredLocks(), removeOrphanLocksTrigger(), crearTriggerOrphanCleanup(), _jitter(). Usa ScriptLock + PropertiesService. |
-| `CacheService.gs` | 681 | L3 | CACHE: refresh(force), invalidate(), ensureIntegrity(), getTerceros(), getCartera(), getDashboardSummary(), recoverFromStale(). TTL 30s, circuit breaker (5 fails → stale 5 min), checksum SHA-256 |
+| `CacheService.gs` | 681 | L3 | CACHE: refresh(force), invalidate(), ensureIntegrity(), getTerceros(), getCartera(), getDashboardSummary(), recoverFromStale(). TTL 5min, circuit breaker (3 fails → stale 5 min), circuit separado por terceros/cartera, checksum SHA-256 |
 | `DAO.gs` | 417 | L4 | DAO: TERCEROS: findByIndex/find/normalize, getTerceroByIndex; CARTERA: getByEstado, updatePartial, createFromObj, getPendientesByTercero; MOV: appendRange; getLastRow; PROD: getAll. _sanitizeCell(). |
 | `DAOCompras.gs` | 193 | L4 | DAO_COMPRAS: getCompraById, getCompras(filtroProveedor, filtroEstado), getComprasByProveedor, crearCompra, actualizarSaldoCompra, crearPagoProveedor, getDetallesByCompra, getPagosByCompra |
 | `AuthService.gs` | 335 | L5 | ROLES={ADMIN:3,OPERATOR:2,VIEWER:1}, PERMISSION_ROLES(23 permisos), AuthService: checkPermission(), getCurrentUser(), setApiKey/hasApiKey; SecretManager: encriptación AES-256 vía SHA-256; PROXY_SECRET_SERVICE. |
 | `Domain.gs` | 437 | L5 | _Transaction: create()→{begin, snapshotTerceroRow, snapshotCarteraRows, markMovPreAppend, markMovPostAppend, commit, rollback} con snaps de cartera+tercero+compra. _buildAbonoPlan(). DOMAIN: saveTercero, registrarAbonoAtomic, crearCarteraAtomic, procesarVentaAtomic, registrarCompraAtomic, procesarPagoProveedorAtomic, getVencimientosProximos(dias), getRankingDeudores(topN), getConcentracionProveedores |
-| `API.gs` | 470 | L6 | RATE_LIMITER (1s/5s window). 16 endpoints públicos. _safeError(). |
+| `API.gs` | 470 | L6 | RATE_LIMITER (60s window, 30 req). 16 endpoints públicos. _safeError(). |
 | `Servicios.gs` | 537 | L3 | VENTA_STATES machine (INIT→COMPLETED/FAILED), procesarVentaV2(), actualizarVencimientos(), triggers (crearTriggerVencimientos, instalarTriggerVencimientos), obtenerTerceros(), _registrarAbonoServicio(), _descontarInventario(), _revertirDescuentoInventario() |
 | `IAService.gs` | 901 | L3 | SamplingStrategy: segmentByAge(), calculateImportanceScore(), stratifiedSample(). IA_SERVICE: analizarCartera(), buildPrompt(), buildPromptSegmentado(), _callGeminiAPI(). setupGeminiKey(), removeGeminiKey(), analizarConGeminiCompleto(). Máx 3 retries con backoff exponencial. |
 | `AuditLog.gs` | 165 | L4 | LOG_ENGINE: logEvent(), getHistory(tabla, idRegistro, limit), purgeOldLogs(). MAX_LOG_ROWS=5000. getVentasHistory(). |
@@ -194,10 +195,10 @@ rollback():
 ### Rate Limiter (API.gs:20)
 ```
 RATE_LIMITER = {
-  calls: {},
-  WINDOW_MS: 5000,
-  COOLDOWN_MS: 1000,
-  check(key): si lastCall + 1s → error; si +5s >5 calls → error
+  WINDOW_MS: 60000,
+  MAX_REQUESTS: 30,
+  PREFIX: 'RL_',
+  check(action): contador en CacheService.getScriptCache con SHA-256(user) + action; >30 en 60s → error
 }
 ```
 
@@ -208,18 +209,23 @@ RATE_LIMITER = {
 ### Estructura
 ```
 CACHE = {
-  terceros: [],           // raw data
+  terceros: [],              // raw data
   cartera: [],
   dashboard: {...},
-  terceroIndex: {},       // id→rowIndex lookup
-  lastRefresh: 0,
-  integrityChecksum: "",  // SHA-256 hash
-  stale: false,           // circuit breaker
-  circuitFailures: 0,
-  lastCircuitFailure: 0,
-  TTL: 30000,             // 30s
-  CIRCUIT_MAX_FAILURES: 5,
-  CIRCUIT_AUTO_CLOSE_MS: 300000 // 5 min
+  terceroIndex: {},          // id→rowIndex lookup
+  carteraIndex: {},
+  lastRefreshTerceros: 0,
+  lastRefreshCartera: 0,
+  CACHE_TTL: 300000,         // 5min
+  MAX_STALE_MS: 900000,
+  MAX_CONSECUTIVE_FAILURES: 3,
+  CIRCUIT_AUTO_CLOSE_MS: 300000, // 5 min
+  tercerosStale: false,      // circuit breaker por terceros
+  carteraStale: false,       // circuit breaker por cartera
+  tercerosFailCount: 0,
+  carteraFailCount: 0,
+  tercerosCircuitOpen: false,
+  carteraCircuitOpen: false
 }
 ```
 
@@ -228,7 +234,7 @@ CACHE = {
 2. Obtener data + checksum de Sheets via PropertiesService
 3. Validar integridad (ensureIntegrity)
 4. Si ok → poblar estructuras; si fail → incrementa circuitFailures
-5. Si circuitFailures ≥5 → stale=true por 5 min, auto-recovery intenta refresh
+5. Si MAX_CONSECUTIVE_FAILURES (3) excedido → circuitOpen=true por 5 min, auto-recovery intenta refresh
 
 ### ensureIntegrity() throws CacheIntegrityError si checksums no coinciden
 
@@ -463,10 +469,10 @@ django-migration (diverged)
 **Decisión:** CARTERA_CONFIG (dominio original) + COMPRAS_CONFIG (nuevo) como constantes independientes.
 **Trade-off:** Dos fuentes de verdad para schemas, pero separación de dominios clara.
 
-### ADR-004: CACHE.refresh con TTL 30s
+### ADR-004: CACHE.refresh con TTL 5min
 **Problema:** Llamadas repetitivas a Sheets agotan cuota.
-**Decisión:** Caché en memoria con TTL 30s, checksum SHA-256, circuit breaker 5 fails → 5 min stale.
-**Trade-off:** Lecturas stale hasta 30s. Aceptable para ERP sin requerimientos de consistencia en tiempo real.
+**Decisión:** Caché en memoria con TTL 5min, checksum SHA-256, circuit breaker 3 fails consecutivos → 5 min stale, circuit breaker dual separado por terceros/cartera.
+**Trade-off:** Lecturas stale hasta 5min. Aceptable para ERP sin requerimientos de consistencia en tiempo real.
 
 ### ADR-005: _sanitizeId como función central
 **Problema:** IDs inconsistentes causaban errores de lookup.
@@ -501,17 +507,16 @@ django-migration (diverged)
 |-----------|-------|---------|
 | SPREADSHEET_ID_FALLBACK | "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc" | Config.gs:94 |
 | APP_CRYPTO_SALT | "DIEGOERP_AES_V2_2026" | AuthService.gs:25 |
-| CACHE.TTL | 30000 (30s) | CacheService.gs:21 |
-| CACHE.CIRCUIT_MAX_FAILURES | 5 | CacheService.gs:37 |
+| CACHE.CACHE_TTL | 300000 (5 min) | CacheService.gs:25 |
+| CACHE.MAX_CONSECUTIVE_FAILURES | 3 | CacheService.gs:27 |
 | CACHE.CIRCUIT_AUTO_CLOSE_MS | 300000 (5 min) | CacheService.gs:39 |
 | MAX_LOG_ROWS | 5000 | AuditLog.gs:5 |
 | STOCK_MINIMO | 5 | Config.gs:29 |
-| LOCK.timeout | 15000 (15s) | LockManager.gs:20 |
-| LOCK.maxAttempts | 50 | LockManager.gs:21 |
-| LOCK.retryDelay | 300 (base ms) | LockManager.gs:22 |
-| RATE_LIMITER.WINDOW_MS | 5000 | API.gs:14 |
-| RATE_LIMITER.COOLDOWN_MS | 1000 | API.gs:15 |
-| RATE_LIMITER.MAX_CALLS | 5 | API.gs:13 |
+| LOCK.RESOURCE_LOCK_TIMEOUT | 25000 (25s) | LockManager.gs:22 |
+| LOCK.MAX_RETRIES | 4 (global) / 10 (acquireResourceLock inline) | LockManager.gs:19,66 |
+| LOCK.BASE_BACKOFF | 500 (base ms) | LockManager.gs:20 |
+| RATE_LIMITER.WINDOW_MS | 60000 | API.gs:21 |
+| RATE_LIMITER.MAX_REQUESTS | 30 | API.gs:22 |
 | IA_TIMEOUT_MS | 180000 (frontend) | index_v3_SaaS.html:1003 |
 | IA_RETRIES | 3 | IAService.gs |
 | __GEMINI_FALLBACK_KEY__ | "AIzaSyBtWeyG6RNSP7KxB9bm-W9JeZs9bJEXFg0" | _key.gs:1 |

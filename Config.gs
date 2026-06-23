@@ -19,6 +19,20 @@ const CARTERA_CONFIG = {
   TIPOS:   { CXC: "CxC", CXP: "CxP" },
 };
 
+const COMPRAS_CONFIG = {
+  SHEETS: {
+    COMPRAS: "Compras",
+    DETALLE_COMPRAS: "Detalle_Compras",
+    PAGOS_PROVEEDORES: "Pagos_Proveedores",
+  },
+  COLUMNS: {
+    COMPRAS: { id: 0, fecha: 1, id_proveedor: 2, id_factura: 3, total: 4, saldo: 5, estado: 6, fecha_vencimiento: 7, vencida_timestamp: 8, version: 9 },
+    DETALLE_COMPRAS: { id: 0, id_compra: 1, id_producto: 2, cantidad: 3, precio_unitario: 4, subtotal: 5 },
+    PAGOS_PROVEEDORES: { id: 0, fecha: 1, id_compra: 2, id_proveedor: 3, valor: 4, referencia: 5, metodo_pago: 6 },
+  },
+  ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA" },
+};
+
 const CONFIG = {
   SHEETS: {
     PRODUCTOS: "Productos",
@@ -33,6 +47,9 @@ const CONFIG = {
     MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
     AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
     PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio: "Precio", version: "Version" },
+    COMPRAS: { id: "ID", fecha: "Fecha", id_proveedor: "ID_Proveedor", id_factura: "ID_Factura", total: "Total", saldo: "Saldo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
+    DETALLE_COMPRAS: { id: "ID", id_compra: "ID_Compra", id_producto: "ID_Producto", cantidad: "Cantidad", precio_unitario: "Precio_Unitario", subtotal: "Subtotal" },
+    PAGOS_PROVEEDORES: { id: "ID", fecha: "Fecha", id_compra: "ID_Compra", id_proveedor: "ID_Proveedor", valor: "Valor", referencia: "Referencia", metodo_pago: "Metodo_Pago" },
   },
 };
 
@@ -91,7 +108,7 @@ let _SPREADSHEET_CACHE = null;
  * SPREADSHEET_ID HARDCODED - Para funcionamiento inmediato
  * Reemplaza con el ID de tu spreadsheet si es necesario
  */
-const SPREADSHEET_ID_FALLBACK = "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc";
+const SPREADSHEET_ID_FALLBACK = "";
 
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
@@ -142,12 +159,16 @@ function getSheet(name) {
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
+  const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
   const sheets = {
     [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
     [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
     [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
     [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-    [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
+    [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
+    [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
+    [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
+    [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
   };
 
   const spreadsheet = getActiveSpreadsheet();
@@ -156,7 +177,7 @@ CONFIG.reloadSchema = function() {
   for (const [sheetName, mapping] of Object.entries(sheets)) {
     const sheet = spreadsheet.getSheetByName(sheetName);
     if (!sheet) {
-      if (sheetName === 'Productos') continue;
+      if (optionalSheets.includes(sheetName)) continue;
       throw new Error(`Hoja obligatoria "${sheetName}" no encontrada.`);
     }
 
@@ -211,7 +232,7 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
-  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'];
+  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
   for (const name of criticalSheets) {
     const sheet = getActiveSpreadsheet().getSheetByName(name);
     if (!sheet) continue;
@@ -237,7 +258,10 @@ CONFIG.getSchemaReport = function() {
     'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
     'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
     'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' }
+    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
+    'Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
+    'Detalle_Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
+    'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
   };
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {
@@ -268,7 +292,7 @@ CONFIG.getSchemaReport = function() {
 };
 
 CONFIG.checkHeaderChanges = function() {
-  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'];
+  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let changed = false;
 

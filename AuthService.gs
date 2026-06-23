@@ -270,11 +270,8 @@ const AuthService = {
 };
 
 const PROXY_SECRET_SERVICE = {
-  // === INICIO FIX m-04 ===
-  // SECURITY WARNING: Este proxy NO implementa autenticación. Cualquiera con la URL puede solicitar secrets.
-  // Recomendación: El endpoint debe requerir un token HMAC o API key en los headers.
-  // Ver: https://cloud.google.com/endpoints/docs/openapi/client-authentication
   DEFAULT_ENDPOINT_CONFIG_KEY: "SECRET_PROXY_URL",
+  HMAC_SECRET_CONFIG_KEY: "PROXY_HMAC_SECRET",
 
   _getEndpointUrl() {
     const url = PropertiesService.getScriptProperties().getProperty(this.DEFAULT_ENDPOINT_CONFIG_KEY);
@@ -283,21 +280,35 @@ const PROXY_SECRET_SERVICE = {
     return legacyEndpoint || "";
   },
 
+  _getHmacSecret() {
+    return PropertiesService.getScriptProperties().getProperty(this.HMAC_SECRET_CONFIG_KEY);
+  },
+
   _callSecretEndpoint(endpointUrl, secretName) {
     try {
-      // WARNING: La solicitud actual carece de autenticación. Se recomienda:
-      // 1. Agregar header Authorization: Bearer <token> desde PropertiesService
-      // 2. O usar HMAC signature en el body
+      const payload = JSON.stringify({ secret: secretName });
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const headers = {
+        "Cache-Control": "no-cache",
+        "X-Request-ID": Utilities.getUuid(),
+        "X-HMAC-Timestamp": timestamp,
+      };
+
+      const hmacSecret = this._getHmacSecret();
+      if (hmacSecret) {
+        const signatureInput = timestamp + "." + payload;
+        const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
+        const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+        headers["Authorization"] = "HMAC " + hmacHex;
+      }
+
       const response = UrlFetchApp.fetch(endpointUrl, {
         method: "post",
         contentType: "application/json",
-        payload: JSON.stringify({ secret: secretName }),
+        payload: payload,
         muteHttpExceptions: true,
         timeout: 10000,
-        headers: {
-          "Cache-Control": "no-cache",
-          "X-Request-ID": Utilities.getUuid(),
-        },
+        headers: headers,
       });
       if (response.getResponseCode() === 200) {
         const data = JSON.parse(response.getContentText());
@@ -309,7 +320,6 @@ const PROXY_SECRET_SERVICE = {
     }
     return null;
   },
-  // === FIN FIX m-04 ===
 
   setEndpointUrl(url) {
     if (!url || url.trim() === "") throw new Error("URL de Secret Proxy requerida.");
@@ -319,6 +329,20 @@ const PROXY_SECRET_SERVICE = {
     );
     console.log("Secret Proxy URL configurada.");
     return true;
+  },
+
+  setHmacSecret(secret) {
+    if (!secret || secret.trim() === "") throw new Error("HMAC secret requerido.");
+    PropertiesService.getScriptProperties().setProperty(
+      this.HMAC_SECRET_CONFIG_KEY,
+      secret.trim()
+    );
+    console.log("Proxy HMAC secret configurado.");
+    return true;
+  },
+
+  hasHmacSecret() {
+    return !!this._getHmacSecret();
   },
 
   resolveSecret(secretName) {

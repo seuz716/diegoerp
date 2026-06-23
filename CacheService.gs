@@ -196,30 +196,38 @@ let CACHE = {
 
   recoverFromStale() {
     Logger.log("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
-    this.invalidate();
-    this.tercerosCircuitOpen = false;
-    this.carteraCircuitOpen = false;
+    if (!LOCK_MANAGER._safeTryLock(5000)) {
+      Logger.log("CACHE: No se pudo adquirir lock global para recoverFromStale, abortando");
+      return false;
+    }
+    try {
+      this.invalidate();
+      this.tercerosCircuitOpen = false;
+      this.carteraCircuitOpen = false;
 
-    const maxAttempts = 3;
-    let attempt = 0;
-    let restored = false;
-    while (attempt < maxAttempts && !restored) {
-      attempt++;
-      try {
-        this._refreshTerceros();
-        this._refreshCartera();
-        restored = !this.tercerosStale && !this.carteraStale;
-      } catch (e) {
-        Logger.log(`CACHE: recoverFromStale intento ${attempt} falló: ${e}`);
-        if (attempt < maxAttempts) {
-          const backoff = 500 * Math.pow(2, attempt - 1); // exponential backoff
-          Logger.log(`CACHE: Esperando ${backoff}ms antes del próximo intento`);
-          Utilities.sleep(backoff);
+      const maxAttempts = 3;
+      let attempt = 0;
+      let restored = false;
+      while (attempt < maxAttempts && !restored) {
+        attempt++;
+        try {
+          this._refreshTerceros();
+          this._refreshCartera();
+          restored = !this.tercerosStale && !this.carteraStale;
+        } catch (e) {
+          Logger.log("CACHE: recoverFromStale intento " + attempt + " falló: " + e);
+          if (attempt < maxAttempts) {
+            const backoff = 500 * Math.pow(2, attempt - 1);
+            Logger.log("CACHE: Esperando " + backoff + "ms antes del próximo intento");
+            Utilities.sleep(backoff);
+          }
         }
       }
+      Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored + " tras " + attempt + " intento(s)");
+      return restored;
+    } finally {
+      LOCK_MANAGER._safeReleaseLock();
     }
-    Logger.log(`CACHE: Protocolo de recuperación completado. restaurado=${restored} tras ${attempt} intento(s)`);
-    return restored;
   },
 
   verifyConsistency() {
@@ -652,14 +660,20 @@ let CACHE = {
     try {
       const cache = CacheService.getScriptCache();
       const serialized = JSON.stringify(data);
-      // === INICIO FIX m-02 ===
+      const chunkSize = 80000;
+      const baseKey = this._getCacheKey(keyPrefix);
       if (serialized.length < 90000) {
-        const key = this._getCacheKey(keyPrefix);
-        cache.put(key, serialized, 300);
+        cache.put(baseKey, serialized, 300);
+        cache.put(baseKey + "_meta", "1", 300);
       } else {
-        Logger.log("[FIX-m-02] [WARN] Cache data size %s bytes exceeds 90KB limit, not stored", serialized.length);
+        var totalChunks = Math.ceil(serialized.length / chunkSize);
+        for (var c = 0; c < totalChunks; c++) {
+          var chunk = serialized.substring(c * chunkSize, (c + 1) * chunkSize);
+          cache.put(baseKey + "_c" + c, chunk, 300);
+        }
+        cache.put(baseKey + "_meta", String(totalChunks), 300);
+        Logger.log("CACHE: Fragmentado en " + totalChunks + " chunks (" + serialized.length + " bytes)");
       }
-      // === FIN FIX m-02 ===
     } catch (e) {
       Logger.log("CACHE: Error in _putNativeCache: " + e.toString());
     }
@@ -668,11 +682,21 @@ let CACHE = {
   _getNativeCache(keyPrefix) {
     try {
       const cache = CacheService.getScriptCache();
-      const key = this._getCacheKey(keyPrefix);
-      const cached = cache.get(key);
-      if (cached) {
-        return JSON.parse(cached);
+      const baseKey = this._getCacheKey(keyPrefix);
+      var meta = cache.get(baseKey + "_meta");
+      if (!meta) return null;
+      var totalChunks = parseInt(meta, 10);
+      if (totalChunks <= 1) {
+        var cached = cache.get(baseKey);
+        return cached ? JSON.parse(cached) : null;
       }
+      var parts = [];
+      for (var c = 0; c < totalChunks; c++) {
+        var chunk = cache.get(baseKey + "_c" + c);
+        if (!chunk) return null;
+        parts.push(chunk);
+      }
+      return JSON.parse(parts.join(""));
     } catch (e) {
       Logger.log("CACHE: Error in _getNativeCache: " + e.toString());
     }

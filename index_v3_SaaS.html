@@ -128,6 +128,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 }
 .nav-item:hover{color:var(--text);background:var(--hover);border-color:var(--border);}
 .nav-item.active{color:var(--accent);background:var(--accent-dim);border-color:var(--accent-border);}
+.nav-item{touch-action:manipulation;}
 .nav-icon{font-size:var(--text-micro);opacity:.6;line-height:1;}
 .sidebar-footer{
   padding:var(--space-3) var(--space-5);
@@ -177,7 +178,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .theme-toggle-label{
   font-size:var(--text-micro);text-transform:uppercase;
   letter-spacing:0.12em;color:var(--muted);
+  transition:opacity var(--duration-fast, 150ms) ease;
 }
+[data-theme="dark"] .theme-toggle-label{opacity:.85;}
 
 /* ── MAIN ── */
 #app{flex:1;display:flex;flex-direction:column;overflow:hidden;}
@@ -358,11 +361,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   color:var(--text);
   font-weight:500;
 }
-.ia-results .ir-sep{
-  height:1px;
-  background:var(--border);
-  margin:var(--space-4) 0;
-}
 .btn{
   display:inline-flex;align-items:center;gap:var(--space-2);
   padding:var(--space-2) var(--space-4);
@@ -382,6 +380,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 
 /* ── CARTERA TABLE ── */
 .table-section{border:1px solid var(--border);background:var(--bg-1);overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.table-section::after{content:"←→ Desliza para ver más";position:absolute;bottom:8px;right:8px;font-size:var(--text-micro);color:var(--muted);opacity:0;transition:opacity 150ms;}
+.table-section.scroll-hint::after{opacity:0.6;}
 .data-table{width:100%;border-collapse:collapse;}
 .data-table thead th{
   background:var(--bg-2);
@@ -413,7 +413,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .badge-open{color:var(--accent);border-color:var(--accent-border);background:var(--accent-dim);}
 .badge-venc{color:var(--red);border-color:var(--red-border);background:var(--red-dim);}
 .badge-done{color:var(--muted);border-color:var(--border);background:transparent;}
-.badge-ok{color:var(--green);border-color:var(--green-border);background:var(--green-dim);}
 .badge-partial{color:var(--text);border-color:var(--border-med);background:var(--bg-2);}
 
 /* ── ABONO FORM ── */
@@ -493,7 +492,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 }
 
 /* ── MODAL ── */
-.modal-overlay{display:none;position:fixed;inset:0;background:var(--overlay);z-index:3000;align-items:center;justify-content:center;padding:1rem;}
+.modal-overlay{display:none;position:fixed;inset:0;background:var(--overlay);z-index:3000;align-items:center;justify-content:center;padding:1rem;overscroll-behavior:contain;}
 .modal-overlay.active{display:flex;}
 .modal-box{width:100%;max-width:480px;background:var(--bg-1);border:1px solid var(--border);padding:var(--space-8);}
 .modal-title{font-size:var(--text-lg);font-family:var(--display);color:var(--text);margin-bottom:var(--space-6);padding-bottom:var(--space-4);border-bottom:1px solid var(--border);}
@@ -543,7 +542,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     padding: var(--space-1); border: none; gap: 2px;
     min-height: 48px; justify-content: center;
     font-size: clamp(10px, 2.4vw, 12px);
+    transition: background 120ms, color 120ms;
   }
+  #bottom-nav .nav-item:active { background: var(--hover); }
   #bottom-nav .nav-icon { font-size: 16px; opacity: 1; }
 
   /* Main area */
@@ -594,7 +595,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   #view-cartera .page-header > div select { flex: 1; min-width: 0; }
 
   /* Ventas */
-  .venta-producto-row { grid-template-columns: 1fr 72px 90px 36px; }
+  .venta-producto-row { grid-template-columns: 1fr 72px 90px 44px; }
 }
 
 @media (max-width: 480px) {
@@ -750,12 +751,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     <div class="page-header">
       <h1 class="page-title">Cartera</h1>
       <div style="display:flex;gap:var(--space-2)">
-        <select id="filter-tipo" class="form-field" style="width:auto;">
+        <select id="filter-tipo" class="form-field" style="width:auto;" aria-label="Filtrar por tipo">
           <option value="">Todos los tipos</option>
           <option value="CxC">CxC</option>
           <option value="CxP">CxP</option>
         </select>
-        <select id="filter-estado" class="form-field" style="width:auto;">
+        <select id="filter-estado" class="form-field" style="width:auto;" aria-label="Filtrar por estado">
           <option value="">Todos los estados</option>
           <option value="ABIERTA">Abierta</option>
           <option value="VENCIDA">Vencida</option>
@@ -815,7 +816,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 
         <div class="form-row">
           <label class="form-label">Monto</label>
-          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="1" step="1" required>
+          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="0.01" step="0.01" required inputmode="decimal">
         </div>
 
         <div class="form-row" style="margin-bottom:var(--space-6)">
@@ -837,7 +838,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   <section id="view-terceros" class="view">
     <div class="page-header">
       <h1 class="page-title">Terceros</h1>
-      <button class="btn btn-accent btn-sm">+ Nuevo</button>
+      <div style="display:flex;gap:var(--space-2)">
+        <input type="text" id="busqueda-terceros" class="form-field" placeholder="Buscar tercero..." style="width:200px;max-width:50vw;font-size:var(--text-sm);" aria-label="Buscar terceros por nombre o ID">
+        <button class="btn btn-accent btn-sm" id="btn-nuevo-tercero">+ Nuevo</button>
+      </div>
     </div>
     <div class="table-section">
       <table class="data-table">
@@ -892,7 +896,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
           <div id="venta-productos"></div>
 
           <template id="row-template">
-            <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 80px 100px 36px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
+            <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 80px 100px 44px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
               <div>
                 <label class="form-label">Producto</label>
                 <select class="form-field venta-producto-select" style="font-size:var(--text-sm);">
@@ -908,7 +912,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
                 <input type="number" class="form-field venta-precio" value="0" min="0" style="font-size:var(--text-sm);">
               </div>
               <div style="display:flex;align-items:end;padding-bottom:4px;">
-                <button class="btn btn-sm btn-remove-producto" style="font-size:var(--text-micro);padding:var(--space-1-5) var(--space-2);border-color:var(--red);color:var(--red);">✕</button>
+                <button class="btn btn-sm btn-remove-producto" style="font-size:var(--text-micro);padding:var(--space-1-5) var(--space-2);border-color:var(--red);color:var(--red);min-height:44px;">✕</button>
               </div>
             </div>
           </template>
@@ -986,10 +990,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 
 <nav id="bottom-nav" role="navigation" aria-label="Navegación principal">
   <div class="nav-item" data-view="dashboard" aria-label="Dashboard"><span class="nav-icon">◆</span><span>Panel</span></div>
-  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">◇</span><span>Terc.</span></div>
-  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cart.</span></div>
+  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">◇</span><span>Terceros</span></div>
+  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cartera</span></div>
   <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">◇</span><span>Pagos</span></div>
-  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Vtas.</span></div>
+  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
 </nav>
 
 <div id="toast-container"></div>
@@ -1084,6 +1088,8 @@ function mostrarLoader(contenedor) {
   var div = document.createElement('div');
   div.className = 'loader-brutal';
   div.textContent = 'Cargando';
+  div.setAttribute('role', 'status');
+  div.setAttribute('aria-live', 'polite');
   contenedor.appendChild(div);
 }
 
@@ -1138,6 +1144,7 @@ function showToast(msg, type) {
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
   view.classList.add('is-loading');
+  view.setAttribute('aria-busy', 'true');
 
   var alertsBody = document.getElementById('alerts-body');
   mostrarLoader(alertsBody);
@@ -1207,11 +1214,13 @@ function cargarDashboard() {
       }
 
       view.classList.remove('is-loading');
+      view.removeAttribute('aria-busy');
     })
     .catch(function (err) {
       mostrarError(alertsBody, err.message || err);
       showError(err.message || err);
       view.classList.remove('is-loading');
+      view.removeAttribute('aria-busy');
     });
 }
 
@@ -1420,11 +1429,21 @@ var carteraPageSize = 1000;
 
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
+  view.setAttribute('aria-busy', 'true');
   var tbody = document.querySelector('#view-cartera .data-table tbody');
+  var tableSection = view.querySelector('.table-section');
 
   if (append !== true) {
     currentCarteraPageToken = 0;
-    mostrarLoader(tbody);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8);color:var(--muted);">Cargando cartera...</td></tr>';
+    
+    // Mostrar hint de scroll horizontal después de cargar datos
+    tableSection.classList.remove('scroll-hint');
+    setTimeout(function() {
+      if (tableSection.scrollWidth > tableSection.clientWidth) {
+        tableSection.classList.add('scroll-hint');
+      }
+    }, 500);
   } else {
     var loadMoreRow = document.getElementById('row-cargar-mas');
     if (loadMoreRow) {
@@ -1577,7 +1596,7 @@ function cargarCartera(append) {
           tdLoadMore.style.padding = 'var(--space-3)';
 
           var btnLoadMore = document.createElement('button');
-          btnLoadMore.className = 'btn btn-outline btn-small';
+          btnLoadMore.className = 'btn btn-outline btn-sm';
           btnLoadMore.style.margin = '0 auto';
           btnLoadMore.textContent = 'Cargar más';
           btnLoadMore.addEventListener('click', function () {
@@ -1602,6 +1621,8 @@ function cargarCartera(append) {
       });
       tbody.querySelector('.error-banner').appendChild(btn);
     });
+  // Clear aria-busy after completable
+  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
 function cargarAbonoSelect() {
@@ -1681,8 +1702,12 @@ function generarIdTemporal() {
 
 function cargarTerceros() {
   var view = document.getElementById('view-terceros');
+  view.setAttribute('aria-busy', 'true');
   var tbody = document.querySelector('#view-terceros .data-table tbody');
-  mostrarLoader(tbody);
+  var busquedaInput = document.getElementById('busqueda-terceros');
+  var filtroBusqueda = busquedaInput ? busquedaInput.value.toLowerCase().trim() : '';
+  
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>';
 
   App.api.getTerceros(null)
     .then(function (data) {
@@ -1695,9 +1720,23 @@ function cargarTerceros() {
         tr.appendChild(td);
         tbody.appendChild(tr);
       } else {
-        data.forEach(function (item) {
-          var tipoInfo = App.mapearTipoTercero(item.tipo);
-          var tr = document.createElement('tr');
+        // Filtrar por búsqueda
+        var datosFiltrados = filtroBusqueda ? data.filter(function(t) {
+          return (t.id && t.id.toLowerCase().includes(filtroBusqueda)) ||
+                 (t.nombre && t.nombre.toLowerCase().includes(filtroBusqueda));
+        }) : data;
+        
+        if (datosFiltrados.length === 0 && filtroBusqueda) {
+          var td2 = document.createElement('td');
+          td2.colSpan = 5;
+          mostrarVacio(td2, 'Sin coincidencias para "' + busquedaInput.value + '"');
+          var tr2 = document.createElement('tr');
+          tr2.appendChild(td2);
+          tbody.appendChild(tr2);
+        } else {
+          datosFiltrados.forEach(function (item) {
+            var tipoInfo = App.mapearTipoTercero(item.tipo);
+            var tr = document.createElement('tr');
 
           // Columna: ID
           var tdId = document.createElement('td');
@@ -1725,17 +1764,9 @@ function cargarTerceros() {
           tdLimite.textContent = App.formatearMoneda(item.limite_credito);
           tr.appendChild(tdLimite);
 
-          // Columna: Acciones
+          // Columna: Acciones (oculta hasta implementar funcionalidad)
           var tdAcciones = document.createElement('td');
-          var btnOpciones = document.createElement('button');
-          btnOpciones.className = 'btn btn-sm';
-          btnOpciones.style.fontSize = 'var(--text-xs)';
-          btnOpciones.setAttribute('aria-label', 'Opciones de ' + (item.nombre || ''));
-          btnOpciones.textContent = '···';
-          btnOpciones.disabled = true;
-          btnOpciones.style.opacity = '0.3';
-          btnOpciones.title = 'Próximamente';
-          tdAcciones.appendChild(btnOpciones);
+          tdAcciones.style.display = 'none';
           tr.appendChild(tdAcciones);
 
           tbody.appendChild(tr);
@@ -1751,6 +1782,8 @@ function cargarTerceros() {
       btn.addEventListener('click', cargarTerceros);
       tbody.querySelector('.error-banner').appendChild(btn);
     });
+  // Clear aria-busy after operation
+  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
 function abrirModalTercero() {
@@ -1761,6 +1794,9 @@ function abrirModalTercero() {
   document.getElementById('tercero-telefono').value = '';
   document.getElementById('tercero-activo').checked = true;
   document.getElementById('tercero-error').style.display = 'none';
+  // Aria-hidden para accesibilidad
+  document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
+  document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
   modal._opener = document.activeElement;
   var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
@@ -1779,6 +1815,9 @@ function cerrarModalTercero() {
   var modal = document.getElementById('modal-tercero');
   modal.classList.remove('active');
   modal.removeEventListener('keydown',modal._trap);
+  // Quitar aria-hidden
+  document.getElementById('sidebar').removeAttribute('aria-hidden');
+  document.getElementById('main').removeAttribute('aria-hidden');
   if(modal._opener) modal._opener.focus();
 }
 
@@ -2116,17 +2155,26 @@ document.addEventListener('DOMContentLoaded', function () {
   })();
 
   cargarUserInfo();
+  // Carga lazy: solo el dashboard activo al inicio
   cargarDashboard();
-  cargarCartera();
-  cargarTerceros();
-  cargarAbonoSelect();
-
+  // Las vistas se cargan bajo demanda al navegar
+  
   document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
   document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
   document.getElementById('btn-tercero-guardar').addEventListener('click', guardarTercero);
   document.getElementById('modal-tercero').addEventListener('click', function (e) {
     if (e.target === this) cerrarModalTercero();
   });
+  
+  // Búsqueda de terceros en tiempo real
+  var busquedaTerceros = document.getElementById('busqueda-terceros');
+  if (busquedaTerceros) {
+    busquedaTerceros.addEventListener('input', function() {
+      clearTimeout(busquedaTerceros._timer);
+      busquedaTerceros._timer = setTimeout(cargarTerceros, 300);
+    });
+  }
+});
 
   document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
   document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
@@ -2137,27 +2185,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
   document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
   document.getElementById('filter-estado').addEventListener('change', cargarCartera);
+});
 
-  function actualizarLabelTema(){
-    var label=document.getElementById('theme-toggle-label');
-    if(label) label.textContent=document.documentElement.dataset.theme==='dark'?'Oscuro':'Claro';
-  }
+function actualizarLabelTema(){
+  var label=document.getElementById('theme-toggle-label');
+  if(label) label.textContent=document.documentElement.dataset.theme==='dark'?'Oscuro':'Claro';
+}
+actualizarLabelTema();
+document.getElementById('theme-toggle').addEventListener('click',function(){
+  var next=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem('theme',next);
   actualizarLabelTema();
-  document.getElementById('theme-toggle').addEventListener('click',function(){
-    var next=document.documentElement.dataset.theme==='dark'?'light':'dark';
-    document.documentElement.dataset.theme=next;
-    localStorage.setItem('theme',next);
-    actualizarLabelTema();
-  });
+});
 
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        var modalTercero = document.getElementById('modal-tercero');
-        var modalConfirm = document.getElementById('modal-confirm');
-        if (modalTercero.classList.contains('active')) cerrarModalTercero();
-        if (modalConfirm.classList.contains('active')) modalConfirm.classList.remove('active');
-      }
-    });
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modalTercero = document.getElementById('modal-tercero');
+    var modalConfirm = document.getElementById('modal-confirm');
+    if (modalTercero && modalTercero.classList.contains('active')) cerrarModalTercero();
+    if (modalConfirm && modalConfirm.classList.contains('active')) modalConfirm.classList.remove('active');
+  }
 });
 </script>
 </body>
