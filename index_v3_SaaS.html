@@ -5,6 +5,7 @@
 <title>MicroERP · Cartera Pro</title>
 <meta name="description" content="Sistema de gestión de cartera, ventas e inventario con inteligencia artificial">
 <meta name="keywords" content="ERP, cartera, ventas, inventario, facturación, DIAN, contabilidad">
+<meta name="author" content="César A. Abadía">
 <meta property="og:title" content="MicroERP · Cartera Pro">
 <meta property="og:description" content="Sistema de gestión empresarial con IA integrada">
 <meta property="og:type" content="website">
@@ -15,7 +16,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet" fetchpriority="high">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%233A7B6D'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='white' font-family='system-ui'>μ</text></svg>">
 <script>(function(){var e=localStorage.getItem('theme'),t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=e||t||'dark';window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(m){if(!localStorage.getItem('theme'))document.documentElement.dataset.theme=m.matches?'dark':'light';});})();</script>
 <style>
@@ -2120,6 +2121,8 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (viewId === 'abonos') cargarAbonoSelect();
       if (viewId === 'ventas') cargarVentas();
     }
+    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta' };
+    document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
     setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
   });
 });
