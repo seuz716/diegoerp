@@ -142,7 +142,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .nav-item.is-loading{pointer-events:none;opacity:.6;}
 .nav-item.active{color:var(--accent);background:var(--accent-dim);border-color:var(--accent-border);}
 .nav-item{touch-action:manipulation;}
-.nav-icon{font-size:var(--text-micro);opacity:.6;line-height:1;}
+.nav-icon{font-size:var(--text-sm);opacity:1;line-height:1;}
 .sidebar-footer{
   padding:var(--space-3) var(--space-5);
   border-top:1px solid var(--border);
@@ -285,7 +285,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .alert-row.critical{background:var(--red-dim);}
 .alert-row.critical:hover{background:rgba(204,51,51,0.15);}
 .rank{
-  font-size:var(--text-micro);font-weight:500;letter-spacing:0.06em;
+  font-size:var(--text-sm);font-weight:500;letter-spacing:0.06em;
   color:var(--muted-2);text-align:center;
 }
 .rank.top{color:var(--red);font-size:var(--text-data);}
@@ -418,8 +418,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 
 /* ── BADGES ── */
 .badge{
-  display:inline-block;padding:3px 7px;
-  font-size:var(--text-micro);font-weight:500;letter-spacing:0.1em;text-transform:uppercase;
+  display:inline-block;padding:6px 12px;
+  font-size:var(--text-sm);font-weight:500;letter-spacing:0.1em;text-transform:uppercase;
   border:1px solid;
   font-family:var(--mono);
 }
@@ -435,7 +435,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .abono-form{padding:var(--space-6);max-width:400px;}
 .form-row{margin-bottom:var(--space-4);}
 .form-label{
-  display:block;font-size:var(--text-micro);text-transform:uppercase;letter-spacing:0.12em;
+  display:block;font-size:var(--text-micro);text-transform:uppercase;letter-spacing:0.08em;
   color:var(--muted);margin-bottom:var(--space-1);font-weight:500;
 }
 .form-field{
@@ -590,13 +590,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   .stats-asymmetric { grid-template-columns: 1fr; }
   .stat-hero { grid-column: auto; }
   .stat-hero .stat-value { font-size: clamp(1.8rem, 7vw, 2.4rem); }
-  .stat-normal .stat-value { font-size: clamp(1.2rem, 5vw, 1.5rem); }
+  .stat-normal .stat-value { font-size: clamp(1.4rem, 5.5vw, 1.6rem); }
   .stat-hero { padding: 20px 16px; }
   .stat-normal { padding: 16px; }
 
   /* Alertas */
   .alert-row { grid-template-columns: 28px 1fr auto; gap: 10px; padding: 12px 14px; }
-  .section-header { padding: 10px 14px; }
+  .section-header { padding: 10px 14px; font-size: var(--text-sm); }
 
   /* Tabla */
   .data-table { min-width: 580px; }
@@ -943,7 +943,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
                 <input type="number" class="form-field venta-precio" value="0" min="0" style="font-size:var(--text-sm);">
               </div>
               <div style="display:flex;align-items:end;padding-bottom:4px;">
-                <button class="btn btn-sm btn-remove-producto" style="font-size:var(--text-micro);padding:var(--space-1-5) var(--space-2);border-color:var(--red);color:var(--red);min-height:44px;">✕</button>
+                <button class="btn btn-sm btn-remove-producto" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">✕</button>
               </div>
             </div>
           </template>
