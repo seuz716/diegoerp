@@ -490,6 +490,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 }
 .ia-progress-bar-active{animation:ia-progress-indeterminate 1.4s ease-in-out infinite;width:40%!important;background:var(--accent);}
 
+/* ── PULL TO REFRESH HINT ── */
+#refresh-hint{position:fixed;top:0;left:0;right:0;z-index:100;text-align:center;padding:6px;font-size:var(--text-micro);color:var(--muted);background:var(--bg-1);border-bottom:1px solid var(--border);opacity:0;transform:translateY(-100%);transition:opacity .3s ease,transform .3s ease;pointer-events:none;}
+#refresh-hint.show{opacity:1;transform:translateY(0);}
+@media(min-width:769px){#refresh-hint{display:none;}}
+
 /* ── BACK TO TOP ── */
 #btn-back-top{position:fixed;bottom:var(--space-6);right:var(--space-6);z-index:2000;width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--bg-1);color:var(--text);font-size:var(--text-lg);cursor:pointer;box-shadow:var(--shadow);opacity:0;transform:translateY(16px);transition:opacity .2s ease,transform .2s ease;pointer-events:none;}
 #btn-back-top.show{opacity:1;transform:translateY(0);pointer-events:auto;}
@@ -531,6 +536,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 .btn:hover{filter:brightness(1.08);}
 .btn-accent:hover{filter:brightness(1.12);}
 .btn-outline:hover{background:var(--hover);}
+.btn.is-processing{position:relative;pointer-events:none;}
+.btn.is-processing::after{content:'';position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:.12;animation:btn-pulse 1.2s ease-in-out infinite;}
+@keyframes btn-pulse{0%,100%{opacity:.08;}50%{opacity:.2;}}
 
 .skip-link{
   position:absolute;top:-40px;left:var(--space-2);z-index:9999;
@@ -1019,6 +1027,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
 </nav>
 
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--red);color:#fff;text-align:center;padding:8px 16px;font-size:var(--text-sm);letter-spacing:0.04em;">Sin conexión · Los datos pueden estar desactualizados</div>
+<div id="refresh-hint" aria-hidden="true">↓ Tira hacia abajo para refrescar</div>
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 <button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">↑</button>
 
@@ -1689,11 +1699,13 @@ function ejecutarAbono() {
 
   confirmarAccion(['¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
   btn.disabled = true;
+  btn.classList.add('is-processing');
   btn.textContent = '→ Procesando...';
 
   App.api.registrarAbono(idTercero, centavos, referencia, tipo)
     .then(function (r) {
       btn.disabled = false;
+      btn.classList.remove('is-processing');
       btn.textContent = '→ Ejecutar movimiento';
       if (r && r.success === false) {
         errorEl.textContent = r.message || 'Error al registrar el abono.';
@@ -1714,6 +1726,7 @@ function ejecutarAbono() {
     })
     .catch(function (err) {
       btn.disabled = false;
+      btn.classList.remove('is-processing');
       btn.textContent = '→ Ejecutar movimiento';
       errorEl.textContent = err.message || err || 'Error al registrar el abono.';
       errorEl.classList.add('show');
@@ -2062,11 +2075,13 @@ function registrarVenta() {
   var totalStr = document.getElementById('venta-total').textContent;
   confirmarAccion(['¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
+  btn.classList.add('is-processing');
   btn.textContent = '→ Procesando...';
 
   App.api.procesarVenta(carrito, { tipo: tipo, idTercero: idTercero || null, diasCredito: diasCredito })
     .then(function (r) {
       btn.disabled = false;
+      btn.classList.remove('is-processing');
       btn.textContent = '→ Registrar venta';
       if (r && r.success === false) {
         errorEl.textContent = r.message || 'Error al registrar venta.';
@@ -2088,6 +2103,7 @@ function registrarVenta() {
     })
     .catch(function (err) {
       btn.disabled = false;
+      btn.classList.remove('is-processing');
       btn.textContent = '→ Registrar venta';
       errorEl.textContent = err.message || err || 'Error al registrar venta.';
       errorEl.classList.add('show');
@@ -2123,6 +2139,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
     }
     var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta' };
     document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
+    mostrarHintRefrescar();
     setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
   });
 });
@@ -2186,6 +2203,7 @@ document.addEventListener('DOMContentLoaded', function () {
   cargarUserInfo();
   // Carga lazy: solo el dashboard activo al inicio
   cargarDashboard();
+  mostrarHintRefrescar();
   // Las vistas se cargan bajo demanda al navegar
   
   document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
@@ -2228,11 +2246,32 @@ document.getElementById('theme-toggle').addEventListener('click',function(){
   actualizarLabelTema();
 });
 
+// Pull to refresh hint (mobile only)
+function mostrarHintRefrescar() {
+  var hint = document.getElementById('refresh-hint');
+  if (!hint || window.innerWidth >= 769) return;
+  hint.classList.add('show');
+  clearTimeout(hint._timer);
+  hint._timer = setTimeout(function() { hint.classList.remove('show'); }, 2000);
+}
+
+// Offline detection
+var offlineBanner = document.getElementById('offline-banner');
+function actualizarEstadoRed() {
+  if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : 'block';
+}
+actualizarEstadoRed();
+window.addEventListener('online', actualizarEstadoRed);
+window.addEventListener('offline', actualizarEstadoRed);
+
 // Back to top
 var btnBackTop = document.getElementById('btn-back-top');
 if (btnBackTop) {
-  btnBackTop.addEventListener('click', function() { window.scrollTo({ top: 0, behavior: 'smooth' }); });
   var mainEl = document.getElementById('main');
+  btnBackTop.addEventListener('click', function() {
+    var target = mainEl && mainEl.scrollTop > 0 ? mainEl : window;
+    target.scrollTo({ top: 0, behavior: 'smooth' });
+  });
   var scrollTargets = [mainEl, window].filter(Boolean);
   function onScroll() {
     btnBackTop.classList.toggle('show', (mainEl ? mainEl.scrollTop : window.scrollY || window.pageYOffset) > 300);
