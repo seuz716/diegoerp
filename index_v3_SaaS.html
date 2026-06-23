@@ -2,13 +2,24 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MicroERP · Cartera Pro</title>
+<meta name="description" content="Sistema de gestión de cartera, ventas e inventario con inteligencia artificial">
+<meta name="keywords" content="ERP, cartera, ventas, inventario, facturación, DIAN, contabilidad">
+<meta property="og:title" content="MicroERP · Cartera Pro">
+<meta property="og:description" content="Sistema de gestión empresarial con IA integrada">
+<meta property="og:type" content="website">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1A1A" media="(prefers-color-scheme: dark)">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%233A7B6D'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='white' font-family='system-ui'>μ</text></svg>">
 <script>(function(){var e=localStorage.getItem('theme'),t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=e||t||'dark';window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(m){if(!localStorage.getItem('theme'))document.documentElement.dataset.theme=m.matches?'dark':'light';});})();</script>
 <style>
+html{scroll-behavior:smooth;}
 :root {
   --bg: #F7F5F0;
   --bg-1: #EFECE5;
@@ -127,6 +138,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   font-family:var(--mono);
 }
 .nav-item:hover{color:var(--text);background:var(--hover);border-color:var(--border);}
+.nav-item.is-loading{pointer-events:none;opacity:.6;}
 .nav-item.active{color:var(--accent);background:var(--accent-dim);border-color:var(--accent-border);}
 .nav-item{touch-action:manipulation;}
 .nav-icon{font-size:var(--text-micro);opacity:.6;line-height:1;}
@@ -477,6 +489,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 }
 .ia-progress-bar-active{animation:ia-progress-indeterminate 1.4s ease-in-out infinite;width:40%!important;background:var(--accent);}
 
+/* ── BACK TO TOP ── */
+#btn-back-top{position:fixed;bottom:var(--space-6);right:var(--space-6);z-index:2000;width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--bg-1);color:var(--text);font-size:var(--text-lg);cursor:pointer;box-shadow:var(--shadow);opacity:0;transform:translateY(16px);transition:opacity .2s ease,transform .2s ease;pointer-events:none;}
+#btn-back-top.show{opacity:1;transform:translateY(0);pointer-events:auto;}
+#btn-back-top:hover{background:var(--hover);}
+@media(max-width:768px){#btn-back-top{bottom:76px;right:var(--space-3);width:40px;height:40px;font-size:var(--text-base);}}
+
 /* ── TOAST ── */
 #toast-container{position:fixed;bottom:var(--space-4);right:var(--space-4);z-index:3000;display:flex;flex-direction:column;gap:var(--space-2);pointer-events:none;}
 .toast{pointer-events:auto;padding:var(--space-3) var(--space-4);border-left:3px solid var(--accent);background:var(--bg-1);color:var(--text);font-size:var(--text-sm);letter-spacing:0.04em;box-shadow:var(--shadow);animation:toast-in .3s ease forwards;max-width:360px;}
@@ -507,7 +525,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 
 /* ── FOCUS VISIBLE ── */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus, input:focus, select:focus, .nav-item:focus { outline: none; }
 button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:hover{filter:brightness(1.08);}
+.btn-accent:hover{filter:brightness(1.12);}
+.btn-outline:hover{background:var(--hover);}
 
 .skip-link{
   position:absolute;top:-40px;left:var(--space-2);z-index:9999;
@@ -656,9 +678,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
 <div id="main">
 
   <!-- DASHBOARD -->
-  <section id="view-dashboard" class="view active">
+  <section id="view-dashboard" class="view active" aria-label="Panel de control">
     <div class="page-header">
-      <h1 class="page-title">Resumen <em>financiero</em></h1>
+      <h1 class="page-title" role="heading" aria-level="1">Resumen <em>financiero</em></h1>
       <button class="btn btn-accent btn-sm" id="btn-analizar-ia">◈ Analizar con IA</button>
     </div>
     <div class="error-banner" id="error-banner"></div>
@@ -683,14 +705,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     </div>
 
     <!-- Alertas -->
-    <div class="alerts-section">
+    <div class="alerts-section" aria-label="Alertas de cartera">
       <div class="section-header">
         <span>Deudores con mayor vencimiento</span>
         <span class="section-count" id="alert-count">3 críticos</span>
       </div>
 
-      <div id="alerts-body" aria-live="polite">
-        <div class="alert-row critical">
+      <div id="alerts-body" role="list" aria-live="polite">
+        <div class="alert-row critical" role="listitem">
           <div class="rank top">#1</div>
           <div>
             <div class="alert-name">Distribuciones López</div>
@@ -702,7 +724,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
           </div>
         </div>
 
-        <div class="alert-row">
+        <div class="alert-row" role="listitem">
           <div class="rank">#2</div>
           <div>
             <div class="alert-name">Ferretería del Norte</div>
@@ -714,7 +736,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
           </div>
         </div>
 
-        <div class="alert-row">
+        <div class="alert-row" role="listitem">
           <div class="rank">#3</div>
           <div>
             <div class="alert-name">Comercial Andes SAS</div>
@@ -747,7 +769,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   </section>
 
   <!-- CARTERA -->
-  <section id="view-cartera" class="view">
+  <section id="view-cartera" class="view" aria-label="Cartera">
     <div class="page-header">
       <h1 class="page-title">Cartera</h1>
       <div style="display:flex;gap:var(--space-2)">
@@ -787,7 +809,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   </section>
 
   <!-- ABONOS -->
-  <section id="view-abonos" class="view">
+  <section id="view-abonos" class="view" aria-label="Pagos y abonos">
     <div class="page-header">
       <h1 class="page-title">Registrar <em>pago</em></h1>
     </div>
@@ -835,7 +857,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   </section>
 
   <!-- TERCEROS -->
-  <section id="view-terceros" class="view">
+  <section id="view-terceros" class="view" aria-label="Terceros">
     <div class="page-header">
       <h1 class="page-title">Terceros</h1>
       <div style="display:flex;gap:var(--space-2)">
@@ -856,7 +878,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   </section>
 
   <!-- VENTAS -->
-  <section id="view-ventas" class="view">
+  <section id="view-ventas" class="view" aria-label="Registro de ventas">
     <div class="page-header">
       <h1 class="page-title">Registrar <em>venta</em></h1>
     </div>
@@ -996,7 +1018,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
 </nav>
 
-<div id="toast-container"></div>
+<div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
+<button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">↑</button>
 
 <script>
 'use strict';
@@ -1134,6 +1157,7 @@ function showToast(msg, type) {
   var el = document.createElement('div');
   el.className = 'toast ' + type;
   el.textContent = msg;
+  if (type === 'error') el.setAttribute('role', 'alert');
   container.appendChild(el);
   setTimeout(function () {
     el.style.animation = 'toast-out .3s ease forwards';
@@ -2080,9 +2104,10 @@ document.addEventListener('change', function (e) {
 
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
-    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); b.removeAttribute('aria-current'); });
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active', 'is-loading'); b.removeAttribute('aria-current'); });
     btn.classList.add('active');
     btn.setAttribute('aria-current', 'page');
+    btn.classList.add('is-loading');
     var viewId = btn.dataset.view;
     document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
     document.getElementById('error-banner').classList.remove('show');
@@ -2095,6 +2120,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (viewId === 'abonos') cargarAbonoSelect();
       if (viewId === 'ventas') cargarVentas();
     }
+    setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
   });
 });
 
@@ -2198,6 +2224,18 @@ document.getElementById('theme-toggle').addEventListener('click',function(){
   localStorage.setItem('theme',next);
   actualizarLabelTema();
 });
+
+// Back to top
+var btnBackTop = document.getElementById('btn-back-top');
+if (btnBackTop) {
+  btnBackTop.addEventListener('click', function() { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  var mainEl = document.getElementById('main');
+  var scrollTargets = [mainEl, window].filter(Boolean);
+  function onScroll() {
+    btnBackTop.classList.toggle('show', (mainEl ? mainEl.scrollTop : window.scrollY || window.pageYOffset) > 300);
+  }
+  scrollTargets.forEach(function(t) { t.addEventListener('scroll', onScroll, { passive: true }); });
+}
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
