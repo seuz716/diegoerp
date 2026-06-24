@@ -84,31 +84,17 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
   try {
     AuthService.checkPermission("ver_cartera");
     
-    Logger.log("DEBUG getCartera: Iniciando búsqueda - filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado);
-    
     const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
     
-    // Diagnóstico del resultado
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
-      return { items: [], nextPageToken: null, error: "Resultado inválido del dominio", debug: "DOMAIN.getCartera no retornó objeto válido" };
-    }
-    
-    Logger.log("DEBUG getCartera: result.items=%s, result.nextPageToken=%s", result?.items?.length || 0, !!result?.nextPageToken);
-    
-    // Agregar información de diagnóstico
-    if (!result.debug) {
-      result.debug = {
-        filtroTipo: filtroTipo,
-        filtroEstado: filtroEstado,
-        itemsCount: result.items ? result.items.length : 0
-      };
+      return { items: [], nextPageToken: null, error: "Error al obtener cartera. Intente de nuevo." };
     }
     
     return result;
   } catch (e) {
     Logger.log("ERROR getCartera: " + e.toString());
-    return { items: [], nextPageToken: null, error: e.message, debug: "Excepción: " + e.toString() };
+    return { items: [], nextPageToken: null, error: _safeError("getCartera", e).error };
   }
 }
 

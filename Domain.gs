@@ -290,27 +290,15 @@ const DOMAIN = {
   getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
     
-    Logger.log("[DOMAIN.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", debeFiltrarVencida=" + debeFiltrarVencida);
-    
-    // Cuando filtramos por VENCIDA, leemos todos los registros y filtramos en memoria (el estado se calcula dinámicamente)
     const estadoParaDAO = debeFiltrarVencida ? null : filtroEstado;
     const { items: baseCartera, nextPageToken } = DAO.getCartera(filtroTipo, estadoParaDAO, pageSize, pageToken);
-    
-    Logger.log("[DOMAIN.getCartera] baseCartera items: " + (baseCartera ? baseCartera.length : 0));
 
     const hoy = _today();
 
-    // PRE-CARGA EN MAP O(1) para evitar el cuello de llamadas n*1 iterativas (#4)
     CACHE.refresh();
     const tercerosMap = new Map();
     if (CACHE.terceros) {
       CACHE.terceros.forEach(t => tercerosMap.set(t.id, t));
-      Logger.log("[DOMAIN.getCartera] tercerosMap size: " + tercerosMap.size);
-    }
-
-    // Debug: Mostrar la primera fila si existe
-    if (baseCartera && baseCartera.length > 0) {
-      Logger.log("[DOMAIN.getCartera] Sample row: tipo=" + baseCartera[0].tipo + ", estado=" + baseCartera[0].estado);
     }
 
     const result = baseCartera.map(c => {
@@ -341,7 +329,6 @@ const DOMAIN = {
 
     if (debeFiltrarVencida) {
       const vencidas = result.filter(c => c.estado === CARTERA_CONFIG.ESTADOS.VENCIDA);
-      Logger.log("[DOMAIN.getCartera] Filtrando VENCIDA: " + vencidas.length + " de " + result.length);
       return { items: vencidas, nextPageToken };
     }
 
@@ -533,89 +520,127 @@ const DOMAIN = {
     if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
     if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
 
-    let lockAcquired = null;
-    const tx = _Transaction.create();
+    for (var _i = 0; _i < items.length; _i++) {
+      var _item = items[_i];
+      var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
+      var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
+      if (!_pid) return _error("Producto inválido en el ítem #" + (_i + 1) + ".");
+      if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
+    }
 
-    try {
-      lockAcquired = LOCK_MANAGER.acquireResourceLock(idProv);
+    const MAX_RETRIES = 3;
 
-      const tercero = DAO.getTerceroById(idProv);
-      if (!tercero) return _error("Proveedor " + idProv + " no existe.");
-      const tipoTercero = (tercero.tipo || "").toUpperCase();
-      if (tipoTercero !== "PROVEEDOR" && tipoTercero !== "AMBOS") {
-        return _error("El tercero " + idProv + " no es un proveedor válido.");
-      }
+    const _executeCompraTx = () => {
+      let lockAcquired = null;
+      const tx = _Transaction.create();
 
-      CACHE.refresh();
-      const consistency = CACHE.verifyConsistency();
-      if (consistency.mismatched) {
-        CACHE.recoverFromStale();
-      }
+      try {
+        lockAcquired = LOCK_MANAGER.acquireResourceLock(idProv);
 
-      const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-      var fv = fechaVencimiento;
-      if (!fv) { fv = _today(); fv.setDate(fv.getDate() + 30); }
-      fv = _safeDate(fv);
-      if (!fv) fv = _today();
+        const tercero = DAO.getTerceroById(idProv);
+        if (!tercero) { LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: "PROVEEDOR_NO_EXISTE" }, "ERROR"); return _error("Proveedor " + idProv + " no existe."); }
+        const tipoTercero = (tercero.tipo || "").toUpperCase();
+        if (tipoTercero !== "PROVEEDOR" && tipoTercero !== "AMBOS") {
+          return _error("El tercero " + idProv + " no es un proveedor válido.");
+        }
 
-      const compraRecord = {
-        id: idCompra, fecha: new Date(), id_proveedor: idProv, id_factura: String(factura || "").trim(),
-        total: totalLimpio, saldo: totalLimpio, estado: COMPRAS_CONFIG.ESTADOS.ABIERTA,
-        fecha_vencimiento: fv,
-      };
+        CACHE.refresh();
+        const consistency = CACHE.verifyConsistency();
+        if (consistency.mismatched) {
+          CACHE.recoverFromStale();
+        }
 
-      tx.begin();
-      tx.markDetallePreAppend();
+        const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+        var fv = fechaVencimiento;
+        if (!fv) { fv = _today(); fv.setDate(fv.getDate() + 30); }
+        fv = _safeDate(fv);
+        if (!fv) fv = _today();
 
-      DAO_COMPRAS.crearCompra(compraRecord);
+        const compraRecord = {
+          id: idCompra, fecha: new Date(), id_proveedor: idProv, id_factura: String(factura || "").trim(),
+          total: totalLimpio, saldo: totalLimpio, estado: COMPRAS_CONFIG.ESTADOS.ABIERTA,
+          fecha_vencimiento: fv,
+        };
 
-      var subtotalAcumulado = 0;
-      for (var j = 0; j < items.length; j++) {
-        var item = items[j];
-        var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
-        var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
-        var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
-        if (!prodId || cant <= 0) continue;
-        var sub = cant * pUnit;
-        subtotalAcumulado += sub;
-        var detId = "DET" + Date.now() + j;
-        DAO_COMPRAS.crearDetalleCompra({
-          id: detId, id_compra: idCompra, id_producto: prodId,
-          cantidad: cant, precio_unitario: pUnit, subtotal: sub,
-        });
-        try {
-          var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-          var prodData = prodSheet.getDataRange().getValues();
-          for (var p = 1; p < prodData.length; p++) {
-            var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
-            if (pid === prodId) {
-              var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
-              prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(currentStock + cant);
-              break;
+        tx.begin();
+        tx.markDetallePreAppend();
+
+        DAO_COMPRAS.crearCompra(compraRecord);
+
+        var subtotalAcumulado = 0;
+        for (var j = 0; j < items.length; j++) {
+          var item = items[j];
+          var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+          var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+          var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+          if (!prodId || cant <= 0) continue;
+          var sub = cant * pUnit;
+          subtotalAcumulado += sub;
+          var detId = "DET" + Date.now() + j;
+          DAO_COMPRAS.crearDetalleCompra({
+            id: detId, id_compra: idCompra, id_producto: prodId,
+            cantidad: cant, precio_unitario: pUnit, subtotal: sub,
+          });
+          try {
+            var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+            var prodData = prodSheet.getDataRange().getValues();
+            for (var p = 1; p < prodData.length; p++) {
+              var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
+              if (pid === prodId) {
+                var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
+                prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(currentStock + cant);
+                break;
+              }
             }
+          } catch (invErr) {
+            Logger.log("[DOMAIN] Error actualizando inventario: " + invErr.toString());
           }
-        } catch (invErr) {
-          Logger.log("[DOMAIN] Error actualizando inventario: " + invErr.toString());
+        }
+
+        tx.markDetallePostAppend();
+        tx.commit();
+
+        CACHE.invalidateCartera();
+
+        LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
+          {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS");
+
+        return { success: true, id: idCompra, total: totalLimpio };
+      } catch (e) {
+        try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en compra: " + rbErr.message); }
+        CACHE.invalidateCartera();
+        throw e;
+      } finally {
+        if (lockAcquired) lockAcquired.releaseLock();
+      }
+    };
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = _executeCompraTx();
+        return result;
+      } catch (e) {
+        const isOptimisticLock =
+          e.type === 'OPTIMISTIC_LOCK_FAILURE' ||
+          (e.message && e.message.includes('OptimisticLockError'));
+
+        if (!isOptimisticLock) {
+          LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: e.toString() }, "FAILED");
+          return _error(e.message || "Error al registrar compra.");
+        }
+
+        if (attempt < MAX_RETRIES - 1) {
+          CACHE.refresh(true);
+          const delay = 100 * Math.pow(2, attempt) + Math.random() * 50;
+          Logger.log("WARN: registrarCompraAtomic retry #" + (attempt + 1) + " para " + idProv + " tras OptimisticLockError");
+          Utilities.sleep(delay);
         }
       }
-
-      tx.markDetallePostAppend();
-      tx.commit();
-
-      CACHE.invalidateCartera();
-
-      LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
-        {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS");
-
-      return { success: true, id: idCompra, total: totalLimpio };
-    } catch (e) {
-      tx.rollback();
-      CACHE.invalidateCartera();
-      LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: e.toString() }, "ERROR");
-      return _error(e.message || "Error al registrar compra.");
-    } finally {
-      if (lockAcquired) lockAcquired.releaseLock();
     }
+
+    const msg = "Conflicto de concurrencia persistente al registrar compra para " + idProv + ". Operación abortada.";
+    LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: msg }, "FAILED");
+    return _error(msg);
   },
 
   procesarPagoProveedorAtomic(idCompra, monto, referencia) {
@@ -624,51 +649,81 @@ const DOMAIN = {
     var montoLimpio = _parseMoneda(monto, NaN);
     if (isNaN(montoLimpio) || montoLimpio <= 0) return _error("Monto inválido.");
 
-    let lockAcquired = null;
-    const tx = _Transaction.create();
+    const MAX_RETRIES = 3;
 
-    try {
-      var compra = DAO_COMPRAS.getCompraById(idCompraLimpio);
-      if (!compra) return _error("Compra no encontrada: " + idCompraLimpio);
-      if (compra.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) {
-        return _error("La compra ya está pagada.");
+    const _executePagoTx = () => {
+      let lockAcquired = null;
+      const tx = _Transaction.create();
+
+      try {
+        var compra = DAO_COMPRAS.getCompraById(idCompraLimpio);
+        if (!compra) return _error("Compra no encontrada: " + idCompraLimpio);
+        if (compra.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) {
+          return _error("La compra ya está pagada.");
+        }
+
+        lockAcquired = LOCK_MANAGER.acquireResourceLock(compra.id_proveedor);
+
+        var nuevoSaldo = Math.max(0, compra.saldo - montoLimpio);
+        var nuevoEstado = nuevoSaldo <= 0 ? COMPRAS_CONFIG.ESTADOS.PAGADA : COMPRAS_CONFIG.ESTADOS.PARCIAL;
+
+        var pagoId = "PAG" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+
+        tx.begin();
+        tx.snapshotCompraRow(compra.rowIndex);
+        tx.markPagoPreAppend();
+
+        DAO_COMPRAS.actualizarSaldoCompra(idCompraLimpio, nuevoSaldo, nuevoEstado);
+        DAO_COMPRAS.crearPagoProveedor({
+          id: pagoId, fecha: new Date(), id_compra: idCompraLimpio,
+          id_proveedor: compra.id_proveedor, valor: montoLimpio,
+          referencia: String(referencia || "Pago proveedor").trim(), metodo_pago: "",
+        });
+
+        tx.markPagoPostAppend();
+        tx.commit();
+
+        CACHE.invalidateCartera();
+
+        LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
+          { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS");
+
+        return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
+      } catch (e) {
+        try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en pago: " + rbErr.message); }
+        CACHE.invalidateCartera();
+        throw e;
+      } finally {
+        if (lockAcquired) lockAcquired.releaseLock();
       }
+    };
 
-      lockAcquired = LOCK_MANAGER.acquireResourceLock(compra.id_proveedor);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = _executePagoTx();
+        return result;
+      } catch (e) {
+        const isOptimisticLock =
+          e.type === 'OPTIMISTIC_LOCK_FAILURE' ||
+          (e.message && e.message.includes('OptimisticLockError'));
 
-      var nuevoSaldo = Math.max(0, compra.saldo - montoLimpio);
-      var nuevoEstado = nuevoSaldo <= 0 ? COMPRAS_CONFIG.ESTADOS.PAGADA : COMPRAS_CONFIG.ESTADOS.PARCIAL;
+        if (!isOptimisticLock) {
+          LOG_ENGINE.logEvent("ERROR_PAGO_PROVEEDOR", "COMPRAS", idCompra, {}, { error: e.toString() }, "FAILED");
+          return _error(e.message || "Error al procesar pago.");
+        }
 
-      var pagoId = "PAG" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-
-      tx.begin();
-      tx.snapshotCompraRow(compra.rowIndex);
-      tx.markPagoPreAppend();
-
-      DAO_COMPRAS.actualizarSaldoCompra(idCompraLimpio, nuevoSaldo, nuevoEstado);
-      DAO_COMPRAS.crearPagoProveedor({
-        id: pagoId, fecha: new Date(), id_compra: idCompraLimpio,
-        id_proveedor: compra.id_proveedor, valor: montoLimpio,
-        referencia: String(referencia || "Pago proveedor").trim(), metodo_pago: "",
-      });
-
-      tx.markPagoPostAppend();
-      tx.commit();
-
-      CACHE.invalidateCartera();
-
-      LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
-        { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS");
-
-      return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
-    } catch (e) {
-      tx.rollback();
-      CACHE.invalidateCartera();
-      LOG_ENGINE.logEvent("ERROR_PAGO_PROVEEDOR", "COMPRAS", idCompra, {}, { error: e.toString() }, "ERROR");
-      return _error(e.message || "Error al procesar pago.");
-    } finally {
-      if (lockAcquired) lockAcquired.releaseLock();
+        if (attempt < MAX_RETRIES - 1) {
+          CACHE.refresh(true);
+          const delay = 100 * Math.pow(2, attempt) + Math.random() * 50;
+          Logger.log("WARN: procesarPagoProveedorAtomic retry #" + (attempt + 1) + " para " + idCompraLimpio + " tras OptimisticLockError");
+          Utilities.sleep(delay);
+        }
+      }
     }
+
+    const msg = "Conflicto de concurrencia persistente al procesar pago para " + idCompraLimpio + ". Operación abortada.";
+    LOG_ENGINE.logEvent("ERROR_PAGO_PROVEEDOR", "COMPRAS", idCompra, {}, { error: msg }, "FAILED");
+    return _error(msg);
   },
 
   getVencimientosProximos(dias) {

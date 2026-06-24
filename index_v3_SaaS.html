@@ -1636,7 +1636,12 @@ function analizarConGeminiFresco() {
         msg = 'La solicitud tardó demasiado. Intenta de nuevo.';
       }
       var iaEl = document.getElementById('ia-results');
-      iaEl.innerHTML = '<div class="error-banner show" style="margin:0">' + msg + '</div>';
+      iaEl.textContent = '';
+      var errDiv = document.createElement('div');
+      errDiv.className = 'error-banner show';
+      errDiv.style.margin = '0';
+      errDiv.textContent = msg;
+      iaEl.appendChild(errDiv);
       iaEl.style.display = 'block';
       showToast(msg, 'error');
     })
