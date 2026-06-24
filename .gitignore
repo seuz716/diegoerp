@@ -8,3 +8,4 @@ node_modules/
 *.xlsx:Zone.Identifier
 _key.js
 _key.gs
+django_migration/
