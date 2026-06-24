@@ -82,15 +82,8 @@ function getTerceros(filtroTipo = null) {
  */
 function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
   try {
-    // Skip permission check if no user (triggers/contexts donde getActiveUser retorna null)
-    try {
-      AuthService.checkPermission("ver_cartera");
-    } catch (permErr) {
-      Logger.log("DEBUG getCartera: Permiso falló pero continuando - " + permErr.message);
-      // No throw - allow read-only access for now
-    }
+    AuthService.checkPermission("ver_cartera");
     
-    // Diagnóstico inicial
     Logger.log("DEBUG getCartera: Iniciando búsqueda - filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado);
     
     const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
@@ -214,7 +207,23 @@ function getDashboardCartera() {
       Logger.log("[FIX-M-05] getDashboardCartera from cache: %s items, %s CxC, %s CxP",
         CACHE.cartera.length, cxc.length, cxp.length);
 
-      return { porCobrar, porPagar, vencidaCxC, vencidaCxP, alertas, totalObligaciones };
+      var prox7 = DOMAIN.getVencimientosProximos(7);
+      var prox15 = DOMAIN.getVencimientosProximos(15);
+      var prox30 = DOMAIN.getVencimientosProximos(30);
+
+      var suma7 = 0, suma15 = 0, suma30 = 0;
+      for (var i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
+      for (var i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
+      for (var i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
+
+      return {
+        porCobrar, porPagar, vencidaCxC, vencidaCxP, alertas, totalObligaciones,
+        proximosVencimientos7: suma7,
+        proximosVencimientos15: suma15,
+        proximosVencimientos30: suma30,
+        topDeudores: DOMAIN.getRankingDeudores(5),
+        concentracionProveedores: DOMAIN.getConcentracionProveedores(),
+      };
     }
 
     // Fallback: limited pagination if cache not available
@@ -272,6 +281,15 @@ function getDashboardCartera() {
     allAlertas.sort((a, b) => b.dias - a.dias);
     const alertas = allAlertas.slice(0, 10);
 
+    var prox7 = DOMAIN.getVencimientosProximos(7);
+    var prox15 = DOMAIN.getVencimientosProximos(15);
+    var prox30 = DOMAIN.getVencimientosProximos(30);
+
+    var suma7 = 0, suma15 = 0, suma30 = 0;
+    for (var i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
+    for (var i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
+    for (var i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
+
     return {
       porCobrar,
       porPagar,
@@ -279,6 +297,11 @@ function getDashboardCartera() {
       vencidaCxP,
       alertas,
       totalObligaciones,
+      proximosVencimientos7: suma7,
+      proximosVencimientos15: suma15,
+      proximosVencimientos30: suma30,
+      topDeudores: DOMAIN.getRankingDeudores(5),
+      concentracionProveedores: DOMAIN.getConcentracionProveedores(),
     };
     // === FIN FIX M-05 ===
   } catch (e) {
@@ -466,5 +489,96 @@ function getCarteraDebug(filtroTipo, filtroEstado) {
     return Main_getCarteraDebug(filtroTipo || null, filtroEstado || null);
   } catch (e) {
     return { success: false, error: e.message };
+  }
+}
+
+// ════════════════════════════════════════════
+// FASE 2: MÓDULO DE COMPRAS
+// ════════════════════════════════════════════
+
+function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
+  try {
+    RATE_LIMITER.check("registrarCompra");
+    AuthService.checkPermission("registrar_compra");
+    return DOMAIN.registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura);
+  } catch (e) {
+    return _safeError("registrarCompra", e);
+  }
+}
+
+function getCompras(filtroProveedor, filtroEstado) {
+  try {
+    AuthService.checkPermission("ver_compras");
+    CACHE.refresh();
+    var compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null);
+    var tercerosMap = {};
+    if (CACHE.terceros) {
+      CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
+    }
+    compras.forEach(function(c) {
+      c.nombre_proveedor = tercerosMap[c.id_proveedor] || "DESCONOCIDO";
+    });
+    return { success: true, items: compras };
+  } catch (e) {
+    return _safeError("getCompras", e);
+  }
+}
+
+function getDetalleCompra(idCompra) {
+  try {
+    AuthService.checkPermission("ver_compras");
+    var detalles = DAO_COMPRAS.getDetallesByCompra(idCompra);
+    var pagos = DAO_COMPRAS.getPagosByCompra(idCompra);
+    return { success: true, detalles: detalles, pagos: pagos };
+  } catch (e) {
+    return _safeError("getDetalleCompra", e);
+  }
+}
+
+function registrarPagoProveedor(idCompra, monto, referencia) {
+  try {
+    RATE_LIMITER.check("registrarPagoProveedor");
+    AuthService.checkPermission("registrar_pago_proveedor");
+    return DOMAIN.procesarPagoProveedorAtomic(idCompra, monto, referencia);
+  } catch (e) {
+    return _safeError("registrarPagoProveedor", e);
+  }
+}
+
+// ════════════════════════════════════════════
+// FASE 3: REPORTES AVANZADOS
+// ════════════════════════════════════════════
+
+function getProximosVencimientos(dias) {
+  try {
+    AuthService.checkPermission("ver_vencimientos");
+    if (dias === null || dias === undefined) dias = 30;
+    dias = Math.max(1, Math.min(365, parseInt(dias) || 30));
+    var result = DOMAIN.getVencimientosProximos(dias);
+    var suma = 0;
+    for (var i = 0; i < result.length; i++) { suma += result[i].saldo; }
+    return { success: true, items: result, total: suma, dias: dias };
+  } catch (e) {
+    return _safeError("getProximosVencimientos", e);
+  }
+}
+
+function getRankingDeudores(topN) {
+  try {
+    AuthService.checkPermission("ver_dashboard");
+    if (topN === null || topN === undefined) topN = 10;
+    var result = DOMAIN.getRankingDeudores(topN);
+    return { success: true, items: result };
+  } catch (e) {
+    return _safeError("getRankingDeudores", e);
+  }
+}
+
+function getConcentracionProveedores() {
+  try {
+    AuthService.checkPermission("ver_dashboard");
+    return DOMAIN.getConcentracionProveedores();
+  } catch (e) {
+    return _safeError("getConcentracionProveedores", e);
   }
 }

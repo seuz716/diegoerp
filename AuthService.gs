@@ -9,12 +9,16 @@ const PERMISSION_ROLES = {
   ver_analisis_ia: ROLES.VIEWER,
   ver_configuracion: ROLES.VIEWER,
   ver_ventas: ROLES.VIEWER,
+  ver_compras: ROLES.VIEWER,
+  ver_vencimientos: ROLES.VIEWER,
   registrar_abono: ROLES.OPERATOR,
   guardar_tercero: ROLES.OPERATOR,
   analizar_ia: ROLES.OPERATOR,
   revisar_inventario: ROLES.OPERATOR,
   enviar_alertas: ROLES.OPERATOR,
   registrar_venta: ROLES.OPERATOR,
+  registrar_compra: ROLES.OPERATOR,
+  registrar_pago_proveedor: ROLES.OPERATOR,
   ver_cache: ROLES.ADMIN,
   configurar_ia: ROLES.ADMIN,
   ejecutar_mantenimiento: ROLES.ADMIN,
@@ -295,12 +299,13 @@ const PROXY_SECRET_SERVICE = {
       };
 
       const hmacSecret = this._getHmacSecret();
-      if (hmacSecret) {
-        const signatureInput = timestamp + "." + payload;
-        const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
-        const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-        headers["Authorization"] = "HMAC " + hmacHex;
+      if (!hmacSecret) {
+        throw new Error("HMAC secret no configurado. Ejecuta PROXY_SECRET_SERVICE.setHmacSecret() antes de usar el proxy.");
       }
+      const signatureInput = timestamp + "." + payload;
+      const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
+      const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+      headers["Authorization"] = "HMAC " + hmacHex;
 
       const response = UrlFetchApp.fetch(endpointUrl, {
         method: "post",

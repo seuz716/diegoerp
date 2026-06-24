@@ -660,7 +660,7 @@ let CACHE = {
     try {
       const cache = CacheService.getScriptCache();
       const serialized = JSON.stringify(data);
-      const chunkSize = 80000;
+      const chunkSize = 90000;
       const baseKey = this._getCacheKey(keyPrefix);
       if (serialized.length < 90000) {
         cache.put(baseKey, serialized, 300);

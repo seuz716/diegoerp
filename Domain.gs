@@ -12,7 +12,7 @@
  */
 var _Transaction = {
   create() {
-    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], active: false };
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, active: false };
 
     return {
       begin() {
@@ -22,6 +22,11 @@ var _Transaction = {
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
         ctx.productoSnapshots = [];
+        ctx.compraSnapshots = [];
+        ctx.pagoPreRows = 0;
+        ctx.pagoPostRows = 0;
+        ctx.detallePreRows = 0;
+        ctx.detallePostRows = 0;
       },
 
       snapshotTerceroRow(rowIndex) {
@@ -85,6 +90,35 @@ var _Transaction = {
         }
       },
 
+      snapshotCompraRow(rowIndex) {
+        if (!ctx.active || !rowIndex) return;
+        const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+        const COL = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+        const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
+        const rangeData = sheet.getRange(rowIndex, 1, 1, numCols).getValues();
+        ctx.compraSnapshots.push({ rowIndex: rowIndex, values: rangeData[0] });
+      },
+
+      markDetallePreAppend() {
+        if (!ctx.active) return;
+        ctx.detallePreRows = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS).getLastRow();
+      },
+
+      markDetallePostAppend() {
+        if (!ctx.active) return;
+        ctx.detallePostRows = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS).getLastRow();
+      },
+
+      markPagoPreAppend() {
+        if (!ctx.active) return;
+        ctx.pagoPreRows = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES).getLastRow();
+      },
+
+      markPagoPostAppend() {
+        if (!ctx.active) return;
+        ctx.pagoPostRows = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES).getLastRow();
+      },
+
       commit() {
         ctx.active = false;
         ctx.carteraSnapshots = [];
@@ -92,6 +126,11 @@ var _Transaction = {
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
         ctx.productoSnapshots = [];
+        ctx.compraSnapshots = [];
+        ctx.pagoPreRows = 0;
+        ctx.pagoPostRows = 0;
+        ctx.detallePreRows = 0;
+        ctx.detallePostRows = 0;
       },
 
       rollback() {
@@ -127,6 +166,26 @@ var _Transaction = {
             sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
           }
           Logger.log("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
+        }
+        // Compras rollback
+        if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
+          const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+          for (const snap of ctx.compraSnapshots) {
+            const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
+            compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+          }
+        }
+        if (ctx.pagoPostRows > ctx.pagoPreRows) {
+          const pagoSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+          const startRow = ctx.pagoPreRows + 1;
+          const count = ctx.pagoPostRows - ctx.pagoPreRows;
+          pagoSheet.deleteRows(startRow, count);
+        }
+        if (ctx.detallePostRows > ctx.detallePreRows) {
+          const detSheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
+          const startRow = ctx.detallePreRows + 1;
+          const count = ctx.detallePostRows - ctx.detallePreRows;
+          detSheet.deleteRows(startRow, count);
         }
         ctx.active = false;
       },
@@ -465,5 +524,280 @@ const DOMAIN = {
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();
     }
+  },
+
+  registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura) {
+    const idProv = _sanitizeId(proveedorId);
+    if (!idProv) return _error("ID proveedor inválido.");
+    const totalLimpio = _parseMoneda(total, NaN);
+    if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
+    if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
+
+    let lockAcquired = null;
+    const tx = _Transaction.create();
+
+    try {
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(idProv);
+
+      const tercero = DAO.getTerceroById(idProv);
+      if (!tercero) return _error("Proveedor " + idProv + " no existe.");
+      const tipoTercero = (tercero.tipo || "").toUpperCase();
+      if (tipoTercero !== "PROVEEDOR" && tipoTercero !== "AMBOS") {
+        return _error("El tercero " + idProv + " no es un proveedor válido.");
+      }
+
+      CACHE.refresh();
+      const consistency = CACHE.verifyConsistency();
+      if (consistency.mismatched) {
+        CACHE.recoverFromStale();
+      }
+
+      const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+      var fv = fechaVencimiento;
+      if (!fv) { fv = _today(); fv.setDate(fv.getDate() + 30); }
+      fv = _safeDate(fv);
+      if (!fv) fv = _today();
+
+      const compraRecord = {
+        id: idCompra, fecha: new Date(), id_proveedor: idProv, id_factura: String(factura || "").trim(),
+        total: totalLimpio, saldo: totalLimpio, estado: COMPRAS_CONFIG.ESTADOS.ABIERTA,
+        fecha_vencimiento: fv,
+      };
+
+      tx.begin();
+      tx.markDetallePreAppend();
+
+      DAO_COMPRAS.crearCompra(compraRecord);
+
+      var subtotalAcumulado = 0;
+      for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+        var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+        var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+        if (!prodId || cant <= 0) continue;
+        var sub = cant * pUnit;
+        subtotalAcumulado += sub;
+        var detId = "DET" + Date.now() + j;
+        DAO_COMPRAS.crearDetalleCompra({
+          id: detId, id_compra: idCompra, id_producto: prodId,
+          cantidad: cant, precio_unitario: pUnit, subtotal: sub,
+        });
+        try {
+          var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+          var prodData = prodSheet.getDataRange().getValues();
+          for (var p = 1; p < prodData.length; p++) {
+            var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
+            if (pid === prodId) {
+              var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
+              prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(currentStock + cant);
+              break;
+            }
+          }
+        } catch (invErr) {
+          Logger.log("[DOMAIN] Error actualizando inventario: " + invErr.toString());
+        }
+      }
+
+      tx.markDetallePostAppend();
+      tx.commit();
+
+      CACHE.invalidateCartera();
+
+      LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
+        {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS");
+
+      return { success: true, id: idCompra, total: totalLimpio };
+    } catch (e) {
+      tx.rollback();
+      CACHE.invalidateCartera();
+      LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: e.toString() }, "ERROR");
+      return _error(e.message || "Error al registrar compra.");
+    } finally {
+      if (lockAcquired) lockAcquired.releaseLock();
+    }
+  },
+
+  procesarPagoProveedorAtomic(idCompra, monto, referencia) {
+    var idCompraLimpio = String(idCompra || "").trim();
+    if (!idCompraLimpio) return _error("ID de compra inválido.");
+    var montoLimpio = _parseMoneda(monto, NaN);
+    if (isNaN(montoLimpio) || montoLimpio <= 0) return _error("Monto inválido.");
+
+    let lockAcquired = null;
+    const tx = _Transaction.create();
+
+    try {
+      var compra = DAO_COMPRAS.getCompraById(idCompraLimpio);
+      if (!compra) return _error("Compra no encontrada: " + idCompraLimpio);
+      if (compra.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) {
+        return _error("La compra ya está pagada.");
+      }
+
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(compra.id_proveedor);
+
+      var nuevoSaldo = Math.max(0, compra.saldo - montoLimpio);
+      var nuevoEstado = nuevoSaldo <= 0 ? COMPRAS_CONFIG.ESTADOS.PAGADA : COMPRAS_CONFIG.ESTADOS.PARCIAL;
+
+      var pagoId = "PAG" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+
+      tx.begin();
+      tx.snapshotCompraRow(compra.rowIndex);
+      tx.markPagoPreAppend();
+
+      DAO_COMPRAS.actualizarSaldoCompra(idCompraLimpio, nuevoSaldo, nuevoEstado);
+      DAO_COMPRAS.crearPagoProveedor({
+        id: pagoId, fecha: new Date(), id_compra: idCompraLimpio,
+        id_proveedor: compra.id_proveedor, valor: montoLimpio,
+        referencia: String(referencia || "Pago proveedor").trim(), metodo_pago: "",
+      });
+
+      tx.markPagoPostAppend();
+      tx.commit();
+
+      CACHE.invalidateCartera();
+
+      LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
+        { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS");
+
+      return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
+    } catch (e) {
+      tx.rollback();
+      CACHE.invalidateCartera();
+      LOG_ENGINE.logEvent("ERROR_PAGO_PROVEEDOR", "COMPRAS", idCompra, {}, { error: e.toString() }, "ERROR");
+      return _error(e.message || "Error al procesar pago.");
+    } finally {
+      if (lockAcquired) lockAcquired.releaseLock();
+    }
+  },
+
+  getVencimientosProximos(dias) {
+    var hoy = _today();
+    var limite = new Date(hoy.getTime() + dias * 86400000);
+
+    var cartera = DOMAIN.getCartera(null, null, 5000, 0).items || [];
+    var vencimientos = [];
+
+    for (var i = 0; i < cartera.length; i++) {
+      var c = cartera[i];
+      if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
+      var fv = _safeDate(c.fecha_vencimiento);
+      if (!fv) continue;
+      if (fv.getTime() >= hoy.getTime() && fv.getTime() <= limite.getTime()) {
+        vencimientos.push({
+          tipo: c.tipo,
+          id_tercero: c.id_tercero,
+          nombre_tercero: c.nombre_tercero || "DESCONOCIDO",
+          saldo: c.saldo,
+          fecha_vencimiento: fv,
+          dias_para_vencer: Math.floor((fv.getTime() - hoy.getTime()) / 86400000),
+          origen: "cartera",
+        });
+      }
+    }
+
+    var compras = DAO_COMPRAS.getCompras(null, null);
+    var tercerosMap = {};
+    if (CACHE.terceros) {
+      CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
+    }
+    for (var j = 0; j < compras.length; j++) {
+      var cp = compras[j];
+      if (cp.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) continue;
+      var cfv = _safeDate(cp.fecha_vencimiento);
+      if (!cfv) continue;
+      if (cfv.getTime() >= hoy.getTime() && cfv.getTime() <= limite.getTime()) {
+        vencimientos.push({
+          tipo: "CxP",
+          id_tercero: cp.id_proveedor,
+          nombre_tercero: tercerosMap[cp.id_proveedor] || cp.id_proveedor,
+          saldo: cp.saldo,
+          fecha_vencimiento: cfv,
+          dias_para_vencer: Math.floor((cfv.getTime() - hoy.getTime()) / 86400000),
+          origen: "compra",
+          id_compra: cp.id,
+        });
+      }
+    }
+
+    vencimientos.sort(function(a, b) { return a.dias_para_vencer - b.dias_para_vencer; });
+    return vencimientos;
+  },
+
+  getRankingDeudores(topN) {
+    if (topN === undefined) topN = 10;
+    CACHE.refresh();
+    var cartera = CACHE.cartera || [];
+    var tercerosMap = {};
+    if (CACHE.terceros) {
+      CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t; });
+    }
+
+    var hoy = _today();
+    var deudores = {};
+
+    for (var i = 0; i < cartera.length; i++) {
+      var c = cartera[i];
+      if (c.tipo !== CARTERA_CONFIG.TIPOS.CXC) continue;
+      if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
+      var fv = _safeDate(c.fecha_vencimiento);
+      if (!fv || fv.getTime() >= hoy.getTime()) continue;
+
+      if (!deudores[c.id_tercero]) {
+        var t = tercerosMap[c.id_tercero] || {};
+        deudores[c.id_tercero] = {
+          id: c.id_tercero,
+          nombre: t.nombre || "DESCONOCIDO",
+          saldo_vencido: 0,
+          total_facturas: 0,
+          max_dias: 0,
+        };
+      }
+      var d = deudores[c.id_tercero];
+      d.saldo_vencido += c.saldo;
+      d.total_facturas++;
+      var dd = Math.floor((hoy.getTime() - fv.getTime()) / 86400000);
+      if (dd > d.max_dias) d.max_dias = dd;
+    }
+
+    var ranking = Object.values(deudores);
+    ranking.sort(function(a, b) { return b.saldo_vencido - a.saldo_vencido; });
+    return ranking.slice(0, topN);
+  },
+
+  getConcentracionProveedores() {
+    CACHE.refresh();
+    var cartera = CACHE.cartera || [];
+    var tercerosMap = {};
+    if (CACHE.terceros) {
+      CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t; });
+    }
+
+    var proveedores = {};
+    var totalCxP = 0;
+
+    for (var i = 0; i < cartera.length; i++) {
+      var c = cartera[i];
+      if (c.tipo !== CARTERA_CONFIG.TIPOS.CXP) continue;
+      if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
+
+      if (!proveedores[c.id_tercero]) {
+        var t = tercerosMap[c.id_tercero] || {};
+        proveedores[c.id_tercero] = {
+          id: c.id_tercero,
+          nombre: t.nombre || "DESCONOCIDO",
+          saldo: 0,
+        };
+      }
+      proveedores[c.id_tercero].saldo += c.saldo;
+      totalCxP += c.saldo;
+    }
+
+    var result = Object.values(proveedores);
+    result.forEach(function(p) {
+      p.porcentaje = totalCxP > 0 ? Math.round((p.saldo / totalCxP) * 10000) / 100 : 0;
+    });
+    result.sort(function(a, b) { return b.saldo - a.saldo; });
+    return { items: result, total: totalCxP };
   },
 };

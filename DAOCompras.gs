@@ -1,6 +1,5 @@
 /**
  * LAYER 4: DAO — COMPRAS (Cuentas por Pagar a Proveedores)
- * Sigue las mismas convenciones que DAO.gs
  */
 const DAO_COMPRAS = {
   COMPRAS_COL: COMPRAS_CONFIG.COLUMNS.COMPRAS,
@@ -66,7 +65,6 @@ const DAO_COMPRAS = {
     row[C.version] = 1;
     for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
     sheet.appendRow(row);
-    Logger.log("[DAO_COMPRAS] Compra creada: " + registro.id);
     return registro.id;
   },
 
@@ -140,7 +138,6 @@ const DAO_COMPRAS = {
         sheet.getRange(rowIdx, C.saldo + 1).setValue(nuevoSaldo);
         sheet.getRange(rowIdx, C.estado + 1).setValue(nuevoEstado);
         sheet.getRange(rowIdx, C.version + 1).setValue(currentVersion + 1);
-        Logger.log("[DAO_COMPRAS] Saldo actualizado: " + idCompra + " -> " + nuevoSaldo + " (" + nuevoEstado + ")");
         return true;
       }
     }
@@ -160,7 +157,6 @@ const DAO_COMPRAS = {
     row[C.metodo_pago] = pago.metodo_pago || "";
     for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
     sheet.appendRow(row);
-    Logger.log("[DAO_COMPRAS] Pago registrado: " + pago.id);
   },
 
   getDetallesByCompra(idCompra) {

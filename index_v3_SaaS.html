@@ -403,6 +403,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   color:var(--muted);font-weight:500;
   border-bottom:1px solid var(--border);
 }
+.cell-mono{font-family:var(--mono);font-size:var(--text-sm);text-align:right;white-space:nowrap;}
 .data-table tbody td{
   padding:var(--space-3) var(--space-3);
   border-top:1px solid var(--border);
@@ -412,6 +413,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .data-table tbody tr:hover td{background:var(--hover);}
 .data-table tbody tr.row-red td{background:var(--red-dim);}
 .data-table tbody tr.row-red:hover td{background:var(--red-dim);}
+.data-table tbody tr.row-green td{background:var(--green-dim);border-color:var(--green-border);}
+.data-table tbody tr.row-green:hover td{background:var(--green-dim);}
+.data-table tbody tr.row-yellow td{background:var(--accent-dim);border-color:var(--accent-border);}
+.data-table tbody tr.row-yellow:hover td{background:var(--accent-dim);}
 .td-mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
 .td-muted{color:var(--muted);}
 .td-bold{font-weight:500;}
@@ -424,9 +429,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   font-family:var(--mono);
 }
 .badge-open{color:var(--accent);border-color:var(--accent-border);background:var(--accent-dim);}
-.badge-venc{color:var(--red);border-color:var(--red-border);background:var(--red-dim);}
+.badge-venc,.badge-red{color:var(--red);border-color:var(--red-border);background:var(--red-dim);}
 .badge-done{color:var(--muted);border-color:var(--border);background:transparent;}
-.badge-partial{color:var(--text);border-color:var(--border-med);background:var(--bg-2);}
+.badge-ok{color:var(--green);border-color:var(--green-border);background:var(--green-dim);}
+.badge-partial,.badge-yellow{color:var(--accent);border-color:var(--accent-border);background:var(--accent-dim);}
 
 /* ── ABONO FORM ── */
 .form-panel{border:1px solid var(--border);background:var(--bg-1);}
@@ -666,6 +672,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     <div class="nav-item" data-view="ventas">
       <span class="nav-icon">◇</span> Ventas
     </div>
+    <div class="nav-item" data-view="compras">
+      <span class="nav-icon">◇</span> Compras
+    </div>
+    <div class="nav-item" data-view="vencimientos">
+      <span class="nav-icon">◇</span> Vencimientos
+    </div>
   </nav>
 
   <div class="sidebar-footer">
@@ -710,6 +722,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
         <div class="stat-label">Exposición neta</div>
         <div class="stat-value" id="stat-exposicion">$3.390.000</div>
         <div class="stat-meta">Al día de hoy</div>
+      </div>
+    </div>
+
+    <!-- Vencimientos próximos + ranking -->
+    <div class="stats-asymmetric" style="margin-top:var(--space-5)">
+      <div class="stat-hero">
+        <div class="stat-label">Vencimientos próximos (7d)</div>
+        <div class="stat-value" id="stat-prox7">$0</div>
+        <div class="stat-meta">15d: <span id="stat-prox15">$0</span> · 30d: <span id="stat-prox30">$0</span></div>
+      </div>
+      <div class="stat-normal">
+        <div class="stat-label">Top deudor</div>
+        <div class="stat-value" id="stat-topdeudor">—</div>
+        <div class="stat-meta" id="stat-topdeudor-meta">—</div>
+      </div>
+      <div class="stat-normal">
+        <div class="stat-label">Conc. proveedores</div>
+        <div class="stat-value" id="stat-concprov">—</div>
+        <div class="stat-meta" id="stat-concprov-meta">—</div>
       </div>
     </div>
 
@@ -964,6 +995,137 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     </div>
   </section>
 
+  <!-- COMPRAS -->
+  <section id="view-compras" class="view">
+    <div class="page-header">
+      <h1 class="page-title">Compras <em>a proveedores</em></h1>
+      <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+        <select id="compras-filter-prov" class="form-field" style="width:auto;max-width:180px;">
+          <option value="">Todos los proveedores</option>
+        </select>
+        <select id="compras-filter-estado" class="form-field" style="width:auto;">
+          <option value="">Todos los estados</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="PARCIAL">Parcial</option>
+          <option value="PAGADA">Pagada</option>
+        </select>
+        <button class="btn btn-sm btn-accent" id="btn-nueva-compra">+ Nueva compra</button>
+      </div>
+    </div>
+
+    <div class="table-section">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Factura</th>
+            <th>Proveedor</th>
+            <th>Total</th>
+            <th>Pagado</th>
+            <th>Saldo</th>
+            <th>Estado</th>
+            <th>Vencimiento</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="compras-body">
+          <tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando compras...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- VENCIMIENTOS -->
+  <section id="view-vencimientos" class="view">
+    <div class="page-header">
+      <h1 class="page-title">Próximos <em>vencimientos</em></h1>
+      <div style="display:flex;gap:var(--space-2);">
+        <select id="venc-dias" class="form-field" style="width:auto;">
+          <option value="7">7 días</option>
+          <option value="15">15 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="60">60 días</option>
+          <option value="90">90 días</option>
+        </select>
+        <button class="btn btn-sm btn-accent" id="btn-actualizar-venc">Actualizar</button>
+      </div>
+    </div>
+
+    <div style="padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);border:1px solid var(--border);background:var(--bg-2);">
+      <span style="font-size:var(--text-micro);text-transform:uppercase;letter-spacing:0.12em;color:var(--muted);">Total vencimientos: </span>
+      <span id="venc-total" style="font-family:var(--mono);font-size:var(--text-stat-normal);font-weight:500;color:var(--accent);">$0</span>
+    </div>
+
+    <div class="table-section">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Descripción</th>
+            <th>Saldo</th>
+            <th>Días</th>
+            <th>Vence</th>
+          </tr>
+        </thead>
+        <tbody id="venc-body">
+          <tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando vencimientos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- MODAL NUEVA COMPRA -->
+  <div class="modal-overlay" id="modal-compra" role="dialog" aria-modal="true" aria-label="Nueva compra">
+    <div class="modal-box">
+      <div class="modal-title">Registrar compra</div>
+      <div class="form-row">
+        <label class="form-label">Proveedor</label>
+        <select class="form-field" id="compra-proveedor"><option value="">Seleccionar...</option></select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Factura / Documento</label>
+        <input type="text" class="form-field" id="compra-factura" placeholder="FAC-001" maxlength="50">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Fecha de vencimiento</label>
+        <input type="date" class="form-field" id="compra-vencimiento">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Total ($)</label>
+        <input type="number" class="form-field" id="compra-total" placeholder="0" min="1" step="1">
+      </div>
+      <div class="form-row" style="margin-bottom:var(--space-6);">
+        <label class="form-label">Items (línea por línea: producto, cantidad, precio)</label>
+        <textarea class="form-field" id="compra-items" rows="4" placeholder="PROD-001, 2, 50000&#10;PROD-002, 1, 120000" style="font-family:var(--mono);font-size:var(--text-sm);"></textarea>
+      </div>
+      <div id="compra-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
+      <div id="compra-success" style="display:none;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);border:1px solid var(--green-border);background:var(--green-dim);color:var(--green);font-size:var(--text-sm);letter-spacing:0.04em;"></div>
+      <div style="display:flex;gap:var(--space-2);">
+        <button class="btn btn-sm" id="btn-compra-cancelar" style="flex:1;justify-content:center;">Cancelar</button>
+        <button class="btn btn-sm btn-accent" id="btn-compra-guardar" style="flex:1;justify-content:center;">Guardar compra</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PAGO COMPRA -->
+  <div class="modal-overlay" id="modal-pago-compra" role="dialog" aria-modal="true" aria-label="Pagar compra">
+    <div class="modal-box">
+      <div class="modal-title" id="pago-compra-title">Pagar compra</div>
+      <div class="form-row">
+        <label class="form-label">Monto a pagar ($)</label>
+        <input type="number" class="form-field" id="pago-compra-monto" placeholder="0" min="1" step="1">
+      </div>
+      <div class="form-row" style="margin-bottom:var(--space-6);">
+        <label class="form-label">Referencia</label>
+        <input type="text" class="form-field" id="pago-compra-ref" placeholder="Transferencia / Efectivo" maxlength="100">
+      </div>
+      <div id="pago-compra-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
+      <div style="display:flex;gap:var(--space-2);">
+        <button class="btn btn-sm" id="btn-pago-compra-cancelar" style="flex:1;justify-content:center;">Cancelar</button>
+        <button class="btn btn-sm btn-accent" id="btn-pago-compra-ejecutar" style="flex:1;justify-content:center;">Pagar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL NUEVO TERCERO -->
   <div class="modal-overlay" id="modal-tercero" role="dialog" aria-modal="true" aria-label="Nuevo tercero">
     <div class="modal-box">
@@ -1025,6 +1187,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
   <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cartera</span></div>
   <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">◇</span><span>Pagos</span></div>
   <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
+  <div class="nav-item" data-view="compras" aria-label="Compras"><span class="nav-icon">◇</span><span>Comp.</span></div>
+  <div class="nav-item" data-view="vencimientos" aria-label="Vencimientos"><span class="nav-icon">◇</span><span>Venc.</span></div>
 </nav>
 
 <div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--red);color:#fff;text-align:center;padding:8px 16px;font-size:var(--text-sm);letter-spacing:0.04em;">Sin conexión · Los datos pueden estar desactualizados</div>
@@ -1072,6 +1236,13 @@ App.api = {
   getUserInfo: function () { return callServer('getUserInfo'); },
   procesarVenta: function (carrito, opciones) { return callServer('procesarVenta', carrito, opciones); },
   getProductos: function () { return callServer('getProductos'); },
+  registrarCompra: function (proveedorId, items, total, fechaVencimiento, factura) { return callServer('registrarCompra', proveedorId, items, total, fechaVencimiento, factura); },
+  getCompras: function (filtroProveedor, filtroEstado) { return callServer('getCompras', filtroProveedor, filtroEstado); },
+  getDetalleCompra: function (idCompra) { return callServer('getDetalleCompra', idCompra); },
+  registrarPagoProveedor: function (idCompra, monto, referencia) { return callServer('registrarPagoProveedor', idCompra, monto, referencia); },
+  getProximosVencimientos: function (dias) { return callServer('getProximosVencimientos', dias); },
+  getRankingDeudores: function (topN) { return callServer('getRankingDeudores', topN); },
+  getConcentracionProveedores: function () { return callServer('getConcentracionProveedores'); },
 };
 
 App.formatearMoneda = function (centavos) {
@@ -1205,6 +1376,24 @@ function cargarDashboard() {
       var expo = data.porCobrar - data.porPagar;
       document.getElementById('stat-exposicion').textContent = App.formatearMoneda(expo);
 
+      // Nuevos indicadores Fase 3
+      if (data.proximosVencimientos7 !== undefined) {
+        document.getElementById('stat-prox7').textContent = App.formatearMoneda(data.proximosVencimientos7);
+        document.getElementById('stat-prox15').textContent = App.formatearMoneda(data.proximosVencimientos15);
+        document.getElementById('stat-prox30').textContent = App.formatearMoneda(data.proximosVencimientos30);
+      }
+      if (data.topDeudores && data.topDeudores.length > 0) {
+        var top = data.topDeudores[0];
+        document.getElementById('stat-topdeudor').textContent = top.nombre || '—';
+        document.getElementById('stat-topdeudor-meta').textContent = App.formatearMoneda(top.saldo_vencido) + ' (' + (top.max_dias || 0) + 'd)';
+      }
+      if (data.concentracionProveedores) {
+        var c = data.concentracionProveedores;
+        var totalP = c.total || 0;
+        document.getElementById('stat-concprov').textContent = (c.items ? c.items.length : 0) + ' prov.';
+        document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : '—';
+      }
+
       document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
 
       var container = document.getElementById('alerts-body');
@@ -1320,7 +1509,7 @@ function renderizarAnalisis(analisis) {
       var val = r[k];
       // Formatear arrays como lista legible
       if (Array.isArray(val)) {
-        gvalue.innerHTML = val.map(function(item) {
+        gvalue.textContent = val.map(function(item) {
           if (typeof item === 'object' && item !== null) {
             return item.nombre || item.id_tercero || JSON.stringify(item);
           }
@@ -1356,7 +1545,7 @@ function renderizarAnalisis(analisis) {
       var val = s[k];
       // Formatear arrays como lista legible
       if (Array.isArray(val)) {
-        gvalue.innerHTML = val.map(function(item) {
+        gvalue.textContent = val.map(function(item) {
           if (typeof item === 'object' && item !== null) {
             return item.nombre || item.id || JSON.stringify(item);
           }
@@ -2136,8 +2325,10 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (viewId === 'terceros') cargarTerceros();
       if (viewId === 'abonos') cargarAbonoSelect();
       if (viewId === 'ventas') cargarVentas();
+      if (viewId === 'compras') cargarCompras();
+      if (viewId === 'vencimientos') cargarVencimientos();
     }
-    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta' };
+    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', vencimientos: 'Vencimientos' };
     document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
     mostrarHintRefrescar();
     setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
@@ -2166,6 +2357,251 @@ function cargarUserInfo() {
       console.error('Error cargando info de usuario:', err);
       userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
     });
+}
+
+// ════════════════════════════════════════════
+// COMPRAS
+// ════════════════════════════════════════════
+
+var _compraList = [];
+
+function cargarCompras(append) {
+  var body = document.getElementById('compras-body');
+  if (!body) return;
+
+  if (!append) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando compras...</td></tr>';
+  }
+
+  var filtroProv = document.getElementById('compras-filter-prov') ? document.getElementById('compras-filter-prov').value || null : null;
+  var filtroEstado = document.getElementById('compras-filter-estado') ? document.getElementById('compras-filter-estado').value || null : null;
+
+  App.api.getCompras(filtroProv, filtroEstado).then(function (res) {
+    if (!res || res.success === false) {
+      mostrarError(body, (res && res.error) || 'Error al cargar compras');
+      return;
+    }
+    _compraList = res.items || [];
+
+    if (!append) body.innerHTML = '';
+
+    if (_compraList.length === 0) {
+      body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin compras registradas</td></tr>';
+      return;
+    }
+
+    _compraList.forEach(function (c) {
+      if (append && body.querySelector('[data-id="' + c.id + '"]')) return;
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-id', c.id);
+      var estado = c.estado || 'PENDIENTE';
+      var venc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
+      var hoy = new Date();
+      var vencida = venc && (venc - hoy < 0) && estado !== 'PAGADA';
+
+      var rowClass = '';
+      if (estado === 'PAGADA') rowClass = 'row-green';
+      else if (estado === 'PENDIENTE') rowClass = 'row-red';
+      else if (estado === 'PARCIAL') rowClass = 'row-yellow';
+      if (vencida && estado !== 'PAGADA') rowClass = 'row-red';
+
+      if (rowClass) tr.className = rowClass;
+
+      tr.innerHTML =
+        '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || '—') + '</td>' +
+        '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || '—') + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.total) + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.pagado || 0) + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.saldo) + '</td>' +
+        '<td>' + escapeHtml(estado) + '</td>' +
+        '<td style="font-size:var(--text-sm);">' + (venc ? venc.toLocaleDateString('es-CO') : '—') + '</td>' +
+        '<td>' +
+          (estado !== 'PAGADA'
+            ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + c.id + '" data-saldo="' + (c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
+            : '') +
+        '</td>';
+
+      body.appendChild(tr);
+    });
+
+    body.querySelectorAll('.btn-pagar-compra').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        abrirModalPagoCompra(btn.dataset.id, btn.dataset.saldo);
+      });
+    });
+  }).catch(function (err) {
+    mostrarError(body, err.message || err);
+  });
+}
+
+function abrirModalNuevaCompra() {
+  var modal = document.getElementById('modal-compra');
+  document.getElementById('compra-error').style.display = 'none';
+  document.getElementById('compra-success').style.display = 'none';
+  document.getElementById('compra-factura').value = '';
+  document.getElementById('compra-vencimiento').value = '';
+  document.getElementById('compra-total').value = '';
+  document.getElementById('compra-items').value = '';
+  var sel = document.getElementById('compra-proveedor');
+  sel.innerHTML = '<option value="">Seleccionar...</option>';
+  App.api.getTerceros('PROVEEDOR,AMBOS').then(function (res) {
+    if (res && res.items) {
+      res.items.forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.id + ' — ' + (t.nombre || '—');
+        sel.appendChild(opt);
+      });
+    }
+  });
+  modal.classList.add('active');
+}
+
+function cerrarModalNuevaCompra() {
+  document.getElementById('modal-compra').classList.remove('active');
+}
+
+function guardarCompra() {
+  var proveedorId = document.getElementById('compra-proveedor').value;
+  var factura = document.getElementById('compra-factura').value.trim();
+  var vencimiento = document.getElementById('compra-vencimiento').value;
+  var total = parseInt(document.getElementById('compra-total').value, 10);
+  var itemsRaw = document.getElementById('compra-items').value.trim();
+  var errEl = document.getElementById('compra-error');
+
+  if (!proveedorId) { errEl.textContent = 'Seleccione un proveedor'; errEl.style.display = 'block'; return; }
+  if (!total || total < 1) { errEl.textContent = 'Ingrese un total válido'; errEl.style.display = 'block'; return; }
+  if (!itemsRaw) { errEl.textContent = 'Ingrese al menos un item'; errEl.style.display = 'block'; return; }
+
+  var items = [];
+  var lines = itemsRaw.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split(',').map(function (s) { return s.trim(); });
+    if (parts.length < 3) continue;
+    var prod = parts[0];
+    var cant = parseInt(parts[1], 10);
+    var prec = parseInt(parts[2], 10);
+    if (!prod || !cant || !prec) continue;
+    items.push({ id: prod, cantidad: cant, precio_unitario: prec });
+  }
+
+  if (items.length === 0) { errEl.textContent = 'Ningún item válido. Formato: id, cantidad, precio'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  var btn = document.getElementById('btn-compra-guardar');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  App.api.registrarCompra(proveedorId, items, total, vencimiento || null, factura || null).then(function (res) {
+    btn.disabled = false;
+    btn.textContent = 'Guardar compra';
+    if (res && res.success === false) {
+      errEl.textContent = res.error || 'Error al registrar compra';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
+    document.getElementById('compra-success').style.display = 'block';
+    setTimeout(cerrarModalNuevaCompra, 1500);
+    cargarCompras();
+  }).catch(function (err) {
+    btn.disabled = false;
+    btn.textContent = 'Guardar compra';
+    errEl.textContent = err.message || err;
+    errEl.style.display = 'block';
+  });
+}
+
+// ── PAGO COMPRA ──
+
+var _pagoCompraId = null;
+
+function abrirModalPagoCompra(idCompra, saldo) {
+  _pagoCompraId = idCompra;
+  document.getElementById('pago-compra-title').textContent = 'Pagar compra #' + idCompra;
+  document.getElementById('pago-compra-monto').value = Math.round(parseInt(saldo) / 100) || '';
+  document.getElementById('pago-compra-ref').value = '';
+  document.getElementById('pago-compra-error').style.display = 'none';
+  document.getElementById('modal-pago-compra').classList.add('active');
+}
+
+function cerrarModalPagoCompra() {
+  document.getElementById('modal-pago-compra').classList.remove('active');
+  _pagoCompraId = null;
+}
+
+function ejecutarPagoCompra() {
+  var monto = parseInt(document.getElementById('pago-compra-monto').value, 10);
+  var ref = document.getElementById('pago-compra-ref').value.trim();
+  var errEl = document.getElementById('pago-compra-error');
+
+  if (!monto || monto < 1) { errEl.textContent = 'Ingrese un monto válido'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  var btn = document.getElementById('btn-pago-compra-ejecutar');
+  btn.disabled = true;
+  btn.textContent = 'Procesando...';
+
+  App.api.registrarPagoProveedor(_pagoCompraId, monto, ref || 'Pago manual').then(function (res) {
+    btn.disabled = false;
+    btn.textContent = 'Pagar';
+    if (res && res.success === false) {
+      errEl.textContent = res.error || 'Error al procesar pago';
+      errEl.style.display = 'block';
+      return;
+    }
+    cerrarModalPagoCompra();
+    showToast('Pago registrado exitosamente', 'success');
+    cargarCompras();
+  }).catch(function (err) {
+    btn.disabled = false;
+    btn.textContent = 'Pagar';
+    errEl.textContent = err.message || err;
+    errEl.style.display = 'block';
+  });
+}
+
+// ════════════════════════════════════════════
+// VENCIMIENTOS
+// ════════════════════════════════════════════
+
+function cargarVencimientos() {
+  var body = document.getElementById('venc-body');
+  if (!body) return;
+
+  body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando vencimientos...</td></tr>';
+
+  var dias = parseInt(document.getElementById('venc-dias').value || '30', 10);
+
+  App.api.getProximosVencimientos(dias).then(function (res) {
+    if (!res || res.success === false) {
+      mostrarError(body, (res && res.error) || 'Error al cargar vencimientos');
+      return;
+    }
+    var items = res.items || [];
+    document.getElementById('venc-total').textContent = App.formatearMoneda(res.total || 0);
+
+    body.innerHTML = '';
+    if (items.length === 0) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin vencimientos próximos</td></tr>';
+      return;
+    }
+
+    items.forEach(function (v) {
+      var tr = document.createElement('tr');
+      var tipo = v.tipo || v.origen || 'CxC';
+      var labelTipo = tipo === 'CxP' ? 'Cuenta por pagar' : tipo === 'compra' ? 'Compra' : 'Cuenta por cobrar';
+      tr.innerHTML =
+        '<td><span class="badge badge-' + (tipo === 'CxP' || tipo === 'compra' ? 'yellow' : 'red') + '" style="font-size:var(--text-micro);">' + escapeHtml(labelTipo) + '</span></td>' +
+        '<td>' + escapeHtml(v.nombre_tercero || v.nombre || '—') + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
+        '<td>' + (v.dias_para_vencer || 0) + ' d' + '</td>' +
+        '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : '—') + '</td>';
+      body.appendChild(tr);
+    });
+  }).catch(function (err) {
+    mostrarError(body, err.message || err);
+  });
 }
 
 /* ── GAS IFRAME FIX ──
@@ -2221,18 +2657,30 @@ document.addEventListener('DOMContentLoaded', function () {
       busquedaTerceros._timer = setTimeout(cargarTerceros, 300);
     });
   }
+
+  // Compras
+  document.getElementById('btn-nueva-compra').addEventListener('click', abrirModalNuevaCompra);
+  document.getElementById('btn-compra-cancelar').addEventListener('click', cerrarModalNuevaCompra);
+  document.getElementById('btn-compra-guardar').addEventListener('click', guardarCompra);
+  document.getElementById('modal-compra').addEventListener('click', function (e) { if (e.target === this) cerrarModalNuevaCompra(); });
+  document.getElementById('btn-pago-compra-cancelar').addEventListener('click', cerrarModalPagoCompra);
+  document.getElementById('btn-pago-compra-ejecutar').addEventListener('click', ejecutarPagoCompra);
+  document.getElementById('modal-pago-compra').addEventListener('click', function (e) { if (e.target === this) cerrarModalPagoCompra(); });
+  document.getElementById('compras-filter-prov').addEventListener('change', cargarCompras);
+  document.getElementById('compras-filter-estado').addEventListener('change', cargarCompras);
+
+  // Vencimientos
+  document.getElementById('btn-actualizar-venc').addEventListener('click', cargarVencimientos);
+  document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
 });
 
-  document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
-  document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
-
-  document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
-  document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
-  document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
-
-  document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
-  document.getElementById('filter-estado').addEventListener('change', cargarCartera);
-});
+document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
+document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
+document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
+document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
+document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
+document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
+document.getElementById('filter-estado').addEventListener('change', cargarCartera);
 
 function actualizarLabelTema(){
   var label=document.getElementById('theme-toggle-label');
