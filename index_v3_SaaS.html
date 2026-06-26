@@ -1254,8 +1254,9 @@ App.toCents = function (amount) {
   var num = Number(amount);
   if (isNaN(num) || num < 0) return 0;
   if (num % 1 !== 0) {
-    num = Math.round(num * 100) / 100;
+    console.warn('toCents: valor con decimales convertido: ' + amount + ' -> ' + Math.round(num * 100) + ' centavos. Evite usar decimales.');
   }
+  if (num > 9007199254740991) { return 0; }
   return Math.round(num * 100);
 };
 
@@ -1888,7 +1889,7 @@ function ejecutarAbono() {
   var referencia = document.getElementById('abono-referencia').value.trim();
 
   if (!idTercero) { errorEl.textContent = 'Seleccione un tercero.'; errorEl.classList.add('show'); return; }
-  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errorEl.classList.add('show'); return; }
+  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1, sin decimales).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
   confirmarAccion(['¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
@@ -2085,7 +2086,7 @@ function guardarTercero() {
   var nit = document.getElementById('tercero-nit').value.trim().toUpperCase();
   var nombre = document.getElementById('tercero-nombre').value.trim();
   var tipo = document.getElementById('tercero-tipo').value;
-  var limite = App.toCents(document.getElementById('tercero-limite').value);
+  var limiteRaw = document.getElementById('tercero-limite').value;
   var telefono = document.getElementById('tercero-telefono').value.trim();
   var activo = document.getElementById('tercero-activo').checked;
 
@@ -2099,6 +2100,12 @@ function guardarTercero() {
     errorEl.style.display = 'block';
     return;
   }
+  if (limiteRaw && limiteRaw.indexOf('.') !== -1) {
+    errorEl.textContent = 'El límite de crédito no debe contener decimales. Use valores enteros.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  var limite = App.toCents(limiteRaw);
   errorEl.style.display = 'none';
   btnGuardar.disabled = true;
   btnGuardar.textContent = 'Guardando...';
@@ -2245,14 +2252,26 @@ function registrarVenta() {
   var diasCredito = parseInt(document.getElementById('venta-dias').value, 10) || 30;
 
   var carrito = [];
+  var precioError = false;
   document.querySelectorAll('.venta-producto-row').forEach(function (row) {
     var id = row.querySelector('.venta-producto-select').value;
     var cantidad = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
-    var precio = App.toCents(row.querySelector('.venta-precio').value);
+    var precioRaw = row.querySelector('.venta-precio').value;
+    if (precioRaw && precioRaw.indexOf('.') !== -1) {
+      precioError = true;
+      return;
+    }
+    var precio = App.toCents(precioRaw);
     if (id && cantidad > 0) {
       carrito.push({ id: id, cantidad: cantidad, precio: precio });
     }
   });
+
+  if (precioError) {
+    errorEl.textContent = 'Los precios no deben contener decimales. Ingrese valores enteros.';
+    errorEl.classList.add('show');
+    return;
+  }
 
   if (carrito.length === 0) {
     errorEl.textContent = 'Agregue al menos un producto al carrito.';

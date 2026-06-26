@@ -36,12 +36,44 @@ let CACHE = {
   // === INICIO FIX C-02 ===
   _circuitOpenTercerosTimestamp: 0,
   _circuitOpenCarteraTimestamp: 0,
-  CIRCUIT_AUTO_CLOSE_MS: 300000, // 5 minutes
+  CIRCUIT_AUTO_CLOSE_MS: 300000,
   // === FIN FIX C-02 ===
+  // === INICIO FIX CACHE-METRICS ===
+  circuitOpens: 0,
+  circuitCloses: 0,
+  _metricsLoaded: false,
+  // === FIN FIX CACHE-METRICS ===
   lastChecksumTerceros: "",
   lastChecksumCartera: "",
   _refreshingTerceros: false,
   _refreshingCartera: false,
+
+  // === INICIO FIX CACHE-METRICS ===
+  _loadMetrics() {
+    try {
+      const props = PropertiesService.getScriptProperties();
+      this.circuitOpens = Number(props.getProperty('CACHE_CIRCUIT_OPENS') || 0);
+      this.circuitCloses = Number(props.getProperty('CACHE_CIRCUIT_CLOSES') || 0);
+      this._metricsLoaded = true;
+    } catch (e) {
+      Logger.log("CACHE: Error loading metrics: " + e.toString());
+    }
+  },
+
+  _persistMetric(name) {
+    try {
+      PropertiesService.getScriptProperties().setProperty('CACHE_' + name.toUpperCase(), String(this[name]));
+    } catch (e) {
+      Logger.log("CACHE: Error persisting metric " + name + ": " + e.toString());
+    }
+  },
+
+  _incrementMetric(name) {
+    if (!this._metricsLoaded) this._loadMetrics();
+    this[name]++;
+    this._persistMetric(name);
+  },
+  // === FIN FIX CACHE-METRICS ===
 
   /**
    * Invalida SOLO la caché de terceros
@@ -111,6 +143,7 @@ let CACHE = {
         this.tercerosFailCount = 0;
         this._circuitOpenTercerosTimestamp = 0;
         props.deleteProperty(timestampKey);
+        this._incrementMetric('circuitCloses');
       }
     }
     if (kind === 'cartera' && this.carteraCircuitOpen) {
@@ -120,6 +153,7 @@ let CACHE = {
         this.carteraFailCount = 0;
         this._circuitOpenCarteraTimestamp = 0;
         props.deleteProperty(timestampKey);
+        this._incrementMetric('circuitCloses');
       }
     }
   },
@@ -180,6 +214,7 @@ let CACHE = {
    */
   refresh(forceRefresh = false) {
     validateAndMapSchemas();
+    if (!this._metricsLoaded) this._loadMetrics();
 
     if (forceRefresh) {
         this.invalidate();
@@ -332,6 +367,10 @@ let CACHE = {
         circuitOpen: this.carteraCircuitOpen,
         count: this.cartera ? this.cartera.length : 0,
       },
+      metrics: {
+        circuitOpens: this.circuitOpens,
+        circuitCloses: this.circuitCloses,
+      },
       ttl: this.CACHE_TTL,
     };
   },
@@ -462,6 +501,7 @@ let CACHE = {
       }
       if (this.tercerosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
         this.tercerosCircuitOpen = true;
+        this._incrementMetric('circuitOpens');
         // === INICIO FIX C-02 ===
         this._circuitOpenTercerosTimestamp = Date.now();
         try {
@@ -541,6 +581,7 @@ let CACHE = {
       }
       if (this.carteraFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
         this.carteraCircuitOpen = true;
+        this._incrementMetric('circuitOpens');
         // === INICIO FIX C-02 ===
         this._circuitOpenCarteraTimestamp = Date.now();
         try {

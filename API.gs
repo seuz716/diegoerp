@@ -324,6 +324,28 @@ function getCacheHealth() {
 }
 
 /**
+ * API Pública: Métricas de salud del caché (circuit breaker, persistidas)
+ */
+function getCacheMetrics() {
+  try {
+    AuthService.checkPermission("ver_cache");
+    CACHE.refresh();
+    return {
+      success: true,
+      metrics: {
+        circuitOpens: CACHE.circuitOpens,
+        circuitCloses: CACHE.circuitCloses,
+        staleness: CACHE.getStalenessInfo(),
+        consistency: CACHE.verifyConsistency(),
+      },
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e) {
+    return _safeError("getCacheMetrics", e);
+  }
+}
+
+/**
  * API Pública: Forzar análisis fresco (sin caché de IA)
  */
 function analizarConGeminiFresco() {

@@ -348,8 +348,8 @@ function _parseMoneda(v, defaultVal) {
   const num = Number(raw);
   if (isNaN(num)) return defaultVal || 0;
   if (num % 1 !== 0) {
-    console.warn(`Valor con decimales rechazado: ${raw}. Use centavos (entero).`);
-    throw new Error(`Monto inválido: ${raw}. Ingrese valores en centavos (sin decimales).`);
+    console.warn(`Valor con decimales convertido: ${raw} -> ${Math.round(num)}`);
+    return Math.round(num);
   }
   return num;
 }
