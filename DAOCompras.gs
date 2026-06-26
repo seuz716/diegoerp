@@ -49,38 +49,48 @@ const DAO_COMPRAS = {
   },
 
   crearCompra(registro) {
-    var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-    var C = DAO_COMPRAS.COMPRAS_COL;
-    var numCols = Math.max.apply(null, Object.values(C)) + 1;
-    var row = [];
-    row[C.id] = registro.id;
-    row[C.fecha] = registro.fecha;
-    row[C.id_proveedor] = registro.id_proveedor;
-    row[C.id_factura] = registro.id_factura || "";
-    row[C.total] = registro.total;
-    row[C.saldo] = registro.saldo;
-    row[C.estado] = registro.estado;
-    row[C.fecha_vencimiento] = registro.fecha_vencimiento;
-    row[C.vencida_timestamp] = "";
-    row[C.version] = 1;
-    for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
-    sheet.appendRow(row);
-    return registro.id;
+    var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    try {
+      var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+      var C = DAO_COMPRAS.COMPRAS_COL;
+      var numCols = Math.max.apply(null, Object.values(C)) + 1;
+      var row = [];
+      row[C.id] = registro.id;
+      row[C.fecha] = registro.fecha;
+      row[C.id_proveedor] = registro.id_proveedor;
+      row[C.id_factura] = registro.id_factura || "";
+      row[C.total] = registro.total;
+      row[C.saldo] = registro.saldo;
+      row[C.estado] = registro.estado;
+      row[C.fecha_vencimiento] = registro.fecha_vencimiento;
+      row[C.vencida_timestamp] = "";
+      row[C.version] = 1;
+      for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+      sheet.appendRow(row);
+      return registro.id;
+    } finally {
+      if (lock) lock.releaseLock();
+    }
   },
 
   crearDetalleCompra(detalle) {
-    var sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
-    var C = DAO_COMPRAS.DETALLE_COL;
-    var numCols = Math.max.apply(null, Object.values(C)) + 1;
-    var row = [];
-    row[C.id] = detalle.id;
-    row[C.id_compra] = detalle.id_compra;
-    row[C.id_producto] = detalle.id_producto;
-    row[C.cantidad] = detalle.cantidad;
-    row[C.precio_unitario] = detalle.precio_unitario;
-    row[C.subtotal] = detalle.subtotal;
-    for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
-    sheet.appendRow(row);
+    var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    try {
+      var sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
+      var C = DAO_COMPRAS.DETALLE_COL;
+      var numCols = Math.max.apply(null, Object.values(C)) + 1;
+      var row = [];
+      row[C.id] = detalle.id;
+      row[C.id_compra] = detalle.id_compra;
+      row[C.id_producto] = detalle.id_producto;
+      row[C.cantidad] = detalle.cantidad;
+      row[C.precio_unitario] = detalle.precio_unitario;
+      row[C.subtotal] = detalle.subtotal;
+      for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+      sheet.appendRow(row);
+    } finally {
+      if (lock) lock.releaseLock();
+    }
   },
 
   getCompraById(id) {
@@ -110,11 +120,15 @@ const DAO_COMPRAS = {
     return result;
   },
 
-  getCompras(filtroProveedor, filtroEstado) {
+  getCompras(filtroProveedor, filtroEstado, maxRows) {
     var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];
-    var data = sheet.getRange(2, 1, lastRow - 1, Math.max.apply(null, Object.values(DAO_COMPRAS.COMPRAS_COL)) + 1).getValues();
+    var C = DAO_COMPRAS.COMPRAS_COL;
+    var numCols = Math.max.apply(null, Object.values(C)) + 1;
+    if (!maxRows || maxRows <= 0) maxRows = 10000;
+    var totalDataRows = Math.min(lastRow - 1, maxRows);
+    var data = sheet.getRange(2, 1, totalDataRows, numCols).getValues();
     var result = [];
     for (var i = 0; i < data.length; i++) {
       var item = DAO_COMPRAS._rowToCompra(data[i], i + 2);
@@ -125,19 +139,35 @@ const DAO_COMPRAS = {
     return result;
   },
 
-  actualizarSaldoCompra(idCompra, nuevoSaldo, nuevoEstado) {
+  actualizarSaldoCompra(idCompra, nuevoSaldo, nuevoEstado, expectedVersion) {
     var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) throw new Error("Compra no encontrada: " + idCompra);
     var C = DAO_COMPRAS.COMPRAS_COL;
-    var data = sheet.getRange(2, 1, lastRow - 1, Math.max.apply(null, Object.values(C)) + 1).getValues();
+    var numCols = Math.max.apply(null, Object.values(C)) + 1;
+    var data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
     for (var i = 0; i < data.length; i++) {
       if (String(data[i][C.id] || "").trim() === idCompra) {
         var rowIdx = i + 2;
         var currentVersion = parseInt(data[i][C.version]) || 1;
-        sheet.getRange(rowIdx, C.saldo + 1).setValue(nuevoSaldo);
-        sheet.getRange(rowIdx, C.estado + 1).setValue(nuevoEstado);
-        sheet.getRange(rowIdx, C.version + 1).setValue(currentVersion + 1);
+        if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+          var err = new Error(
+            "OptimisticLockError: Compra " + idCompra + " fue modificada concurrentemente " +
+            "(esperada v" + expectedVersion + ", actual v" + currentVersion + "). Reintente."
+          );
+          err.type = 'OPTIMISTIC_LOCK_FAILURE';
+          err.rowIndex = rowIdx;
+          err.expectedVersion = expectedVersion;
+          err.actualVersion = currentVersion;
+          err.retryable = true;
+          throw err;
+        }
+        var rowRange = sheet.getRange(rowIdx, 1, 1, numCols);
+        var rowValues = rowRange.getValues()[0];
+        rowValues[C.saldo] = nuevoSaldo;
+        rowValues[C.estado] = nuevoEstado;
+        rowValues[C.version] = currentVersion + 1;
+        rowRange.setValues([rowValues]);
         return true;
       }
     }

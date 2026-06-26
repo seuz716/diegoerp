@@ -492,11 +492,14 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
   }
 }
 
-function getCompras(filtroProveedor, filtroEstado) {
+function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
   try {
     AuthService.checkPermission("ver_compras");
     CACHE.refresh();
-    var compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null);
+    if (!page && page !== 0) page = 0;
+    if (!pageSize) pageSize = 5000;
+    pageSize = Math.min(5000, pageSize);
+    var compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null, 10000);
     var tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
@@ -504,7 +507,9 @@ function getCompras(filtroProveedor, filtroEstado) {
     compras.forEach(function(c) {
       c.nombre_proveedor = tercerosMap[c.id_proveedor] || "DESCONOCIDO";
     });
-    return { success: true, items: compras };
+    var start = page * pageSize;
+    var paginated = compras.slice(start, start + pageSize);
+    return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize };
   } catch (e) {
     return _safeError("getCompras", e);
   }

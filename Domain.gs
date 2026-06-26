@@ -524,8 +524,20 @@ const DOMAIN = {
       var _item = items[_i];
       var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
       var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
+      var _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
       if (!_pid) return _error("Producto inválido en el ítem #" + (_i + 1) + ".");
       if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
+      if (_pUnit <= 0) return _error("Precio unitario inválido en el ítem #" + (_i + 1) + ".");
+    }
+
+    var idFacturaLimpia = String(factura || "").trim();
+    if (idFacturaLimpia) {
+      var comprasExistentes = DAO_COMPRAS.getCompras(null, null);
+      for (var _ck = 0; _ck < comprasExistentes.length; _ck++) {
+        if (String(comprasExistentes[_ck].id_factura || "").trim() === idFacturaLimpia) {
+          return _error("Ya existe una compra con la factura #" + idFacturaLimpia + ".");
+        }
+      }
     }
 
     const MAX_RETRIES = 3;
@@ -673,7 +685,7 @@ const DOMAIN = {
         tx.snapshotCompraRow(compra.rowIndex);
         tx.markPagoPreAppend();
 
-        DAO_COMPRAS.actualizarSaldoCompra(idCompraLimpio, nuevoSaldo, nuevoEstado);
+        DAO_COMPRAS.actualizarSaldoCompra(idCompraLimpio, nuevoSaldo, nuevoEstado, compra.version);
         DAO_COMPRAS.crearPagoProveedor({
           id: pagoId, fecha: new Date(), id_compra: idCompraLimpio,
           id_proveedor: compra.id_proveedor, valor: montoLimpio,
