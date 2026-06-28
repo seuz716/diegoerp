@@ -156,7 +156,7 @@ var _Transaction = {
             const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
             sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
           }
-          Logger.log("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
+          console.debug("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
         }
         // === FIN FIX M-02 ===
         const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
@@ -178,7 +178,7 @@ var _Transaction = {
             const numCols = snap.values.length;
             sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
           }
-          Logger.log("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
+          console.debug("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
         }
         // Compras rollback
         if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
@@ -270,7 +270,7 @@ const DOMAIN = {
       const cachedRow = CACHE.terceroIndex ? CACHE.terceroIndex[id] : null;
       if (cachedRow) {
         tx.snapshotTerceroRow(cachedRow);
-        Logger.log("[FIX-M-02] Snapshot tomado para fila existente: " + cachedRow);
+        console.debug("[FIX-M-02] Snapshot tomado para fila existente: " + cachedRow);
       }
       // === FIN FIX M-02 ===
 
@@ -412,7 +412,7 @@ const DOMAIN = {
         CACHE.refresh();
         const consistency = CACHE.verifyConsistency();
         if (consistency.mismatched) {
-          Logger.log("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
+          console.debug("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
           CACHE.recoverFromStale();
         }
 
@@ -483,7 +483,7 @@ const DOMAIN = {
         // === INICIO FIX C-04 ===
         try {
           tx.rollback();
-          Logger.log("[FIX-C-04] Rollback completado exitosamente");
+          console.debug("[FIX-C-04] Rollback completado exitosamente");
         } catch (rbErr) {
           Logger.log("[FIX-C-04] ERROR: Rollback falló - " + rbErr.message);
         }
@@ -561,7 +561,7 @@ const DOMAIN = {
 
       const consistency = CACHE.verifyConsistency();
       if (consistency.mismatched) {
-        Logger.log("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
+        console.debug("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
         CACHE.recoverFromStale();
       }
 

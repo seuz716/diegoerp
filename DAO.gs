@@ -34,7 +34,7 @@ const DAO = {
       if (!sheet) return;
       const row = startRow || sheet.getLastRow() + 1;
       sheet.getRange(row, 1, rows.length, rows[0].length).setValues(rows);
-      Logger.log(`[DAO.batchInsert] Inserted ${rows.length} rows to ${sheetName}`);
+      console.debug(`[DAO.batchInsert] Inserted ${rows.length} rows to ${sheetName}`);
     } catch (e) {
       Logger.log(`[DAO.batchInsert] Error: ${e.toString()}`);
     }
@@ -107,15 +107,20 @@ const DAO = {
   },
 
   getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
+    const base = CACHE.getCarteraBase();
+    if (base && base.length > 0) {
+      return base.filter(c =>
+        c.id_tercero === idTercero &&
+        c.tipo === tipoLimpio &&
+        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA &&
+        c.saldo > 0
+      );
+    }
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
     const rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.id_tercero, idTercero);
-
-    if (!rowIndexes || rowIndexes.length === 0) {
-      return [];
-    }
-
+    if (!rowIndexes || rowIndexes.length === 0) return [];
     return this._fetchCarteraItemsFromRows(sheet, rowIndexes, numCols)
       .filter(c => c.tipo === tipoLimpio && c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && c.saldo > 0);
   },
@@ -395,7 +400,7 @@ if (optimisticLockFailure) {
         }
       }
 
-      Logger.log(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
+      console.debug(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
 
       try {
         targetRange.setValues(values);
@@ -412,7 +417,7 @@ if (optimisticLockFailure) {
         if (attempt < MAX_RETRY_ATTEMPTS) {
           CACHE.refresh(true);
           const delay = BACKOFF_BASE_MS * Math.pow(2, attempt) + Math.random() * 100;
-          Logger.log(`WARN: OptimisticLock retry #${attempt + 1} for updateCarteraBatch. Waiting ${delay}ms`);
+          console.debug(`WARN: OptimisticLock retry #${attempt + 1} for updateCarteraBatch. Waiting ${delay}ms`);
           Utilities.sleep(delay);
           return this._updateCarteraWithRetry(cambios, attempt + 1);
         }
