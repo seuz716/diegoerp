@@ -5,6 +5,40 @@
  * - #7: Tiempo de vida del caché sin mecanismo de refresh bajo demanda
  */
 
+// =============================================================================
+// EFFICIENT LOGGING SYSTEM
+// =============================================================================
+const LOG_LEVEL = PropertiesService.getScriptProperties().getProperty('LOG_LEVEL') || 'ERROR';
+
+const LOG = {
+  DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3,
+  
+  _levels: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 },
+  
+  log(level, message, ...args) {
+    if (!this._shouldLog(level)) return;
+    const prefix = `[${level}]`;
+    const formatted = args.length ? message.replace(/%s/g, () => String(args.shift())) : message;
+    LOG.prefix, formatted);
+  },
+  
+  _shouldLog(level) {
+    return this._levels[level] >= this._levels[LOG_LEVEL];
+  },
+  
+  debug(msg, ...args) { this.log('DEBUG', msg, ...args); },
+  info(msg, ...args) { this.log('INFO', msg, ...args); },
+  warn(msg, ...args) { this.log('WARN', msg, ...args); },
+  error(msg, ...args) { this.log('ERROR', msg, ...args); }
+};
+
+/**
+ * LAYER 3: CACHE LAYER — ÍNDICES EN MEMORIA
+ * Resuelve Problemas:
+ * - #3: Caché con TTL fijo sin invalidación selectiva
+ * - #7: Tiempo de vida del caché sin mecanismo de refresh bajo demanda
+ */
+
 class CacheIntegrityError extends Error {
   constructor(kind, currentChecksum, storedChecksum) {
     super(`Cache integrity mismatch for ${kind}: current=${currentChecksum}, stored=${storedChecksum}`);
@@ -70,7 +104,7 @@ let CACHE = {
       this.circuitCloses = Number(props.getProperty('CACHE_CIRCUIT_CLOSES') || 0);
       this._metricsLoaded = true;
     } catch (e) {
-      Logger.log("CACHE: Error loading metrics: " + e.toString());
+      LOG."CACHE: Error loading metrics: " + e.toString());
     }
   },
 
@@ -81,7 +115,7 @@ let CACHE = {
                   'CACHE_' + name.toUpperCase();
       PropertiesService.getScriptProperties().setProperty(key, String(this[name]));
     } catch (e) {
-      Logger.log("CACHE: Error persisting metric " + name + ": " + e.toString());
+      LOG."CACHE: Error persisting metric " + name + ": " + e.toString());
     }
   },
 
@@ -114,7 +148,7 @@ let CACHE = {
       const key = "terceros_v" + currentVer;
       CacheService.getScriptCache().remove(key);
     } catch (e) {
-      Logger.log("CACHE: Error invalidating native terceros cache: " + e.toString());
+      LOG."CACHE: Error invalidating native terceros cache: " + e.toString());
     }
   },
 
@@ -137,7 +171,7 @@ let CACHE = {
       const key = "cartera_v" + currentVer;
       CacheService.getScriptCache().remove(key);
     } catch (e) {
-      Logger.log("CACHE: Error invalidating native cartera cache: " + e.toString());
+      LOG."CACHE: Error invalidating native cartera cache: " + e.toString());
     }
   },
 
@@ -172,18 +206,6 @@ let CACHE = {
   },
 
   /**
-   * Half-open circuit breaker: allows one test request to check if service is back
-   * @param {string} kind - 'terceros' or 'cartera'
-   * @param {boolean} testResult - true if test succeeded, false otherwise
-   * @returns {boolean} true if circuit is now closed (service recovered)
-   */
-  /**
-   * Half-open circuit breaker: verifies health before closing
-   * @param {string} kind - 'terceros' or 'carrtera'
-   * @param {boolean} testResult - true if test succeeded, false otherwise
-   * @returns {boolean} true if circuit is now closed (service recovered)
-   */
-  /**
    * Executes a function with circuit breaker protection and retry logic
    * @param {string} kind - 'terceros' or 'cartera'
    * @param {Function} fn - Function to execute
@@ -213,7 +235,7 @@ let CACHE = {
         return result;
       } catch (e) {
         lastError = e;
-        Logger.log(`[FIX-C-02] Attempt ${attempt + 1}/${maxRetries} failed: ${e.message}`);
+        LOG.`[FIX-C-02] Attempt ${attempt + 1}/${maxRetries} failed: ${e.message}`);
         if (attempt < maxRetries - 1) {
           Utilities.sleep(1000 * (attempt + 1)); // Exponential backoff
         }
@@ -241,7 +263,7 @@ let CACHE = {
         this._circuitOpenCarteraTimestamp = newOpenTs;
         props.setProperty('CIRCUIT_OPEN_CARTERA_TS', String(newOpenTs));
       }
-      Logger.log(`[FIX-C-02] HALF_OPEN test failed. Circuit ${kind} back to OPEN with ${backoffMs}ms backoff`);
+      LOG.`[FIX-C-02] HALF_OPEN test failed. Circuit ${kind} back to OPEN with ${backoffMs}ms backoff`);
       return false;
     }
 
@@ -250,7 +272,7 @@ let CACHE = {
     const staleStartProp = kind === 'terceros' ? 'tercerosStaleStart' : 'carteraStaleStart';
     const isStale = this[staleProp] && (Date.now() - this[staleStartProp]) > this.MAX_STALE_MS / 2;
     if (isStale) {
-      Logger.log(`[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.`);
+      LOG.`[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.`);
       const props = PropertiesService.getScriptProperties();
       const currentFailures = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
       const backoffMs = Math.min(60000, 5000 * Math.pow(2, currentFailures));
@@ -277,7 +299,7 @@ let CACHE = {
       PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
     }
     this._incrementMetric('circuitCloses');
-    Logger.log(`[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ${kind} CLOSED - service recovered`);
+    LOG.`[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ${kind} CLOSED - service recovered`);
     return true;
   },
   
@@ -302,7 +324,7 @@ let CACHE = {
       this._circuitOpenCarteraTimestamp = 0;
       PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
     }
-    Logger.log(`[FIX-C-02] Circuit breaker reset: ${kind}`);
+    LOG.`[FIX-C-02] Circuit breaker reset: ${kind}`);
   },
 
   /**
@@ -337,7 +359,7 @@ let CACHE = {
     const storedTs = Number(props.getProperty(timestampKey) || '0');
     
     if (state === 'open' && storedTs > 0 && (Date.now() - storedTs) > this.CIRCUIT_AUTO_CLOSE_MS) {
-      Logger.log(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after 5 minutes`);
+      LOG.`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after 5 minutes`);
       this._setCircuitState(kind, 'half_open');
       if (kind === 'terceros') {
         this.tercerosCircuitOpen = true;
@@ -436,7 +458,7 @@ isCarteraValid() {
       return false;
     }
     
-    Logger.log(`[CB-HALF_OPEN] Transitioning ${kind} circuit to HALF_OPEN after ${this.CIRCUIT_AUTO_CLOSE_MS}ms`);
+    LOG.`[CB-HALF_OPEN] Transitioning ${kind} circuit to HALF_OPEN after ${this.CIRCUIT_AUTO_CLOSE_MS}ms`);
     this._setCircuitState(kind, 'half_open');
     return true;
   },
@@ -462,9 +484,9 @@ isCarteraValid() {
   },
 
   recoverFromStale() {
-    Logger.log("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
+    LOG."CACHE: Iniciando protocolo de recuperación por datos obsoletos");
     if (!LOCK_MANAGER._safeTryLock(5000)) {
-      Logger.log("CACHE: No se pudo adquirir lock global para recoverFromStale, abortando");
+      LOG."CACHE: No se pudo adquirir lock global para recoverFromStale, abortando");
       return false;
     }
     try {
@@ -482,15 +504,15 @@ isCarteraValid() {
           this._refreshCartera();
           restored = !this.tercerosStale && !this.carteraStale;
         } catch (e) {
-          Logger.log("CACHE: recoverFromStale intento " + attempt + " falló: " + e);
+          LOG."CACHE: recoverFromStale intento " + attempt + " falló: " + e);
           if (attempt < maxAttempts) {
             const backoff = 500 * Math.pow(2, attempt - 1);
-            Logger.log("CACHE: Esperando " + backoff + "ms antes del próximo intento");
+            LOG."CACHE: Esperando " + backoff + "ms antes del próximo intento");
             Utilities.sleep(backoff);
           }
         }
       }
-      Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored + " tras " + attempt + " intento(s)");
+      LOG."CACHE: Protocolo de recuperación completado. restaurado=" + restored + " tras " + attempt + " intento(s)");
       return restored;
     } finally {
       LOCK_MANAGER._safeReleaseLock();
@@ -527,7 +549,7 @@ isCarteraValid() {
     const durationMs = Date.now() - start;
     const mismatch = currentChecksum !== storedChecksum;
     const valid = !mismatch;
-    Logger.log(`CACHE._verifyChecksum(${kind}): ${durationMs}ms, valid=${valid}`);
+    LOG.`CACHE._verifyChecksum(${kind}): ${durationMs}ms, valid=${valid}`);
     return { valid, currentChecksum, mismatch };
   },
 
@@ -538,7 +560,7 @@ isCarteraValid() {
    * @returns {boolean} false
    */
   _handleIntegrityFailure(kind) {
-    Logger.log("CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
+    LOG."CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
     this.recoverFromStale();
     return false;
   },
@@ -613,7 +635,7 @@ ttl: this.CACHE_TTL
     if (totalRows <= 50000) {
       return sheet.getRange(startRow, 1, totalRows, numCols).getValues();
     }
-    Logger.log("[FIX-M-06] Large sheet: %s rows, reading in blocks of %s", totalRows, ITEMS_PER_BLOCK);
+    LOG."[FIX-M-06] Large sheet: %s rows, reading in blocks of %s", totalRows, ITEMS_PER_BLOCK);
     let result = [];
     for (let offset = 0; offset < totalRows; offset += ITEMS_PER_BLOCK) {
       const blockSize = Math.min(ITEMS_PER_BLOCK, totalRows - offset);
@@ -674,7 +696,7 @@ ttl: this.CACHE_TTL
 
   _refreshTerceros() {
     if (this._refreshingTerceros) {
-      Logger.log("CACHE: _refreshTerceros ya en progreso, saltando llamada redundante");
+      LOG."CACHE: _refreshTerceros ya en progreso, saltando llamada redundante");
       return;
     }
     this._refreshingTerceros = true;
@@ -722,7 +744,7 @@ ttl: this.CACHE_TTL
       });
     } catch (e) {
       this.tercerosFailCount++;
-      Logger.log("ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
+      LOG."ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
       if (this.terceros === null) {
         this.tercerosStale = false;
         return;
@@ -739,10 +761,10 @@ ttl: this.CACHE_TTL
         try {
           PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
         } catch (e) {
-          Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+          LOG."[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
         }
         // === FIN FIX C-02 ===
-        Logger.log("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
+        LOG."CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
       }
     } finally {
       this._refreshingTerceros = false;
@@ -751,7 +773,7 @@ ttl: this.CACHE_TTL
 
   _refreshCartera() {
     if (this._refreshingCartera) {
-      Logger.log("CACHE: _refreshCartera ya en progreso, saltando llamada redundante");
+      LOG."CACHE: _refreshCartera ya en progreso, saltando llamada redundante");
       return;
     }
     this._refreshingCartera = true;
@@ -803,7 +825,7 @@ ttl: this.CACHE_TTL
       });
     } catch (e) {
       this.carteraFailCount++;
-      Logger.log("ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
+      LOG."ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
       if (this.cartera === null) {
         this.carteraStale = false;
         return;
@@ -821,10 +843,10 @@ ttl: this.CACHE_TTL
         try {
           PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
         } catch (e) {
-          Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+          LOG."[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
         }
         // === FIN FIX C-02 ===
-        Logger.log("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
+        LOG."CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
       }
     } finally {
       this._refreshingCartera = false;
@@ -852,6 +874,15 @@ ttl: this.CACHE_TTL
     const idClean = _sanitizeId(idTercero);
     if (!idClean) return [];
 
+    // Check cache first (consistent with getSaldoTercero)
+    if (this.cartera && this.cartera.length > 0) {
+      return this.cartera.filter(c =>
+        c.id_tercero === idClean &&
+        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA
+      );
+    }
+
+    // Fallback to sheet query only if cache unavailable
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
@@ -909,12 +940,12 @@ ttl: this.CACHE_TTL
         c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA
       );
       const saldo = items.reduce((sum, c) => sum + c.saldo, 0);
-      Logger.log("[FIX-M-03] getSaldoTercero(%s) from cache: %s items, saldo=%s", idClean, items.length, saldo);
+      LOG."[FIX-M-03] getSaldoTercero(%s) from cache: %s items, saldo=%s", idClean, items.length, saldo);
       return saldo;
     }
 
     // Fallback to sheet-based query if cache not available
-    Logger.log("[FIX-M-03] getSaldoTercero(%s) cache miss, falling back to sheet", idClean);
+    LOG."[FIX-M-03] getSaldoTercero(%s) cache miss, falling back to sheet", idClean);
     return this.getCarteraPorTercero(idClean)
       .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
       .reduce((sum, c) => sum + c.saldo, 0);
@@ -947,10 +978,10 @@ ttl: this.CACHE_TTL
           cache.put(baseKey + "_c" + c, chunk, 300);
         }
         cache.put(baseKey + "_meta", String(totalChunks), 300);
-        Logger.log("CACHE: Fragmentado en " + totalChunks + " chunks (" + serialized.length + " bytes)");
+        LOG."CACHE: Fragmentado en " + totalChunks + " chunks (" + serialized.length + " bytes)");
       }
     } catch (e) {
-      Logger.log("CACHE: Error in _putNativeCache: " + e.toString());
+      LOG."CACHE: Error in _putNativeCache: " + e.toString());
     }
   },
 
@@ -973,7 +1004,7 @@ ttl: this.CACHE_TTL
       }
       return JSON.parse(parts.join(""));
     } catch (e) {
-      Logger.log("CACHE: Error in _getNativeCache: " + e.toString());
+      LOG."CACHE: Error in _getNativeCache: " + e.toString());
     }
     return null;
   }
