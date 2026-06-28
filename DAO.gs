@@ -21,6 +21,25 @@ function _sanitizeCell(value) {
 }
 
 const DAO = {
+  /**
+   * Batch insert multiple rows efficiently
+   * @param {string} sheetName - Sheet name
+   * @param {Array<Array>} rows - Array of row arrays to insert
+   * @param {number} startRow - Starting row (default: lastRow + 1)
+   */
+  batchInsert(sheetName, rows, startRow = null) {
+    if (!rows || rows.length === 0) return;
+    try {
+      const sheet = getSheet(sheetName);
+      if (!sheet) return;
+      const row = startRow || sheet.getLastRow() + 1;
+      sheet.getRange(row, 1, rows.length, rows[0].length).setValues(rows);
+      Logger.log(`[DAO.batchInsert] Inserted ${rows.length} rows to ${sheetName}`);
+    } catch (e) {
+      Logger.log(`[DAO.batchInsert] Error: ${e.toString()}`);
+    }
+  },
+
   getTerceroById(id) {
     const idClean = _sanitizeId(id);
     if (!idClean) return null;
