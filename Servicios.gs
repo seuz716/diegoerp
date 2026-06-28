@@ -151,6 +151,38 @@ function procesarVentaV2(carrito, opciones) {
 
     state.current = VENTA_STATES.COMPLETED;
 
+    // === GENERAR ASIENTO CONTABLE ===
+    const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+    const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
+    
+    if (esCredito && idTercero) {
+      LIBRO_DIARIO.registrarVentaCredito(
+        new Date(), 
+        "VENTA-" + Date.now(), 
+        idTercero, 
+        totalVenta, 
+        usuario
+      );
+      // Registrar entrada de caja cuando llegue el abono
+    } else {
+      LIBRO_DIARIO.registrarVentaContado(
+        new Date(),
+        "VENTA-" + Date.now(),
+        idTercero || "CONTADO",
+        totalVenta,
+        usuario
+      );
+      // Registrar entrada inmediata (venta contado)
+      FLUJO_CAJA.registrarMovimiento(
+        new Date(),
+        FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
+        "Venta contado: " + (idTercero || "Contado"),
+        totalVenta,
+        "VENTA-" + Date.now(),
+        usuario
+      );
+    }
+
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
       { items: carritoConsolidado.length },
       { total: totalVenta, tipo: opciones.tipo },

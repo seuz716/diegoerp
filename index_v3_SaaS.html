@@ -723,6 +723,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
         <div class="stat-value" id="stat-exposicion">$3.390.000</div>
         <div class="stat-meta">Al día de hoy</div>
       </div>
+      <div class="stat-normal">
+        <div class="stat-label">Saldo de caja</div>
+        <div class="stat-value" id="stat-saldo-caja">$2.150.000</div>
+        <div class="stat-meta" id="stat-flujo-neto">30d: +$150.000</div>
+      </div>
     </div>
 
     <!-- Vencimientos próximos + ranking -->
@@ -790,6 +795,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
       </div>
     </div>
 
+    <!-- Exportar Libro Diario -->
+    <div class="ia-panel" style="margin-top:var(--space-5)">
+      <div class="ia-title">Libro Diario Contable</div>
+      <button class="btn btn-outline" id="btn-exportar-libro">↓ Exportar CSV</button>
+      <div style="margin-top:var(--space-4);font-size:var(--text-sm);color:var(--muted);line-height:1.6;">
+        Exporta todos los asientos contables (ventas, abonos, compras, pagos) en formato CSV para auditoría o entrega al contador.
+      </div>
+    </div>
+
     <!-- IA Panel -->
     <div class="ia-panel">
       <div class="ia-title">Análisis de inteligencia artificial</div>
@@ -806,6 +820,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .nav-item:focus
     </div>
 
     <div id="ia-results" class="ia-results" style="display:none" aria-live="polite"></div>
+
+    <!-- Exportar Flujo de Caja -->
+    <div class="ia-panel" style="margin-top:var(--space-3)">
+      <button class="btn btn-outline btn-sm" id="btn-exportar-flujo">↓ Exportar flujo caja</button>
+      <span style="font-size:var(--text-sm);color:var(--muted);margin-left:var(--space-2)">Registra entradas y salidas diarias</span>
+    </div>
   </section>
 
   <!-- CARTERA -->
@@ -1395,6 +1415,16 @@ function cargarDashboard() {
         document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : '—';
       }
 
+      // Cargar flujo de caja (saldo actual + flujo neto 30d)
+      App.api.getFlujoCajaResumen(30).then(function (flujo) {
+        if (flujo && flujo.success !== false) {
+          document.getElementById('stat-saldo-caja').textContent = App.formatearMoneda(flujo.saldo_actual);
+          document.getElementById('stat-flujo-neto').textContent = "30d: " + (flujo.neto >= 0 ? "+" : "") + App.formatearMoneda(flujo.neto);
+        }
+      }).catch(function () {
+        // Silencioso si no hay flujo de caja
+      });
+
       document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
 
       var container = document.getElementById('alerts-body');
@@ -1651,6 +1681,76 @@ function analizarConGeminiFresco() {
       btnHeader.textContent = textoOriginalH;
       btnPanel.disabled = false;
       btnPanel.textContent = textoOriginalP;
+    });
+}
+
+/**
+ * Exporta el libro diario contable en formato CSV
+ */
+function exportarLibroDiarioCSV() {
+  var btn = document.getElementById('btn-exportar-libro');
+  var textoOriginal = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = 'Exportando...';
+  
+  App.api.exportarLibroDiario()
+    .then(function (resp) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      
+      if (resp && resp.success) {
+        var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'libro_diario_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Libro diario exportado correctamente', 'success');
+      } else {
+        showToast(resp.error || 'Error exportando libro diario', 'error');
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      showToast(err.message || 'Error de conexión', 'error');
+    });
+}
+
+/**
+ * Exporta el flujo de caja en formato CSV
+ */
+function exportarFlujoCajaCSV() {
+  var btn = document.getElementById('btn-exportar-flujo');
+  var textoOriginal = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = 'Exportando...';
+  
+  App.api.exportarFlujoCaja()
+    .then(function (resp) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      
+      if (resp && resp.success) {
+        var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'flujo_caja_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Flujo de caja exportado correctamente', 'success');
+      } else {
+        showToast(resp.error || 'Error exportando flujo', 'error');
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      showToast(err.message || 'Error de conexión', 'error');
     });
 }
 
@@ -2700,6 +2800,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
 document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
 document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
+document.getElementById('btn-exportar-libro').addEventListener('click', exportarLibroDiarioCSV);
+document.getElementById('btn-exportar-flujo').addEventListener('click', exportarFlujoCajaCSV);
 document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
 document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
 document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
