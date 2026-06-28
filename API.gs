@@ -136,6 +136,30 @@ const RATE_LIMITER = {
 /**
  * API Pública: Registrar abono
  */
+// Latency histogram buckets (ms)
+const LATENCY_HISTOGRAM = {
+  buckets: [100, 500, 1000, 2000, 5000, 10000],
+  counts: [0, 0, 0, 0, 0, 0],
+  record(latencyMs) {
+    for (let i = 0; i < this.buckets.length; i++) {
+      if (latencyMs <= this.buckets[i]) {
+        this.counts[i]++;
+        break;
+      }
+    }
+    PropertiesService.getScriptProperties().setProperty('LATENCY_COUNTS', JSON.stringify(this.counts));
+  },
+  getHistogram() {
+    return { buckets: this.buckets, counts: this.counts };
+  }
+};
+
+// Load persisted counts
+try {
+  const persisted = PropertiesService.getScriptProperties().getProperty('LATENCY_COUNTS');
+  if (persisted) LATENCY_HISTOGRAM.counts = JSON.parse(persisted);
+} catch(e) {}
+
 function registrarAbono(idTercero, valorAbono, referencia, tipo) {
   const startTime = Date.now();
   const correlationId = generateCorrelationId();
@@ -150,6 +174,7 @@ function registrarAbono(idTercero, valorAbono, referencia, tipo) {
     const tipoValidado = INPUT_VALIDATOR.sanitizeString(tipo, 10);
     
     const result = DOMAIN.registrarAbonoAtomic(idTerceroValidado, valorValidado, referenciaValidada, tipoValidado, correlationId);
+    LATENCY_HISTOGRAM.record(Date.now() - startTime);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("registrarAbono", e, correlationId);

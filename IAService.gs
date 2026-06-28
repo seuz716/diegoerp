@@ -221,9 +221,15 @@ const IA_SERVICE = {
   /**
    * Simple in-memory rate limiter for Gemini API
    */
+  _rateLimitCount: 0,
+  _rateLimitHit: 0,
+  _totalApiCalls: 0,
+
   _checkRateLimit() {
     const key = 'gemini_requests';
     const now = Date.now();
+    this._totalApiCalls++;
+    
     const windowStart = PropertiesService.getScriptProperties().getProperty(key + '_window') || '0';
     const count = Number(PropertiesService.getScriptProperties().getProperty(key + '_count') || '0');
     
@@ -231,17 +237,31 @@ const IA_SERVICE = {
       // Reset window
       PropertiesService.getScriptProperties().setProperty(key + '_window', String(now));
       PropertiesService.getScriptProperties().setProperty(key + '_count', '1');
+      this._rateLimitCount = 1;
       return true;
     }
     
+    this._rateLimitCount = count + 1;
+    
     if (count >= this.RATE_LIMIT_MAX_REQUESTS) {
+      this._rateLimitHit++;
       const resetMs = this.RATE_LIMIT_WINDOW_MS - (now - Number(windowStart));
       console.warn('Rate limit excedido para Gemini. Espera ' + Math.ceil(resetMs / 1000) + 's');
       return false;
     }
     
-    PropertiesService.getScriptProperties().setProperty(key + '_count', String(count + 1));
+    PropertiesService.getScriptProperties().setProperty(key + '_count', String(this._rateLimitCount));
     return true;
+  },
+  
+  _getRateLimitMetrics() {
+    return {
+      requestsInWindow: this._rateLimitCount,
+      maxRequests: this.RATE_LIMIT_MAX_REQUESTS,
+      hits: this._rateLimitHit,
+      totalCalls: this._totalApiCalls,
+      successRate: this._totalApiCalls > 0 ? ((this._totalApiCalls - this._rateLimitHit) / this._totalApiCalls * 100).toFixed(2) : 0
+    };
   },
 
   _getApiKey() {
