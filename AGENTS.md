@@ -7,9 +7,14 @@
 - ✅ Config.gs: SESSION_SERVICE singleton (eliminadas 5 definiciones duplicadas en Domain.gs, API.gs, Main.gs, Servicios.gs, AuthService.gs)
 
 ## IA-BUSINESS (siguiente) - Domain.gs, DAO.gs, CacheService.gs
-- DOMAIN.registrarAbonoAtomic → validar saldo crediticio
-- DAO.updateCarteraBatch → optimistic locking atómico
-- CACHE → circuit breaker HALF_OPEN
+- ✅ DOMAIN.registrarAbonoAtomic → validar saldo crediticio
+- ✅ DAO.updateCarteraBatch → optimistic locking atómico
+- ✅ CACHE → circuit breaker HALF_OPEN
+
+## CLI 2 - DOMINIO NEGOCIO (completado)
+- ✅ registrarAbonoAtomic: validación cupo crediticio (CxC)
+- ✅ Idempotencia con correlationId
+- ✅ Optimistic locking con reintentos (DAO.updateCarteraBatch)
 
 ## Contrato de interfaces
 
@@ -89,12 +94,13 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-   Test Suite (runAllRegressionTests): 26 tests
-   - AuthService: 3 tests (auth, whitelist, unknown action)
-   - LockManager: 2 tests (cleanup, index)
-   - CacheService: 6 tests (circuit, health, consistency, reset)
-   - AuditLog: 2 tests (correlationId, sanitization)
-   - TransactionManager: 3 tests (struct, correlationId, snapshot)
-   - Accounting: 8 tests (methods, integration, singleton, resumen)
-   - SchemaValidator: 2 tests (validation)
-   - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
+Test Suite (runAllRegressionTests): 29 tests
+    - AuthService: 3 tests (auth, whitelist, unknown action)
+    - LockManager: 2 tests (cleanup, index)
+    - CacheService: 6 tests (circuit, health, consistency, reset)
+    - AuditLog: 2 tests (correlationId, sanitization)
+    - TransactionManager: 3 tests (struct, correlationId, snapshot)
+    - Accounting: 8 tests (methods, integration, singleton, resumen)
+    - SchemaValidator: 2 tests (validation)
+    - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
+    - Business Validation: 3 tests (credit limit, idempotency)

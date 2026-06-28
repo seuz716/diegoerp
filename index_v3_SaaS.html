@@ -13,12 +13,13 @@
 <meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1A1A1A" media="(prefers-color-scheme: dark)">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com; frame-src 'self' https://*.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline' 'self' https://ssl.gstatic.com https://cdnjs.cloudflare.com; frame-src 'self' https://*.google.com;">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet" fetchpriority="high">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%233A7B6D'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='white' font-family='system-ui'>μ</text></svg>">
 <script>(function(){var e=localStorage.getItem('theme'),t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=e||t||'dark';window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(m){if(!localStorage.getItem('theme'))document.documentElement.dataset.theme=m.matches?'dark':'light';});})();</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
 html{scroll-behavior:smooth;}
 :root {
@@ -1343,6 +1344,9 @@ App.data = {
 };
 
 function escapeHtml(str) {
+  if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+    return DOMPurify.sanitize(String(str), {ALLOWED_TAGS: []});
+  }
   var div = document.createElement('div');
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
@@ -2531,7 +2535,7 @@ function cargarCompras(append) {
 
       if (rowClass) tr.className = rowClass;
 
-      tr.innerHTML =
+      var htmlStr =
         '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || '—') + '</td>' +
         '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || '—') + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(c.total) + '</td>' +
@@ -2544,6 +2548,9 @@ function cargarCompras(append) {
             ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + c.id + '" data-saldo="' + (c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
             : '') +
         '</td>';
+      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
+        ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-saldo', 'id']})
+        : htmlStr;
 
       body.appendChild(tr);
     });
@@ -2715,12 +2722,15 @@ function cargarVencimientos() {
       var tr = document.createElement('tr');
       var tipo = v.tipo || v.origen || 'CxC';
       var labelTipo = tipo === 'CxP' ? 'Cuenta por pagar' : tipo === 'compra' ? 'Compra' : 'Cuenta por cobrar';
-      tr.innerHTML =
+      var vencHtml =
         '<td><span class="badge badge-' + (tipo === 'CxP' || tipo === 'compra' ? 'yellow' : 'red') + '" style="font-size:var(--text-micro);">' + escapeHtml(labelTipo) + '</span></td>' +
         '<td>' + escapeHtml(v.nombre_tercero || v.nombre || '—') + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
         '<td>' + (v.dias_para_vencer || 0) + ' d' + '</td>' +
         '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : '—') + '</td>';
+      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
+        ? DOMPurify.sanitize(vencHtml, {ALLOWED_TAGS: ['td', 'tr', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan']})
+        : vencHtml;
       body.appendChild(tr);
     });
   }).catch(function (err) {

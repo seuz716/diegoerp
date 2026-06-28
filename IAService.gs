@@ -225,8 +225,9 @@ const IA_SERVICE = {
   _rateLimitHit: 0,
   _totalApiCalls: 0,
 
-  _checkRateLimit() {
-    const key = 'gemini_requests';
+  _checkRateLimit(action) {
+    const email = (SESSION_SERVICE.getCurrentUser().getEmail()) || 'anonymous';
+    const key = email + ':gemini_' + (action || 'requests');
     const now = Date.now();
     this._totalApiCalls++;
     
@@ -246,7 +247,7 @@ const IA_SERVICE = {
     if (count >= this.RATE_LIMIT_MAX_REQUESTS) {
       this._rateLimitHit++;
       const resetMs = this.RATE_LIMIT_WINDOW_MS - (now - Number(windowStart));
-      console.warn('Rate limit excedido para Gemini. Espera ' + Math.ceil(resetMs / 1000) + 's');
+      console.warn('Rate limit excedido para ' + email + '. Espera ' + Math.ceil(resetMs / 1000) + 's');
       return false;
     }
     

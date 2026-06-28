@@ -293,6 +293,35 @@ const DAO = {
   },
 
   /**
+   * Generic retry helper with exponential backoff
+   * @private
+   * @param {Function} fn - Function to retry, receives (attempt)
+   * @param {number} maxAttempts - Max retry attempts (default 3)
+   * @param {number} baseDelayMs - Base delay in ms (default 100)
+   * @returns {*} Result of fn
+   */
+  _withRetry(fn, maxAttempts = 3, baseDelayMs = 100) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return fn(attempt);
+      } catch (e) {
+        if (e.retryable === false || e.type !== 'OPTIMISTIC_LOCK_FAILURE') throw e;
+        if (attempt >= maxAttempts - 1) {
+          const msg = `Conflicto de concurrencia persistente. Operación abortada después de ${maxAttempts} intentos.`;
+          const persistentErr = new Error(msg);
+          persistentErr.type = 'OPTIMISTIC_LOCK_FAILURE';
+          persistentErr.retryable = false;
+          throw persistentErr;
+        }
+        CACHE.refresh(true);
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 100;
+        console.debug(`WARN: OptimisticLock retry #${attempt + 1}. Waiting ${Math.round(delay)}ms`);
+        Utilities.sleep(delay);
+      }
+    }
+  },
+
+  /**
    * ACTUALIZACIÓN OPTIMIZADA con Optimistic Locking.
    * Lee la columna `version` para cada fila y rechaza la escritura si otra
    * ejecución ya modificó la fila (expectedVersion no coincide con sheet).
@@ -304,22 +333,20 @@ const DAO = {
    * @throws {Error} OPTIMISTIC_LOCK_FAILURE si hay conflicto de versión optimista
    */
   updateCarteraBatch(cambios) {
-    return this._updateCarteraWithRetry(cambios, 0);
+    return this._withRetry(() => this._updateCarteraBatch(cambios), 3, 200);
   },
 
   /**
-   * Internal retry wrapper for updateCarteraBatch with exponential backoff
+   * Internal single-attempt batch update for cartera
    * @private
    */
-  _updateCarteraWithRetry(cambios, attempt) {
+  _updateCarteraBatch(cambios) {
     if (!cambios || cambios.length === 0) return true;
     if (!CACHE.ensureIntegrity('cartera')) {
-      throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
+      throw new Error("Integridad de caché de cartera comprometida.");
     }
 
     const lock = LOCK_MANAGER.acquireGlobalLock(10000);
-    const MAX_RETRY_ATTEMPTS = 3;
-    const BACKOFF_BASE_MS = 200;
 
     try {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
@@ -363,14 +390,14 @@ const DAO = {
         }
       }
 
-if (optimisticLockFailure) {
-         try {
-           const props = PropertiesService.getScriptProperties();
-           const currentFailures = Math.min(Number(props.getProperty('OPTIMISTIC_LOCK_FAILURES') || 0), 999999);
-           props.setProperty('OPTIMISTIC_LOCK_FAILURES', String(Math.min(currentFailures + 1, 999999)));
-         } catch (e) {
-           console.debug("Failed to persist optimistic lock metric: " + e.toString());
-         }
+      if (optimisticLockFailure) {
+        try {
+          const props = PropertiesService.getScriptProperties();
+          const currentFailures = Math.min(Number(props.getProperty('OPTIMISTIC_LOCK_FAILURES') || 0), 999999);
+          props.setProperty('OPTIMISTIC_LOCK_FAILURES', String(Math.min(currentFailures + 1, 999999)));
+        } catch (e) {
+          console.debug("Failed to persist optimistic lock metric: " + e.toString());
+        }
 
         const err = new Error(
           `OptimisticLockError: fila ${optimisticLockFailure.rowIndex} fue modificada concurrentemente ` +
@@ -405,31 +432,10 @@ if (optimisticLockFailure) {
       try {
         targetRange.setValues(values);
       } catch (e) {
-        const daoErr = new DAOError("Error al escribir en la hoja de cartera", 'SHEET_WRITE_FAILURE', e);
-        Logger.log("DAO.updateCarteraBatch: SHEET_WRITE_FAILURE - " + daoErr.toString());
-        throw daoErr;
+        throw new DAOError("Error al escribir en la hoja de cartera", 'SHEET_WRITE_FAILURE', e);
       }
 
       return true;
-    } catch (e) {
-      // Check if it's a retryable optimistic lock failure
-      if (e.type === 'OPTIMISTIC_LOCK_FAILURE' && e.retryable) {
-        if (attempt < MAX_RETRY_ATTEMPTS) {
-          CACHE.refresh(true);
-          const delay = BACKOFF_BASE_MS * Math.pow(2, attempt) + Math.random() * 100;
-          console.debug(`WARN: OptimisticLock retry #${attempt + 1} for updateCarteraBatch. Waiting ${delay}ms`);
-          Utilities.sleep(delay);
-          return this._updateCarteraWithRetry(cambios, attempt + 1);
-        }
-        const msg = `Conflicto de concurrencia persistente. Operación abortada después de ${MAX_RETRY_ATTEMPTS} intentos.`;
-        const persistentErr = new Error(msg);
-        persistentErr.type = 'OPTIMISTIC_LOCK_FAILURE';
-        persistentErr.rowIndex = e.rowIndex;
-        persistentErr.retryable = false;
-        throw persistentErr;
-      }
-      Logger.log("ERROR updateCarteraBatch: " + e.toString());
-      throw e;
     } finally {
       if (lock) {
         lock.releaseLock();
