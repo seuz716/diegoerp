@@ -1,3 +1,24 @@
+// =============================================================================
+// SESSION SERVICE WRAPPER - For testability
+// =============================================================================
+const SESSION_SERVICE = {
+  getCurrentUser() {
+    try {
+      return SESSION_SERVICE.getCurrentUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  },
+  
+  getScriptTimeZone() {
+    try {
+      return SESSION_SERVICE.getScriptTimeZone();
+    } catch (e) {
+      return "UTC";
+    }
+  }
+};
+
 const ROLES = { ADMIN: 'ADMIN', OPERATOR: 'OPERATOR', VIEWER: 'VIEWER' };
 const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
@@ -249,7 +270,7 @@ const secureValue = this._loadKey(keyName);
 
   _getCurrentUser() {
     try {
-      const email = Session.getActiveUser().getEmail();
+      const email = SESSION_SERVICE.getCurrentUser().getEmail();
       if (email && email.indexOf("@") > 0) return email;
     } catch (e) {}
     return null;

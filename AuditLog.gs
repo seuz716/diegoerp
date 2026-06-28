@@ -1,3 +1,5 @@
+// =============================================================================
+
 /**
  * LAYER 2: LOGGING ENGINE — AUDITORÍA INMUTABLE
  * Enhanced with correlationId, IP, execution time
@@ -19,7 +21,7 @@ const LOG_ENGINE = {
         // This is a fallback for when called via web app
       }
       // For direct calls, we use a placeholder - IP extraction requires web app deployment
-      return Session.getActiveUser().getEmail() || "SYSTEM";
+      return SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
     } catch (e) {
       return "UNKNOWN";
     }
@@ -53,7 +55,7 @@ const LOG_ENGINE = {
       const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
       if (!sheetAudit) return false;
 
-      const usuario = Session.getActiveUser().getEmail();
+      const usuario = SESSION_SERVICE.getCurrentUser().getEmail();
       const timestamp = new Date();
       const correlationId = this._getCorrelationId(options.correlationId);
       const executionTimeMs = options.executionTimeMs || 0;
