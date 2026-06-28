@@ -242,6 +242,13 @@ const DOMAIN = {
       if (!tercero || typeof tercero !== 'object') return _error('Datos inválidos.');
       const id = _sanitizeId(tercero.id);
       if (!id) return _error("ID de tercero inválido.");
+      
+      // Business rule validation
+      const limiteCredito = _parseMoneda(tercero.limite_credito, 0);
+      if (isNaN(limiteCredito) || limiteCredito < 0) return _error("Límite de crédito inválido.");
+      
+      const saldoInicial = _parseMoneda(tercero.saldo_inicial, 0);
+      if (isNaN(saldoInicial) || saldoInicial < 0) return _error("Saldo inicial inválido.");
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(id);
 
@@ -335,7 +342,36 @@ const DOMAIN = {
     return { items: result, nextPageToken };
   },
 
-  registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo) {
+  /**
+   * TransactionManager wrapper that enhances existing _Transaction with audit and timeouts
+   */
+  withTransaction(correlationId, operation) {
+    const txn = TransactionManager.begin(correlationId || ('txn_' + Date.now()));
+    txn.startTime = Date.now();
+    const MAX_TIMEOUT = 45000;
+    
+    try {
+      const result = operation(txn);
+      if (Date.now() - txn.startTime > MAX_TIMEOUT) {
+        Logger.log("[TXN] WARNING: Transaction exceeded 45s timeout");
+      }
+      txn.commit();
+      return result;
+    } catch (e) {
+      txn.rollback();
+      CACHE.invalidateCartera();
+      throw e;
+    }
+  },
+
+  /**
+   * Get transaction correlation ID for logging
+   */
+  getCurrentCorrelationId() {
+    return TransactionManager.getCorrelationId();
+  },
+
+  registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo, correlationId) {
     const idTerceroLimpio = _sanitizeId(idTercero);
     if (!idTerceroLimpio) return _error('ID tercero inválido.');
 
@@ -384,18 +420,38 @@ const DOMAIN = {
 
         const plan = _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia);
 
+        const corrId = correlationId || ('abono_' + Date.now());
         tx.begin();
         tx.snapshotCarteraRows(plan.cambios.map(c => c.rowIndex));
         tx.markMovPreAppend();
 
         DAO.updateCarteraBatch(plan.cambios);
+        CACHE.invalidateCartera();
         tx.markMovPostAppend();
         if (plan.movimientos.length > 0) {
           for (const mov of plan.movimientos) { DAO.createMovimiento(mov); }
         }
         tx.commit();
 
-        CACHE.invalidateCartera();
+        // === GENERAR ASIENTO CONTABLE PARA ABONO ===
+        const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+        LIBRO_DIARIO.registrarAbonoCliente(
+          new Date(),
+          "ABONO-" + Date.now(),
+          idTerceroLimpio,
+          plan.aplicadoTotal,
+          usuario
+        );
+
+        // Registrar entrada de caja por abono
+        FLUJO_CAJA.registrarMovimiento(
+          new Date(),
+          FLUJO_CAJA.TIPOS.ENTRADA_ABONO,
+          "Abono tercero: " + idTerceroLimpio,
+          plan.aplicadoTotal,
+          refLimpia,
+          usuario
+        );
 
         LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio,
           { anterior_saldo: totalDeuda },
@@ -407,6 +463,7 @@ const DOMAIN = {
           aplicado: plan.aplicadoTotal,
           restante: Math.max(0, plan.restante),
           movimientos: plan.movimientos.length,
+          correlationId: corrId
         };
 
       } catch (e) {
@@ -694,6 +751,26 @@ const DOMAIN = {
 
         tx.markPagoPostAppend();
         tx.commit();
+
+        // === GENERAR ASIENTO CONTABLE PARA PAGO PROVEEDOR ===
+        const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+        LIBRO_DIARIO.registrarPagoProveedor(
+          new Date(),
+          "PAGO-" + pagoId,
+          compra.id_proveedor,
+          montoLimpio,
+          usuario
+        );
+
+        // Registrar salida de caja por pago proveedor
+        FLUJO_CAJA.registrarMovimiento(
+          new Date(),
+          FLUJO_CAJA.TIPOS.SALIDA_PAGO_PROV,
+          "Pago a proveedor: " + compra.id_proveedor,
+          montoLimpio,
+          String(referencia || "Pago").trim(),
+          usuario
+        );
 
         CACHE.invalidateCartera();
 
