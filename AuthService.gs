@@ -33,6 +33,26 @@ const TRIGGER_SAFE_ACTIONS = {
 };
 
 // =============================================================================
+// SCHEMA VALIDATOR - Validate JSON structures before parsing
+// =============================================================================
+const SCHEMA_VALIDATOR = {
+  validateRoleMap(raw) {
+    if (typeof raw !== 'string') return { valid: false, error: 'AUTHORIZED_USERS no es string' };
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return { valid: false, error: 'Autorized users no es objeto' };
+      for (const [email, role] of Object.entries(parsed)) {
+        if (!email || !email.includes('@')) return { valid: false, error: 'Email inválido' };
+        if (!Object.values(ROLES).includes(role)) return { valid: false, error: 'Rol inválido' };
+      }
+      return { valid: true, parsed };
+    } catch (e) {
+      return { valid: false, error: 'JSON parse error' };
+    }
+  }
+};
+
+// =============================================================================
 // SECURE CRYPTO SERVICE - AES-256-CTR via HMAC-SHA256 KDF
 // =============================================================================
 const CRYPTO_SERVICE = {
@@ -240,23 +260,16 @@ const AuthService = {
     const props = PropertiesService.getScriptProperties();
     const raw = props.getProperty("AUTHORIZED_USERS");
     if (!raw) return null;
-    try {
-      const roleMap = JSON.parse(raw);
-      // Validate schema: must be object with string values
-      if (typeof roleMap !== "object" || roleMap === null) {
-        throw new Error("El mapa de roles no es un objeto válido");
-      }
-      const validRoles = Object.values(ROLES);
-      for (const [userEmail, role] of Object.entries(roleMap)) {
-        if (typeof userEmail !== "string" || !userEmail.includes("@")) {
-          throw new Error("Formato de email inválido en AUTHORIZED_USERS");
-        }
-        if (typeof role !== "string" || !validRoles.includes(role)) {
-          throw new Error("Rol inválido para " + userEmail + ": " + role);
-        }
-      }
-      const normalized = email.toLowerCase().trim();
-      return roleMap[normalized] || null;
+    
+    const validation = SCHEMA_VALIDATOR.validateRoleMap(raw);
+    if (!validation.valid) {
+      console.error("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
+      throw new Error("Configuración de usuarios corrupta: " + validation.error);
+    }
+    
+    const normalized = email.toLowerCase().trim();
+    return validation.parsed[normalized] || null;
+  },
     } catch (e) {
       console.error("ERROR_SCHEMA: AUTHORIZED_USERS - " + e.message);
       throw new Error("Configuración de usuarios corrupta. Contacta al administrador.");
