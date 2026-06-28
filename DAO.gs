@@ -358,15 +358,14 @@ const DAO = {
         }
       }
 
-      if (optimisticLockFailure) {
-        // Record optimistic lock failure metric
-        try {
-          const props = PropertiesService.getScriptProperties();
-          const currentFailures = Number(props.getProperty('OPTIMISTIC_LOCK_FAILURES') || 0);
-          props.setProperty('OPTIMISTIC_LOCK_FAILURES', String(currentFailures + 1));
-        } catch (e) {
-          Logger.log("Failed to persist optimistic lock metric: " + e.toString());
-        }
+if (optimisticLockFailure) {
+         try {
+           const props = PropertiesService.getScriptProperties();
+           const currentFailures = Math.min(Number(props.getProperty('OPTIMISTIC_LOCK_FAILURES') || 0), 999999);
+           props.setProperty('OPTIMISTIC_LOCK_FAILURES', String(Math.min(currentFailures + 1, 999999)));
+         } catch (e) {
+           console.debug("Failed to persist optimistic lock metric: " + e.toString());
+         }
 
         const err = new Error(
           `OptimisticLockError: fila ${optimisticLockFailure.rowIndex} fue modificada concurrentemente ` +
