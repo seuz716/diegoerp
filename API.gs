@@ -1,3 +1,16 @@
+// =============================================================================
+// SESSION SERVICE WRAPPER - For testability
+// =============================================================================
+const SESSION_SERVICE = {
+  getCurrentUser() {
+    try {
+      return SESSION_SERVICE.getCurrentUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  }
+};
+
 /**
  * LAYER 6.0: PUBLIC API
  * Exposición de endpoints para ser llamados externamente o desde el Frontend.
@@ -112,7 +125,7 @@ const RATE_LIMITER = {
 
   _userId() {
     try {
-      const email = Session.getActiveUser().getEmail();
+      const email = SESSION_SERVICE.getCurrentUser().getEmail();
       if (email) return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, email).map(b => (b & 0xFF).toString(16)).slice(0, 8).join('');
     } catch (_) {}
     return 'anon';
@@ -496,7 +509,7 @@ function analizarConGeminiFresco() {
 function getUserInfo() {
   try {
     AuthService.checkPermission("ver_dashboard");
-    const email = Session.getActiveUser().getEmail();
+    const email = SESSION_SERVICE.getCurrentUser().getEmail();
     if (!email || !email.includes("@")) {
       throw new Error("No se pudo verificar la identidad del usuario");
     }
