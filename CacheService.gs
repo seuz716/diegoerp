@@ -978,6 +978,41 @@ ttl: this.CACHE_TTL
     return null;
   }
 };
+
+// =============================================================================
+// HELPER METHODS FOR CACHE METRICS (IA-BUSINESS utility functions)
+// =============================================================================
+Object.assign(CACHE, {
+  /** Get hit ratio for terceros */
+  getHitRatioTerceros() {
+    const total = (this._hitsTerceros || 0) + (this._missesTerceros || 0);
+    return total > 0 ? (this._hitsTerceros / total) : 0;
+  },
+  
+  /** Get hit ratio for cartera */
+  getHitRatioCartera() {
+    const total = (this._hitsCartera || 0) + (this._missesCartera || 0);
+    return total > 0 ? (this._hitsCartera / total) : 0;
+  },
+  
+  /** Get cache health status */
+  getHealth() {
+    return {
+      terceros: {
+        hitRatio: this.getHitRatioTerceros(),
+        stale: this.tercerosStale,
+        circuitOpen: this.tercerosCircuitOpen,
+        age: this.lastRefreshTerceros > 0 ? Date.now() - this.lastRefreshTerceros : -1
+      },
+      cartera: {
+        hitRatio: this.getHitRatioCartera(),
+        stale: this.carteraStale,
+        circuitOpen: this.carteraCircuitOpen,
+        age: this.lastRefreshCartera > 0 ? Date.now() - this.lastRefreshCartera : -1
+      }
+    };
+  }
+});
     
 // =============================================================================
 // CACHE INSTANCE - Singleton export
