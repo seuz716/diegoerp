@@ -2,17 +2,33 @@
 // SESSION SERVICE WRAPPER - For testability
 // =============================================================================
 const SESSION_SERVICE = {
+  _mockUser: null,
+  
+  _resetMock() {
+    this._mockUser = null;
+  },
+  
+  _setMockUser(email) {
+    this._mockUser = email;
+  },
+  
   getCurrentUser() {
+    if (this._mockUser) {
+      return { getEmail: () => this._mockUser };
+    }
     try {
-      return SESSION_SERVICE.getCurrentUser();
+      return Session.getActiveUser();
     } catch (e) {
       return { getEmail: () => null };
     }
   },
   
   getScriptTimeZone() {
+    if (this._mockUser) {
+      return "UTC";
+    }
     try {
-      return SESSION_SERVICE.getScriptTimeZone();
+      return Session.getScriptTimeZone();
     } catch (e) {
       return "UTC";
     }
