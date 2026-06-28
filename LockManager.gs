@@ -84,9 +84,11 @@ const LOCK_MANAGER = {
             try {
               const parsed = JSON.parse(raw);
               if (parsed.expiresAt && parsed.expiresAt > now) {
-                isLocked = true;
                 if (typeof parsed.expiresAt === "number" && parsed.expiresAt > now + this.RESOURCE_LOCK_MAX_TTL_MS) {
-                  Logger.log("LOCK_CORRUPT: Resource lock " + lockKey + " has absurd TTL. expiresAt=" + parsed.expiresAt + " now=" + now + " maxTTL=" + this.RESOURCE_LOCK_MAX_TTL_MS);
+                  Logger.log("LOCK_CORRUPT: Resource lock " + lockKey + " has absurd TTL. expiresAt=" + parsed.expiresAt + " now=" + now + " maxTTL=" + this.RESOURCE_LOCK_MAX_TTL_MS + ". Treating as expired.");
+                  properties.deleteProperty(lockKey);
+                } else {
+                  isLocked = true;
                 }
               } else {
                 properties.deleteProperty(lockKey);
@@ -203,6 +205,31 @@ const LOCK_MANAGER = {
     return { cleaned, scanned };
   },
 
+  _buildResourceIndex() {
+    const index = new Set();
+    try {
+      const ss = getActiveSpreadsheet();
+      const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
+      const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
+      
+      if (tercerosSheet) {
+        const data = tercerosSheet.getDataRange().getValues();
+        data.forEach(row => {
+          row.forEach(cell => index.add(String(cell)));
+        });
+      }
+      if (carteraSheet) {
+        const data = carteraSheet.getDataRange().getValues();
+        data.forEach(row => {
+          row.forEach(cell => index.add(String(cell)));
+        });
+      }
+    } catch (e) {
+      Logger.log("WARNING: No se pudo construir índice de recursos: " + e.message);
+    }
+    return index;
+  },
+
   /**
    * Scans all LOCK_* properties and detects orphan locks whose resourceId
    * no longer exists in the system (Terceros or Cartera sheets).
@@ -220,41 +247,11 @@ const LOCK_MANAGER = {
       const props = PropertiesService.getScriptProperties();
       const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
       const orphans = [];
-
-      let tercerosData = null;
-      let carteraData = null;
-      try {
-        const ss = getActiveSpreadsheet();
-        const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
-        const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
-        if (tercerosSheet) tercerosData = tercerosSheet.getDataRange().getValues();
-        if (carteraSheet) carteraData = carteraSheet.getDataRange().getValues();
-      } catch (e) {
-        Logger.log("WARNING: No se pudo acceder a las hojas para detección de orphans: " + e.message);
-      }
+      const resourceIndex = this._buildResourceIndex();
 
       for (const key of keys) {
         const resourceId = key.substring(this.LOCK_PREFIX.length);
-        let found = false;
-
-        if (tercerosData) {
-          for (const row of tercerosData) {
-            if (row.some(cell => String(cell) === resourceId)) {
-              found = true;
-              break;
-            }
-          }
-        }
-        if (!found && carteraData) {
-          for (const row of carteraData) {
-            if (row.some(cell => String(cell) === resourceId)) {
-              found = true;
-              break;
-            }
-          }
-        }
-
-        if (!found) {
+        if (!resourceIndex.has(resourceId)) {
           Logger.log("[FIX-C-05] Orphan lock detected: Resource " + resourceId + " (key: " + key + ")");
           orphans.push(key);
         }
