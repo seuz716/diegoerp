@@ -204,9 +204,11 @@ const SamplingStrategy = {
 const IA_SERVICE = {
   MODEL: "gemini-2.5-flash",
   BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
-  TIMEOUT_MS: 120000,
+  TIMEOUT_MS: 30000,
   MAX_RETRIES: 3,
-  RETRY_BACKOFF_MS: 2000,
+  RETRY_BACKOFF_MS: 1000,
+  RATE_LIMIT_MAX_REQUESTS: 10,
+  RATE_LIMIT_WINDOW_MS: 60000,
   CACHE_PREFIX: "IA_CACHE_",
   CACHE_TTL_MS: 3600000,
   MAX_INPUT_TOKENS: 90000,
@@ -214,6 +216,34 @@ const IA_SERVICE = {
   MAX_SAMPLE_SIZE: 500,
   MIN_CATEGORY_SAMPLE: 30,
   _startTime: null,
+  _rateLimitKeys: {},
+
+  /**
+   * Simple in-memory rate limiter for Gemini API
+   */
+  _checkRateLimit() {
+    const key = 'gemini_requests';
+    const now = Date.now();
+    const windowStart = PropertiesService.getScriptProperties().getProperty(key + '_window') || '0';
+    const count = Number(PropertiesService.getScriptProperties().getProperty(key + '_count') || '0');
+    
+    if (now - Number(windowStart) > this.RATE_LIMIT_WINDOW_MS) {
+      // Reset window
+      PropertiesService.getScriptProperties().setProperty(key + '_window', String(now));
+      PropertiesService.getScriptProperties().setProperty(key + '_count', '1');
+      return true;
+    }
+    
+    if (count >= this.RATE_LIMIT_MAX_REQUESTS) {
+      const resetMs = this.RATE_LIMIT_WINDOW_MS - (now - Number(windowStart));
+      console.warn('Rate limit excedido para Gemini. Espera ' + Math.ceil(resetMs / 1000) + 's');
+      return false;
+    }
+    
+    PropertiesService.getScriptProperties().setProperty(key + '_count', String(count + 1));
+    return true;
+  },
+
   _getApiKey() {
     const fromProxy = PROXY_SECRET_SERVICE.resolveSecret("GEMINI_API_KEY");
     if (fromProxy) return fromProxy;
@@ -238,6 +268,11 @@ const IA_SERVICE = {
       throw new IAError("Tiempo de ejecución de GAS casi agotado. Abortando llamada a IA.", "GAS_TIMEOUT", null);
     }
 
+    // Rate limit check
+    if (!this._checkRateLimit()) {
+      throw new IAError("Límite de tasa de API excedido. Espera e intenta más tarde.", "RATE_LIMITED", null);
+    }
+
     try {
       const options = {
         method: "post",
@@ -255,9 +290,10 @@ const IA_SERVICE = {
 
       const err = this._parseApiError(status, body);
 
-      if (status === 429 && attempt < this.MAX_RETRIES) {
-        const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 1000;
-        console.warn(`Rate limited (429), retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms`);
+      // Handle retryable errors with exponential backoff and jitter
+      if ((status === 429 || status >= 500) && attempt < this.MAX_RETRIES) {
+        const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
+        console.warn(`Retryable error (${status}), retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms`);
         Utilities.sleep(wait);
         return this._retryablePost(url, payload, attempt + 1);
       }
@@ -266,12 +302,12 @@ const IA_SERVICE = {
     } catch (e) {
       if (e.name === "IAError") throw e;
       if (attempt < this.MAX_RETRIES) {
-        const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 1000;
+        const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
         console.warn(`Network error, retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms: ${e.message}`);
         Utilities.sleep(wait);
         return this._retryablePost(url, payload, attempt + 1);
       }
-      throw new IAError("Error de conexión con IA tras reintentos: " + e.message, "NETWORK", null);
+      throw new IAError("Error de red con IA tras reintentos: " + e.message, "NETWORK", null);
     }
   },
 

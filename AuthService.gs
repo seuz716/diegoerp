@@ -255,28 +255,32 @@ const AuthService = {
   checkPermission(accion) {
     const requiredRole = PERMISSION_ROLES[accion];
     if (!requiredRole) {
-      throw new Error("Acción desconocida: '" + accion + "'. Revisa la configuración de PERMISSION_ROLES.");
+      throw new Error('Acción desconocida: ' + accion + '. Revisa la configuración de PERMISSION_ROLES.');
     }
-
-    let email = this._getCurrentUser();
-    if (!email) {
-      // Si la acción está en whitelist, permitir ejecución desde trigger
-      if (TRIGGER_SAFE_ACTIONS.hasOwnProperty(accion) && TRIGGER_SAFE_ACTIONS[accion]) {
-        Logger.log("[PERMISSION] Ejecutando acción '" + accion + "' desde trigger sin identidad (segura por whitelist)");
-        return;
-      }
-      throw new Error("Acceso denegado: Trigger ejecutado sin identidad para acción no permitida. Acción: '" + accion + "'. Solo acciones en TRIGGER_SAFE_ACTIONS pueden ejecutarse sin email.");
+    const isSafeAction = TRIGGER_SAFE_ACTIONS[accion];
+    const email = this._getCurrentUser();
+    
+    // CRITICAL FIX: No owner fallback. Only whitelist actions proceed without identity.
+    if (!email && !isSafeAction) {
+      throw new Error('No se pudo determinar la identidad del usuario. Acción "' + accion + '" requiere autenticación.');
     }
-
+    
+    if (!email && isSafeAction) {
+      Logger.log('[PERMISSION] Ejecución de acción segura "' + accion + '" sin identidad (trigger)');
+      return;
+    }
+    
     const userRole = this.getUserRole(email);
     if (!userRole) {
-      throw new Error("Acceso denegado. El usuario '" + email + "' no tiene ningún rol asignado para la acción '" + accion + "'.");
+      throw new Error('Acceso denegado. El usuario ' + email + ' no tiene ningún rol asignado para la acción ' + accion + '.');
     }
-
+    if (!isSafeAction && email !== this._getCurrentUser()) {
+      throw new Error('Acceso denegado. Acción ' + accion + ' requiere identity verificable.');
+    }
     const requiredLevel = ROLE_HIERARCHY[requiredRole];
     const userLevel = ROLE_HIERARCHY[userRole];
     if (userLevel < requiredLevel) {
-      throw new Error("Acceso denegado. Se requiere rol '" + requiredRole + "' para la acción '" + accion + "'. Tu rol: '" + userRole + "'.");
+      throw new Error('Acceso denegado. Se requiere rol ' + requiredRole + ' para la acción ' + accion + '. Tu rol: ' + userRole + '.');
     }
   },
 };
