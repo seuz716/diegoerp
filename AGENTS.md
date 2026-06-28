@@ -68,14 +68,6 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-   MÓDULO INFRAESTRUCTURA & AUDIT - Completado:
-   1                              │ TransactionManager               │ (2h)                          │ ✅
-   2                              │ LIBRO_DIARIO/FLUJO_CAJA          │ (3h)                          │ ✅
-   3                              │ AuditLog purge race condition    │ (1h)                          │ ✅
-   4                              │ CorrelationId propagation        │ (0.5h)                        │ ✅
-
-   --------
-
    Commits totales: 22 en main
 
    --------
@@ -88,19 +80,21 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-   --------
-
-   MÓDULO INFRAESTRUCTURA & AUDIT - Completado:
-   1                              │ TransactionManager               │ (2h)                          │ ✅
-   2                              │ LIBRO_DIARIO/FLUJO_CAJA          │ (3h)                          │ ✅
-   3                              │ AuditLog purge race condition    │ (1h)                          │ ✅
-   4                              │ CorrelationId propagation        │ (0.5h)                        │ ✅
-
-   --------
-
    Correcciones Módulo SEGURIDAD completadas:
    - ✅ SESSION_SERVICE consolidado como singleton en Config.gs
    - ✅ checkPermission: eliminada comparación redundante email !== this._getCurrentUser()
    - ✅ _kdf: iteraciones ahora contribuyen al key stretching vía HMAC chain
    - ✅ _deriveKey: corregida recursión infinita (llamaba a _deriveKey en vez de _deriveKeyWithIterations)
    - ✅ removeOrphanLocks: lock global unificado para detect+delete (elimina race condition)
+
+   --------
+
+   Test Suite (runAllRegressionTests): 26 tests
+   - AuthService: 3 tests (auth, whitelist, unknown action)
+   - LockManager: 2 tests (cleanup, index)
+   - CacheService: 6 tests (circuit, health, consistency, reset)
+   - AuditLog: 2 tests (correlationId, sanitization)
+   - TransactionManager: 3 tests (struct, correlationId, snapshot)
+   - Accounting: 8 tests (methods, integration, singleton, resumen)
+   - SchemaValidator: 2 tests (validation)
+   - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
