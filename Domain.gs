@@ -275,9 +275,9 @@ const DOMAIN = {
       CACHE.invalidateTerceros();
 
       if (resultado.isUpdate) {
-        LOG_ENGINE.logEvent("UPDATE_TERCERO", "TERCEROS", id, { nombre: "*" }, { nombre }, "SUCCESS");
+        LOG_ENGINE.logEvent("UPDATE_TERCERO", "TERCEROS", id, { nombre: "*" }, { nombre }, "SUCCESS", { correlationId });
       } else {
-        LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS");
+        LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS", { correlationId });
       }
 
       return { success: true, id };
@@ -456,7 +456,7 @@ const DOMAIN = {
         LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio,
           { anterior_saldo: totalDeuda },
           { nuevo_saldo: totalDeuda - valor, movimientos: plan.movimientos.length },
-          "SUCCESS");
+          "SUCCESS", { correlationId: corrId });
 
         return {
           success: true,
@@ -525,14 +525,21 @@ const DOMAIN = {
     }
   },
 
+  /**
+   * Creates a receivable/payable entry with business rule validation
+   */
   crearCarteraAtomic(idTercero, origenId, total, tipo, diasCredito) {
     const idTerceroLimpio = _sanitizeId(idTercero);
     const totalLimpio = _parseMoneda(total, NaN);
+    const diasCreditoLimpio = Math.max(0, Math.min(365, parseInt(diasCredito) || 30));
     let lockAcquired = null;
 
     try {
       if (!idTerceroLimpio) throw new Error("ID tercero inválido.");
       if (isNaN(totalLimpio) || totalLimpio <= 0) throw new Error("Monto inválido.");
+      if (!tipo || !Object.values(CARTERA_CONFIG.TIPOS).includes(tipo)) {
+        throw new Error("Tipo de cartera inválido.");
+      }
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(idTerceroLimpio);
 
@@ -557,14 +564,19 @@ const DOMAIN = {
       const record = {
         id: idCartera, fecha: new Date(), id_tercero: idTerceroLimpio, origen_id: String(origenId).trim(),
         total: totalLimpio, saldo: totalLimpio, tipo: tipo, estado: CARTERA_CONFIG.ESTADOS.ABIERTA,
-        fecha_vencimiento: (() => { const d = _today(); d.setDate(d.getDate() + (parseInt(diasCredito) || 30)); return d; })(),
+        fecha_vencimiento: (() => { 
+          const d = _today(); 
+          d.setDate(d.getDate() + diasCreditoLimpio); 
+          if (isNaN(d.getTime())) throw new Error("Fecha de vencimiento inválida.");
+          return d; 
+        })(),
       };
 
-      DAO.createCartera(record);
-      CACHE.invalidateCartera();
-      LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS");
-      
-      return idCartera;
+DAO.createCartera(record);
+       CACHE.invalidateCartera();
+       LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS", { correlationId: correlationId || ('cartera_' + Date.now()) });
+       
+       return idCartera;
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();
     }
@@ -672,7 +684,7 @@ const DOMAIN = {
         CACHE.invalidateCartera();
 
         LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
-          {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS");
+          {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: correlationId || ('compra_' + Date.now()) });
 
         return { success: true, id: idCompra, total: totalLimpio };
       } catch (e) {
@@ -775,7 +787,7 @@ const DOMAIN = {
         CACHE.invalidateCartera();
 
         LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
-          { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS");
+          { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS", { correlationId: correlationId || ('pago_' + Date.now()) });
 
         return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
       } catch (e) {
