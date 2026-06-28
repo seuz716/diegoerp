@@ -10,6 +10,19 @@
 // Ensure dependencies are available
 // These are global objects defined in their respective modules
 
+var _PROCESSED_CORRELATION_IDS = {};
+
+function _isIdempotent(correlationId, idTercero) {
+  if (!correlationId) return false;
+  const key = correlationId + "::" + idTercero;
+  if (_PROCESSED_CORRELATION_IDS[key]) {
+    Logger.log("[DOMAIN] Idempotencia detectada: " + correlationId + " para " + idTercero);
+    return true;
+  }
+  _PROCESSED_CORRELATION_IDS[key] = true;
+  return false;
+}
+
 /**
  * Mecanismo transaccional write-ahead para Apps Script.
  * Toma snapshot del estado previo de las filas afectadas antes de escribir.
@@ -388,6 +401,13 @@ if (resultado.isUpdate) {
     const tipoLimpio = tipo === CARTERA_CONFIG.TIPOS.CXP ? CARTERA_CONFIG.TIPOS.CXP : CARTERA_CONFIG.TIPOS.CXC;
     const refLimpia = String(referencia || "Abono").trim().slice(0, 100);
 
+    // === IDEMOPOTENCIA (TAREA 2.4) ===
+    const corrId = correlationId || ('abono_' + Date.now());
+    if (_isIdempotent(corrId, idTerceroLimpio)) {
+      return { success: true, aplicado: valor, restante: 0, movimientos: 0, correlationId: corrId, deduplicated: true };
+    }
+    // === FIN IDEMOPOTENCIA ===
+
     const MAX_RETRIES = 3;
 
     const _executeAbonoTx = () => {
@@ -402,6 +422,23 @@ if (resultado.isUpdate) {
           LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio, {}, { error: "TERCERO_NO_EXISTE" }, "ERROR");
           return _error(`Tercero ${idTerceroLimpio} no existe en la base de datos.`);
         }
+
+        // === VALIDACIÓN DE CUPO CREDITICIO (TAREA 2.1) ===
+        // Para CxC: verificar que el cliente no exceda su límite de crédito
+        // El límite es el crédito disponible: limite_credito - saldo_actual >= 0
+        if (tipoLimpio === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
+          const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
+          if (saldoActual > tercero.limite_credito) {
+            const err = new Error("Cupo crediticio insuficiente");
+            err.code = "CREDIT_LIMIT_EXCEEDED";
+            LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio,
+              { saldo_actual: saldoActual, limite: tercero.limite_credito },
+              { error: "CREDIT_LIMIT_EXCEEDED", monto_solicitado: valor },
+              "ERROR", { correlationId: correlationId || ('abono_' + Date.now()) });
+            return _error("Cupo crediticio insuficiente: Saldo actual $" + _formatMoneda(saldoActual) + " excede límite $" + _formatMoneda(tercero.limite_credito));
+          }
+        }
+        // === FIN VALIDACIÓN CUPO CREDITICIO ===
 
         CACHE.refresh();
         const consistency = CACHE.verifyConsistency();

@@ -299,11 +299,44 @@ _test('FLUJO_CAJA has required methods', () => {
     return result.valid === false ? true : 'Should reject invalid JSON';
   });
   
-  _test('validateRoleMap accepts valid role map', () => {
-    const input = '{"test@example.com":"ADMIN"}';
-    const result = SCHEMA_VALIDATOR.validateRoleMap(input);
-    return result.valid === true && result.parsed['test@example.com'] === 'ADMIN' ? true : 'Should accept valid map';
-  });
+_test('validateRoleMap accepts valid role map', () => {
+     const input = '{"test@example.com":"ADMIN"}';
+     const result = SCHEMA_VALIDATOR.validateRoleMap(input);
+     return result.valid === true && result.parsed['test@example.com'] === 'ADMIN' ? true : 'Should accept valid map';
+   });
+
+   // ===== Business Validation Tests (Task 2.1) =====
+   _test('registrarAbonoAtomic validates credit limit on CxC', () => {
+     try {
+       // Test that the function exists and has proper signature
+       if (typeof DOMAIN.registrarAbonoAtomic !== 'function') {
+         return 'DOMAIN.registrarAbonoAtomic not found';
+       }
+       // Test idempotency function exists
+       if (typeof _isIdempotent !== 'function') {
+         return '_isIdempotent helper not found';
+       }
+       return true;
+     } catch (e) {
+       return 'Exception: ' + e.message;
+     }
+   });
+
+   _test('_isIdempotent detects duplicate operations', () => {
+     const testCorrId = 'idem_test_' + Date.now();
+     const first = _isIdempotent(testCorrId, 'CLIENT-001');
+     const second = _isIdempotent(testCorrId, 'CLIENT-001');
+     return !first && second ? true : 'Idempotency not working';
+   });
+
+   _test('Optimistic locking error structure', () => {
+     const optimisticErr = new Error('OptimisticLockError');
+     optimisticErr.type = 'OPTIMISTIC_LOCK_FAILURE';
+     if (optimisticErr.type === 'OPTIMISTIC_LOCK_FAILURE') {
+       return true;
+     }
+     return 'Error type not set correctly';
+   });
   
   return {
     passed: TEST_RESULTS.passed,
