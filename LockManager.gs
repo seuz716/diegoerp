@@ -249,65 +249,64 @@ const LOCK_MANAGER = {
   /**
    * Scans all LOCK_* properties and detects orphan locks whose resourceId
    * no longer exists in the system (Terceros or Cartera sheets).
-   * Best-effort: just logs warnings for manual review.
-   * Cleanup strategy: intended as diagnostic tool, does not auto-delete.
+   * NOTE: Caller MUST hold global lock. Does NOT acquire lock internally.
    * @returns {string[]} List of orphan lock keys
    */
   _detectOrphanLocks() {
+    const props = PropertiesService.getScriptProperties();
+    const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
+    if (keys.length === 0) return [];
+    const orphans = [];
+    const resourceIndex = this._buildResourceIndex();
+
+    for (const key of keys) {
+      const resourceId = key.substring(this.LOCK_PREFIX.length);
+      if (!resourceIndex.has(resourceId)) {
+        Logger.log("[FIX-C-05] Orphan lock detected: Resource " + resourceId + " (key: " + key + ")");
+        orphans.push(key);
+      }
+    }
+
+    return orphans;
+  },
+
+  /**
+   * Removes physically orphan locks from ScriptProperties.
+   * Acquires global lock for the entire detect+delete operation to
+   * prevent race conditions.
+   * @returns {{removed: number, orphans: string[]}} Resultado de la operación
+   */
+  removeOrphanLocks() {
     if (!this._safeTryLock(10000)) {
-      Logger.log("WARNING: No se pudo adquirir lock global para detección de orphans.");
-      return [];
+      Logger.log("WARNING: No se pudo adquirir lock global para remover orphans.");
+      return { removed: 0, orphans: [] };
     }
     try {
       Utilities.sleep(this.PROPAGATION_DELAY_MS);
-      const props = PropertiesService.getScriptProperties();
-      const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
-      const orphans = [];
-      const resourceIndex = this._buildResourceIndex();
+      const orphans = this._detectOrphanLocks();
+      if (orphans.length === 0) {
+        Logger.log("[FIX-C-05] No orphan locks found");
+        return { removed: 0, orphans: [] };
+      }
 
-      for (const key of keys) {
-        const resourceId = key.substring(this.LOCK_PREFIX.length);
-        if (!resourceIndex.has(resourceId)) {
-          Logger.log("[FIX-C-05] Orphan lock detected: Resource " + resourceId + " (key: " + key + ")");
-          orphans.push(key);
+      let removed = 0;
+      const props = PropertiesService.getScriptProperties();
+      for (const key of orphans) {
+        try {
+          props.deleteProperty(key);
+          Logger.log("[FIX-C-05] Deleted orphan lock: " + key);
+          removed++;
+        } catch (e) {
+          Logger.log("[FIX-C-05] Error deleting orphan lock " + key + ": " + e.toString());
         }
       }
 
-      return orphans;
+      Logger.log("[FIX-C-05] Removed " + removed + " orphan locks out of " + orphans.length + " detected");
+      return { removed, orphans };
     } finally {
       this._safeReleaseLock();
     }
   },
-
-  // === INICIO FIX C-05 ===
-  /**
-   * Removes physically orphan locks from ScriptProperties.
-   * Calls _detectOrphanLocks() to identify orphans, then deletes them.
-   * @returns {{removed: number, orphans: string[]}} Resultado de la operación
-   */
-  removeOrphanLocks() {
-    const orphans = this._detectOrphanLocks();
-    if (orphans.length === 0) {
-      Logger.log("[FIX-C-05] No orphan locks found");
-      return { removed: 0, orphans: [] };
-    }
-
-    let removed = 0;
-    const props = PropertiesService.getScriptProperties();
-    for (const key of orphans) {
-      try {
-        props.deleteProperty(key);
-        Logger.log("[FIX-C-05] Deleted orphan lock: " + key);
-        removed++;
-      } catch (e) {
-        Logger.log("[FIX-C-05] Error deleting orphan lock " + key + ": " + e.toString());
-      }
-    }
-
-    Logger.log("[FIX-C-05] Removed " + removed + " orphan locks out of " + orphans.length + " detected");
-    return { removed, orphans };
-  },
-  // === FIN FIX C-05 ===
 
   /**
    * Creates a time-driven trigger to run cleanupExpiredLocks every hour.

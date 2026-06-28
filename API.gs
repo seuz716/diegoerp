@@ -1,16 +1,3 @@
-// =============================================================================
-// SESSION SERVICE WRAPPER - For testability
-// =============================================================================
-const SESSION_SERVICE = {
-  getCurrentUser() {
-    try {
-      return SESSION_SERVICE.getCurrentUser();
-    } catch (e) {
-      return { getEmail: () => null };
-    }
-  }
-};
-
 /**
  * LAYER 6.0: PUBLIC API
  * Exposición de endpoints para ser llamados externamente o desde el Frontend.

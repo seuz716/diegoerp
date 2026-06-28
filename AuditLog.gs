@@ -28,15 +28,20 @@ const LOG_ENGINE = {
   },
 
   /**
-   * Generate or retrieve correlation ID
+   * Generate or retrieve correlation ID.
+   * Persists to ScriptProperties for chain propagation.
+   * Only writes to PropertiesService if value changed (avoids overhead).
    * @param {string} providedId - Optional correlation ID
    * @returns {string}
    * @private
    */
   _getCorrelationId(providedId) {
     if (providedId) return providedId;
-    return PropertiesService.getScriptProperties().getProperty('CURRENT_CORRELATION_ID') || 
-           'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    const stored = PropertiesService.getScriptProperties().getProperty('CURRENT_CORRELATION_ID');
+    if (stored) return stored;
+    const newId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    PropertiesService.getScriptProperties().setProperty('CURRENT_CORRELATION_ID', newId);
+    return newId;
   },
 
   /**
@@ -92,37 +97,33 @@ const LOG_ENGINE = {
         _sanitizeCell(estado)
       ];
 
-      // BATCH: no appendRow, sino getLastRow + setValues
-      const lastRow = sheetAudit.getLastRow() || 0;
-      if (lastRow === 0) {
-        const headerRow = hasNewColumns ? 
-          ["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado", "CorrelationId", "IP", "ExecutionTimeMs"] :
-          ["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado"];
-        sheetAudit.appendRow(headerRow);
+      // Write + purge atómico bajo lock global (evita race condition entre logEvent concurrentes)
+      let lock = null;
+      try {
+        lock = LOCK_MANAGER.acquireGlobalLock(5000);
+      } catch (lockErr) {
+        Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para AuditLog: " + lockErr.message);
       }
-      sheetAudit.getRange(sheetAudit.getLastRow() + 1, 1, 1, rowData.length).setValues([rowData]);
 
-      // === INICIO FIX C-03 ===
-      // Purge con lock para evitar race condition
-      const totalRows = sheetAudit.getLastRow();
-      if (totalRows > MAX_LOG_ROWS + 100) {
-        let lock = null;
-        try {
-          lock = LOCK_MANAGER.acquireGlobalLock(5000);
-          Logger.log("[FIX-C-03] Lock adquirido para purge de AuditLog");
-          const currentTotal = sheetAudit.getLastRow();
-          if (currentTotal > MAX_LOG_ROWS + 100) {
-            const rowsToDelete = currentTotal - MAX_LOG_ROWS;
-            sheetAudit.deleteRows(2, rowsToDelete);
-            Logger.log("[FIX-C-03] Purge completado: " + rowsToDelete + " filas borradas");
-          }
-        } catch (lockErr) {
-          Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para purge: " + lockErr.message);
-        } finally {
-          if (lock) lock.releaseLock();
+      try {
+        const lastRow = sheetAudit.getLastRow() || 0;
+        if (lastRow === 0) {
+          const headerRow = hasNewColumns ? 
+            ["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado", "CorrelationId", "IP", "ExecutionTimeMs"] :
+            ["ID", "Timestamp", "Operacion", "Tabla", "ID_Registro", "Usuario", "Datos_Previos", "Datos_Nuevos", "Estado"];
+          sheetAudit.appendRow(headerRow);
         }
+        sheetAudit.getRange(sheetAudit.getLastRow() + 1, 1, 1, rowData.length).setValues([rowData]);
+
+        const totalRows = sheetAudit.getLastRow();
+        if (totalRows > MAX_LOG_ROWS + 100) {
+          const rowsToDelete = totalRows - MAX_LOG_ROWS;
+          sheetAudit.deleteRows(2, rowsToDelete);
+          Logger.log("[FIX-C-03] Purge atómico: " + rowsToDelete + " filas borradas");
+        }
+      } finally {
+        if (lock) lock.releaseLock();
       }
-      // === FIN FIX C-03 ===
 
       return true;
     } catch (e) {

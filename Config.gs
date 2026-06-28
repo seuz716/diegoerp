@@ -47,9 +47,13 @@ const LOCK_CONFIG = {
 const CONFIG = {
   SHEETS: {
     PRODUCTOS: "Productos",
+    LIBRO_DIARIO: "Libro_Diario",
+    FLUJO_CAJA: "Flujo_Caja",
   },
   COLUMNS: {
     PRODUCTOS: { id: 0, nombre: 1, stock: 2, precio: 3, version: 4 },
+    LIBRO_DIARIO: { id: 0, fecha: 1, tipo: 2, id_referencia: 3, tercero: 4, monto: 5, usuario: 6, descripcion: 7 },
+    FLUJO_CAJA: { id: 0, fecha: 1, tipo: 2, concepto: 3, monto: 4, referencia: 5, usuario: 6 },
   },
   STOCK_MINIMO: 5,
   SCHEMA_definitions: {
@@ -61,6 +65,8 @@ const CONFIG = {
     COMPRAS: { id: "ID", fecha: "Fecha", id_proveedor: "ID_Proveedor", id_factura: "ID_Factura", total: "Total", saldo: "Saldo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     DETALLE_COMPRAS: { id: "ID", id_compra: "ID_Compra", id_producto: "ID_Producto", cantidad: "Cantidad", precio_unitario: "Precio_Unitario", subtotal: "Subtotal" },
     PAGOS_PROVEEDORES: { id: "ID", fecha: "Fecha", id_compra: "ID_Compra", id_proveedor: "ID_Proveedor", valor: "Valor", referencia: "Referencia", metodo_pago: "Metodo_Pago" },
+    LIBRO_DIARIO: { id: "ID", fecha: "Fecha", tipo: "Tipo", id_referencia: "ID_Referencia", tercero: "Tercero", monto: "Monto", usuario: "Usuario", descripcion: "Descripcion" },
+    FLUJO_CAJA: { id: "ID", fecha: "Fecha", tipo: "Tipo", concepto: "Concepto", monto: "Monto", referencia: "Referencia", usuario: "Usuario" },
   },
 };
 
@@ -170,17 +176,19 @@ function getSheet(name) {
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
-  const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
-  const sheets = {
-    [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
-    [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
-    [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
-    [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-    [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
-    [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
-    [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
-    [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
-  };
+   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja'];
+   const sheets = {
+     [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
+     [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
+     [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
+     [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
+     [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
+     [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
+     [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
+     [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
+     [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
+     [CONFIG.SHEETS.FLUJO_CAJA]: { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
+   };
 
   const spreadsheet = getActiveSpreadsheet();
   const changes = [];
@@ -264,16 +272,18 @@ CONFIG.getSchemaReport = function() {
     columnMappings: {}
   };
 
-  const sheets = {
-    'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
-    'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
-    'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
-    'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-    'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
-    'Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
-    'Detalle_Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
-    'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
-  };
+const sheets = {
+     'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
+     'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
+     'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
+     'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
+     'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
+     'Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
+     'Detalle_Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
+     'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
+     'Libro_Diario': { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
+     'Flujo_Caja': { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
+   };
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {
     report.sheetsValidated.push(sheetName);
@@ -303,8 +313,8 @@ CONFIG.getSchemaReport = function() {
 };
 
 CONFIG.checkHeaderChanges = function() {
-  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja'];
+   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let changed = false;
 
   for (const name of criticalSheets) {
@@ -417,13 +427,97 @@ function _formatMoneda(centavos) {
 }
 
 function crearBackup() {
-  AuthService.checkPermission("ejecutar_mantenimiento");
-  const ss = getActiveSpreadsheet();
-  const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
-  const backupId = ss.getId();
-  const backupFolder = DriveApp.getRootFolder();
-  const backupFile = DriveApp.getFileById(backupId).makeCopy(backupName, backupFolder);
-  const backupUrl = backupFile.getUrl();
-  Logger.log('Backup creado: ' + backupName + ' -> ' + backupUrl);
-  return { success: true, name: backupName, url: backupUrl };
-}
+   AuthService.checkPermission("ejecutar_mantenimiento");
+   const ss = getActiveSpreadsheet();
+   const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
+   const backupId = ss.getId();
+   const backupFolder = DriveApp.getRootFolder();
+   const backupFile = DriveApp.getFileById(backupId).makeCopy(backupName, backupFolder);
+   const backupUrl = backupFile.getUrl();
+   Logger.log('Backup creado: ' + backupName + ' -> ' + backupUrl);
+   return { success: true, name: backupName, url: backupUrl };
+ }
+
+ // ─ TRANSACTION MANAGER ─
+
+ const TransactionManager = {
+   _currentCorrelationId: null,
+
+   begin(id) {
+     this._currentCorrelationId = id || ('txn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9));
+     const snapshot = this._takeSnapshot();
+     const self = this;
+     return {
+       snapshot: snapshot,
+       correlationId: this._currentCorrelationId,
+       commit: function() {
+         self._currentCorrelationId = null;
+       },
+       rollback: function() {
+         self._currentCorrelationId = null;
+       }
+     };
+   },
+
+   getCorrelationId() {
+     return this._currentCorrelationId;
+   },
+
+   _takeSnapshot() {
+     const carteraSnapshot = [];
+     const terceroSnapshot = [];
+     try {
+       const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+       if (carteraSheet && carteraSheet.getLastRow() > 1) {
+         const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+         const data = carteraSheet.getDataRange().getValues();
+         for (let i = 1; i < data.length; i++) {
+           carteraSnapshot.push({
+             rowIndex: i + 1,
+             id: String(data[i][COL.id] || "").trim(),
+             saldo: _parseMoneda(data[i][COL.saldo], 0),
+             estado: String(data[i][COL.estado] || "").trim()
+           });
+         }
+       }
+     } catch (e) {
+       console.debug("TransactionManager: error snapshot cartera: " + e.toString());
+     }
+     return { cartera: carteraSnapshot, tercero: terceroSnapshot };
+   }
+ };
+
+// ─ SESSION SERVICE (singleton) ─
+const SESSION_SERVICE = {
+  _mockUser: null,
+
+  _resetMock() {
+    this._mockUser = null;
+  },
+
+  _setMockUser(email) {
+    this._mockUser = email;
+  },
+
+  getCurrentUser() {
+    if (this._mockUser) {
+      return { getEmail: () => this._mockUser };
+    }
+    try {
+      return Session.getActiveUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  },
+
+  getScriptTimeZone() {
+    if (this._mockUser) {
+      return "UTC";
+    }
+    try {
+      return Session.getScriptTimeZone();
+    } catch (e) {
+      return "UTC";
+    }
+  }
+};

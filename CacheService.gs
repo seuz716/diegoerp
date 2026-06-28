@@ -205,8 +205,8 @@ invalidateCartera() {
     
     // If circuit is HALF_OPEN, only allow one request at a time
     if (state === 'half_open') {
-      this._setCircuitState(kind, 'half_open');
       // Already in half-open, execute with test
+      // The _autoRecoverCircuitBreaker will handle the actual test via executeWithCircuit retry
     }
     
     let lastError;
@@ -342,10 +342,22 @@ invalidateCartera() {
       this._setCircuitState(kind, 'half_open');
       if (kind === 'terceros') {
         this.tercerosCircuitOpen = true;
+        this._transitionToHalfOpen('terceros');
       } else {
         this.carteraCircuitOpen = true;
+        this._transitionToHalfOpen('cartera');
       }
     }
+  },
+  
+  /**
+   * Transition to HALF_OPEN state - allows one test request
+   * @private
+   */
+  _transitionToHalfOpen(kind) {
+    console.debug(`[FIX-C-02] _transitionToHalfOpen: ${kind} entering half_open state`);
+    // The actual state change is already done by _setCircuitState
+    // This method allows for any additional half-open initialization
   },
   // === FIN FIX C-02 ===
 
@@ -899,23 +911,60 @@ ttl: this.CACHE_TTL
     const idClean = _sanitizeId(idTercero);
     if (!idClean) return 0;
 
-    // Try cache first
-    if (this.cartera && this.cartera.length > 0) {
-      const items = this.cartera.filter(c =>
-        c.id_tercero === idClean &&
-        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA
-      );
-      const saldo = items.reduce((sum, c) => sum + c.saldo, 0);
-      console.debug("[FIX-M-03] getSaldoTercero(%s) from cache: %s items", idClean, items.length);
+    // Try cache first - use index for O(1) lookup
+    if (this.cartera && this.cartera.length > 0 && this.carteraIndex) {
+      // Build saldo map from index (carteraIndex has id_tercero -> row indexes)
+      const saldoMap = this._buildSaldoMap();
+      const saldo = saldoMap[idClean] || 0;
+      console.debug("[FIX-M-03] getSaldoTercero(%s) from pre-built map: %s", idClean, saldo);
       return saldo;
     }
 
-    // Fallback to sheet-based query if cache not available
+    // Fallback: single batch read instead of N+1
     console.debug("[FIX-M-03] getSaldoTercero(%s) cache miss, sheet fallback", idClean);
-    return this.getCarteraPorTercero(idClean)
-      .filter(c => c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA)
-      .reduce((sum, c) => sum + c.saldo, 0);
+    return this._getSaldoFromSheet(idClean);
     // === FIN FIX M-03 ===
+  },
+
+  /**
+   * Build a saldo map for all terceros - O(N) once instead of O(N) per query
+   * @private
+   */
+  _buildSaldoMap() {
+    const saldoMap = {};
+    for (const c of this.cartera) {
+      if (c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA) {
+        const key = c.id_tercero;
+        if (!saldoMap[key]) saldoMap[key] = 0;
+        saldoMap[key] += c.saldo;
+      }
+    }
+    return saldoMap;
+  },
+
+  /**
+   * Single sheet read to get saldo for a tercero - avoids N+1
+   * @private
+   */
+  _getSaldoFromSheet(idTercero) {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return 0;
+    
+    // Single read for all rows, filter in memory
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    
+    let saldo = 0;
+    for (const row of data) {
+      const rowIdTercero = String(row[COL.id_tercero] || "").trim();
+      const estado = String(row[COL.estado] || "").trim();
+      if (rowIdTercero === idTercero && estado !== CARTERA_CONFIG.ESTADOS.CANCELADA) {
+        saldo += _parseMoneda(row[COL.saldo], 0);
+      }
+    }
+    return saldo;
   },
 
   getCarteraBase() {

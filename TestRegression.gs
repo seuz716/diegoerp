@@ -106,6 +106,46 @@ function runAllRegressionTests() {
     }
     return 'Sanitization failed';
   });
+
+  // ===== TransactionManager Tests =====
+  _test('TransactionManager.begin returns txn with snapshot', () => {
+    const txn = TransactionManager.begin('test_tx_' + Date.now());
+    if (txn && typeof txn.snapshot === 'object' && typeof txn.commit === 'function' && typeof txn.rollback === 'function') {
+      txn.commit();
+      return true;
+    }
+    return 'Invalid txn structure';
+  });
+
+  _test('TransactionManager.getCorrelationId returns current id', () => {
+    const testId = 'test_corr_' + Date.now();
+    TransactionManager.begin(testId);
+    const retrieved = TransactionManager.getCorrelationId();
+    TransactionManager.begin(null);
+    return retrieved === testId ? true : 'Wrong correlationId';
+  });
+
+  // ===== Accounting Tests =====
+  _test('LIBRO_DIARIO has required methods', () => {
+    if (typeof LIBRO_DIARIO.registrarAbonoCliente === 'function' &&
+        typeof LIBRO_DIARIO.registrarVentaCredito === 'function' &&
+        typeof LIBRO_DIARIO.registrarVentaContado === 'function' &&
+        typeof LIBRO_DIARIO.registrarPagoProveedor === 'function' &&
+        typeof LIBRO_DIARIO.exportarCSV === 'function') {
+      return true;
+    }
+    return 'Missing LIBRO_DIARIO methods';
+  });
+
+  _test('FLUJO_CAJA has required methods', () => {
+    if (typeof FLUJO_CAJA.registrarMovimiento === 'function' &&
+        typeof FLUJO_CAJA.getResumenDiario === 'function' &&
+        typeof FLUJO_CAJA.exportarCSV === 'function' &&
+        FLUJO_CAJA.TIPOS) {
+      return true;
+    }
+    return 'Missing FLUJO_CAJA methods';
+  });
   
   // ===== SchemaValidator Tests =====
   _test('validateRoleMap rejects invalid JSON', () => {
