@@ -50,6 +50,10 @@ let CACHE = {
   circuitOpens: 0,
   circuitCloses: 0,
   _metricsLoaded: false,
+  checksumMismatches: 0,
+  _checksumMismatchTimestamps: [],
+  _CHECKSUM_MISMATCH_THRESHOLD: 5,
+  _CHECKSUM_MISMATCH_WINDOW_MS: 60000,
   // === FIN FIX CACHE-METRICS ===
   lastChecksumTerceros: "",
   lastChecksumCartera: "",
@@ -533,9 +537,52 @@ recoverFromStale() {
    */
 _handleIntegrityFailure(kind) {
      console.debug("CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
+     
+     // Track checksum mismatch for auto-circuit-breaker
+     this.checksumMismatches++;
+     this._checksumMismatchTimestamps.push(Date.now());
+     this._cleanupChecksumMismatchTimestamps();
+     
+     // Check if we should auto-open circuit breaker
+     if (this._shouldAutoOpenCircuitForChecksum()) {
+       console.debug("CACHE: Checksum mismatches threshold exceeded, opening circuit breaker");
+       if (kind === 'terceros') {
+         this.tercerosCircuitOpen = true;
+         this._incrementMetric('circuitOpens');
+         this._circuitOpenTercerosTimestamp = Date.now();
+         PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
+       } else {
+         this.carteraCircuitOpen = true;
+         this._incrementMetric('circuitOpens');
+         this._circuitOpenCarteraTimestamp = Date.now();
+         PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
+       }
+     }
+     
      this.recoverFromStale();
      return false;
    },
+
+  /**
+   * Cleans up old checksum mismatch timestamps
+   * @private
+   */
+  _cleanupChecksumMismatchTimestamps() {
+    const now = Date.now();
+    this._checksumMismatchTimestamps = this._checksumMismatchTimestamps.filter(
+      ts => (now - ts) < this._CHECKSUM_MISMATCH_WINDOW_MS
+    );
+  },
+
+  /**
+   * Checks if checksum mismatches exceed threshold
+   * @private
+   * @returns {boolean} true if circuit should auto-open
+   */
+  _shouldAutoOpenCircuitForChecksum() {
+    this._cleanupChecksumMismatchTimestamps();
+    return this._checksumMismatchTimestamps.length >= this._CHECKSUM_MISMATCH_THRESHOLD;
+  },
 
   /**
    * Verifica integridad de la caché contra la hoja de cálculo usando SHA-256.
@@ -1024,32 +1071,77 @@ _putNativeCache(keyPrefix, data) {
  return null;
      },
 
-    getHealth() {
-      const tState = this.getCircuitState('terceros');
-      const cState = this.getCircuitState('cartera');
-      return {
-        terceros: {
-          hitRatio: this._hitsTerceros + this._missesTerceros > 0
-            ? this._hitsTerceros / (this._hitsTerceros + this._missesTerceros)
-            : 0,
-          stale: this.tercerosStale,
-          circuitOpen: this.tercerosCircuitOpen,
-          age: this.lastRefreshTerceros > 0 ? Date.now() - this.lastRefreshTerceros : -1,
-          failCount: this.tercerosFailCount,
-          nextRetryMs: tState.state === 'open' ? Math.max(0, this.CIRCUIT_AUTO_CLOSE_MS - (Date.now() - (this._circuitOpenTercerosTimestamp || 0))) : 0,
-          checksumValidationStatus: this.lastChecksumTerceros ? 'valid' : 'not_initialized'
-        },
-        cartera: {
-          hitRatio: this._hitsCartera + this._missesCartera > 0
-            ? this._hitsCartera / (this._hitsCartera + this._missesCartera)
-            : 0,
-          stale: this.carteraStale,
-          circuitOpen: this.carteraCircuitOpen,
-          age: this.lastRefreshCartera > 0 ? Date.now() - this.lastRefreshCartera : -1,
-          failCount: this.carteraFailCount,
-          nextRetryMs: cState.state === 'open' ? Math.max(0, this.CIRCUIT_AUTO_CLOSE_MS - (Date.now() - (this._circuitOpenCarteraTimestamp || 0))) : 0,
-          checksumValidationStatus: this.lastChecksumCartera ? 'valid' : 'not_initialized'
-        }
-      };
+    /**
+   * Computes estimated memory usage for cache data
+   * @private
+   */
+  _estimateMemoryUsage() {
+    let size = 0;
+    if (this.terceros) {
+      size += JSON.stringify(this.terceros).length;
     }
+    if (this.terceroIndex) {
+      size += JSON.stringify(this.terceroIndex).length;
+    }
+    if (this.cartera) {
+      size += JSON.stringify(this.cartera).length;
+    }
+    if (this.carteraIndex) {
+      size += JSON.stringify(this.carteraIndex).length;
+    }
+    size += JSON.stringify(this._cache || {}).length;
+    size += JSON.stringify(this._metadata || {}).length;
+    return size;
+  },
+
+  /**
+   * Counts stale entries in cache
+   * @private
+   */
+  _countStaleEntries() {
+    let count = 0;
+    if (this.tercerosStale) {
+      count += this.terceros ? this.terceros.length : 0;
+    }
+    if (this.carteraStale) {
+      count += this.cartera ? this.cartera.length : 0;
+    }
+    return count;
+  },
+
+  getHealth() {
+    const tState = this.getCircuitState('terceros');
+    const cState = this.getCircuitState('cartera');
+    const tHitRatio = this._hitsTerceros + this._missesTerceros > 0
+      ? this._hitsTerceros / (this._hitsTerceros + this._missesTerceros)
+      : 0;
+    const cHitRatio = this._hitsCartera + this._missesCartera > 0
+      ? this._hitsCartera / (this._hitsCartera + this._missesCartera)
+      : 0;
+    
+    return {
+      terceros: {
+        cacheHitRate: tHitRatio * 100,
+        circuitState: tState.state,
+        staleEntriesCount: this.tercerosStale ? (this.terceros ? this.terceros.length : 0) : 0,
+        memoryUsage: this.terceros ? JSON.stringify(this.terceros).length : 0,
+        failCount: this.tercerosFailCount,
+        nextRetryMs: tState.nextRetryMs,
+        checksumValidationStatus: this.lastChecksumTerceros ? 'valid' : 'not_initialized'
+      },
+      cartera: {
+        cacheHitRate: cHitRatio * 100,
+        circuitState: cState.state,
+        staleEntriesCount: this.carteraStale ? (this.cartera ? this.cartera.length : 0) : 0,
+        memoryUsage: this.cartera ? JSON.stringify(this.cartera).length : 0,
+        failCount: this.carteraFailCount,
+        nextRetryMs: cState.nextRetryMs,
+        checksumValidationStatus: this.lastChecksumCartera ? 'valid' : 'not_initialized'
+      },
+      global: {
+        staleEntriesCount: this._countStaleEntries(),
+        memoryUsage: this._estimateMemoryUsage()
+      }
+    };
+  }
 };
