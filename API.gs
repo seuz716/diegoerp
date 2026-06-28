@@ -55,16 +55,19 @@ const INPUT_VALIDATOR = {
   /**
    * Validate and parse currency value
    */
-  parseMoneda(value, defaultValue) {
-    const parsed = _parseMoneda(value, defaultValue);
-    if (parsed === null || parsed === undefined || isNaN(parsed)) {
-      throw new Error('Valor monetario inválido');
-    }
-    if (Math.abs(parsed) > this.MAX_MONTO) {
-      throw new Error('El monto excede el límite permitido');
-    }
-    return parsed;
-  },
+parseMoneda(value, defaultValue) {
+     const parsed = _parseMoneda(value, defaultValue);
+     if (parsed === null || parsed === undefined || isNaN(parsed)) {
+       throw new Error('Valor monetario inválido');
+     }
+     if (parsed < 0) {
+       throw new Error('El monto no puede ser negativo');
+     }
+     if (parsed > this.MAX_MONTO) {
+       throw new Error('El monto excede el límite permitido');
+     }
+     return parsed;
+   },
 
   /**
    * Validate ID (alphanumeric + dashes/underscores)
