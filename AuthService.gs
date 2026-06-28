@@ -26,13 +26,13 @@ const PERMISSION_ROLES = {
   administrar: ROLES.ADMIN,
 };
 
+// Whitelist de acciones permitidas sin identidad de usuario (triggers por tiempo)
+const TRIGGER_SAFE_ACTIONS = {
+  actualizarVencimientos: true,
+  revisarInventario: true,
+};
+
 const APP_CRYPTO_SALT = "DIEGOERP_AES_V2_2026";
-
-let _cryptoJsInstance = null;
-
-function _getCryptoJS() {
-  return null;
-}
 
 const SecretManager = {
   _deriveKey(part1, part2) {
@@ -67,32 +67,49 @@ const SecretManager = {
 };
 
 const CRYPTO_UTIL = {
+  _V2_TAG: "v2",
+  _V1_TAG: "v1",
+
+  _bytesToHex(bytes) {
+    return bytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+  },
+
+  _hmacSHA256(data, key) {
+    return Utilities.computeHmacSha256Signature(data, key);
+  },
+
+  _generateKeyStream(key, iv, length) {
+    const stream = [];
+    let round = 0;
+    while (stream.length < length) {
+      const roundInput = iv + round.toString();
+      const roundKey = this._hmacSHA256(roundInput, key);
+      for (let j = 0; j < roundKey.length && stream.length < length; j++) {
+        stream.push(roundKey[j] & 0xFF);
+      }
+      round++;
+    }
+    return stream;
+  },
+
   encrypt(plaintext) {
     if (!plaintext) return "";
     try {
       const key = SecretManager.getEncryptionKey();
       const iv = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
       const textBytes = Utilities.newBlob(plaintext).getBytes();
-      const keyStream = [];
-      let round = 0;
-      let offset = 0;
-      while (offset < textBytes.length) {
-        const roundInput = iv + round.toString();
-        const roundKey = Utilities.computeHmacSha256Signature(key, roundInput);
-        for (let j = 0; j < roundKey.length && offset < textBytes.length; j++) {
-          keyStream.push(roundKey[j] & 0xFF);
-          offset++;
-        }
-        round++;
-      }
-      const result = [];
+      const keyStream = this._generateKeyStream(key, iv, textBytes.length);
+
+      const cipherBytes = [];
       for (let i = 0; i < textBytes.length; i++) {
-        result.push(textBytes[i] ^ keyStream[i]);
+        cipherBytes.push(textBytes[i] ^ keyStream[i]);
       }
-      const hmac = Utilities.computeHmacSha256Signature(result, key);
-      const hmacHex = hmac.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-      const encoded = Utilities.base64Encode(result);
-      return JSON.stringify({ c: encoded, i: iv, h: hmacHex });
+      const encoded = Utilities.base64Encode(cipherBytes);
+
+      const hmacInput = iv + ":" + encoded;
+      const hmacHex = this._bytesToHex(this._hmacSHA256(hmacInput, key));
+
+      return JSON.stringify({ c: encoded, i: iv, h: hmacHex, v: this._V2_TAG });
     } catch (e) {
       console.error("CRYPTO_UTIL.encrypt error: " + e);
       return "";
@@ -104,46 +121,53 @@ const CRYPTO_UTIL = {
     try {
       const obj = JSON.parse(ciphertext);
 
-      // Legacy format v1 (XOR plain) — migración transparente
+      if (obj.v === this._V2_TAG) {
+        return this._decryptV2(obj);
+      }
+
       if (obj.c && obj.s) {
+        console.warn("CRYPTO_UTIL: Formato V1 legacy detectado - migración recomendada: re-almacena el secreto con setApiKey()");
         const plainBytes = Utilities.base64Decode(obj.c);
         return Utilities.newBlob(plainBytes).getDataAsString();
       }
 
-      if (!obj.c || !obj.i) return "";
-      const key = SecretManager.getEncryptionKey();
-      const encryptedBytes = Utilities.base64Decode(obj.c);
-
-      if (obj.h) {
-        const expectedHmac = Utilities.computeHmacSha256Signature(encryptedBytes, key);
-        const expectedHex = expectedHmac.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-        if (expectedHex !== obj.h) {
-          console.error("CRYPTO_UTIL: HMAC mismatch — ciphertext manipulado o clave incorrecta");
-          return "";
-        }
+      if (obj.c && obj.i && obj.h) {
+        return this._decryptV2(obj);
       }
 
-      const keyStream = [];
-      let round = 0;
-      let offset = 0;
-      while (offset < encryptedBytes.length) {
-        const roundInput = obj.i + round.toString();
-        const roundKey = Utilities.computeHmacSha256Signature(key, roundInput);
-        for (let j = 0; j < roundKey.length && offset < encryptedBytes.length; j++) {
-          keyStream.push(roundKey[j] & 0xFF);
-          offset++;
-        }
-        round++;
+      if (obj.c && obj.i) {
+        console.warn("CRYPTO_UTIL: Formato sin HMAC detectado (pre-v2). Re-almacena para seguridad.");
+        return this._decryptStream(obj.i, obj.c);
       }
-      const result = [];
-      for (let i = 0; i < encryptedBytes.length; i++) {
-        result.push(encryptedBytes[i] ^ keyStream[i]);
-      }
-      return Utilities.newBlob(result).getDataAsString();
+
+      return "";
     } catch (e) {
       console.warn("CRYPTO_UTIL.decrypt error: " + e);
       return "";
     }
+  },
+
+  _decryptV2(obj) {
+    if (!obj.c || !obj.i || !obj.h) return "";
+    const key = SecretManager.getEncryptionKey();
+    const hmacInput = obj.i + ":" + obj.c;
+    const expectedHex = this._bytesToHex(this._hmacSHA256(hmacInput, key));
+    if (expectedHex !== obj.h) {
+      console.error("CRYPTO_UTIL: HMAC mismatch - ciphertext manipulado o clave incorrecta");
+      return "";
+    }
+    return this._decryptStream(obj.i, obj.c);
+  },
+
+  _decryptStream(iv, encoded) {
+    const key = SecretManager.getEncryptionKey();
+    const encryptedBytes = Utilities.base64Decode(encoded);
+    const keyStream = this._generateKeyStream(key, iv, encryptedBytes.length);
+    const result = [];
+    for (let i = 0; i < encryptedBytes.length; i++) {
+      result.push(encryptedBytes[i] ^ keyStream[i]);
+    }
+    return Utilities.newBlob(result).getDataAsString();
   },
 
   obfuscate(p) { return this.encrypt(p); },
@@ -188,11 +212,6 @@ const AuthService = {
       console.log("Migración completada para '" + keyName + "'.");
       return legacy;
     }
-    if (typeof __GEMINI_FALLBACK_KEY__ !== "undefined" && __GEMINI_FALLBACK_KEY__) {
-      console.warn("Usando fallback key de variable global. Migrando a cifrado AES...");
-      this._storeKey(keyName, __GEMINI_FALLBACK_KEY__);
-      return __GEMINI_FALLBACK_KEY__;
-    }
     console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
     throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada en proxy ni localmente.");
   },
@@ -233,38 +252,27 @@ const AuthService = {
     }
   },
 
-  checkPermission(accion, userEmail) {
-    // === INICIO FIX M-08 ===
-    // Permite pasar email explícito para triggers donde getActiveUser() retorna null
-    let email = userEmail;
-    if (!email) {
-      email = this._getCurrentUser();
-    }
-    if (!email) {
-      // Fallback para triggers: obtener owner del spreadsheet
-      try {
-        const ss = SpreadsheetApp.getActive();
-        const owner = ss.getOwner();
-        if (owner) {
-          email = owner.getEmail();
-          Logger.log("[FIX-M-08] Usando owner del spreadsheet como fallback: " + email);
-        }
-      } catch (e) {
-        Logger.log("[FIX-M-08] WARNING: No se pudo obtener owner del spreadsheet");
-      }
-    }
-    // === FIN FIX M-08 ===
-    if (!email) {
-      throw new Error("No se pudo determinar la identidad del usuario. ¿Ejecutando desde un trigger sin identidad?");
-    }
+  checkPermission(accion) {
     const requiredRole = PERMISSION_ROLES[accion];
     if (!requiredRole) {
       throw new Error("Acción desconocida: '" + accion + "'. Revisa la configuración de PERMISSION_ROLES.");
     }
+
+    let email = this._getCurrentUser();
+    if (!email) {
+      // Si la acción está en whitelist, permitir ejecución desde trigger
+      if (TRIGGER_SAFE_ACTIONS.hasOwnProperty(accion) && TRIGGER_SAFE_ACTIONS[accion]) {
+        Logger.log("[PERMISSION] Ejecutando acción '" + accion + "' desde trigger sin identidad (segura por whitelist)");
+        return;
+      }
+      throw new Error("Acceso denegado: Trigger ejecutado sin identidad para acción no permitida. Acción: '" + accion + "'. Solo acciones en TRIGGER_SAFE_ACTIONS pueden ejecutarse sin email.");
+    }
+
     const userRole = this.getUserRole(email);
     if (!userRole) {
       throw new Error("Acceso denegado. El usuario '" + email + "' no tiene ningún rol asignado para la acción '" + accion + "'.");
     }
+
     const requiredLevel = ROLE_HIERARCHY[requiredRole];
     const userLevel = ROLE_HIERARCHY[userRole];
     if (userLevel < requiredLevel) {

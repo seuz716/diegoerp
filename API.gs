@@ -4,18 +4,103 @@
  */
 
 let _errorCounter = 0;
+let _apiCallCounter = 0;
 
-function _safeError(context, error) {
+/**
+ * Generate unique correlation ID for each request
+ * @returns {string}
+ */
+function generateCorrelationId() {
+  _apiCallCounter++;
+  const tz = 'UTC';
+  let timezone = tz;
+  try { timezone = Session.getScriptTimeZone(); } catch (_) {}
+  return 'REQ-' + Utilities.formatDate(new Date(), timezone, 'yyyyMMdd') + '-' + _apiCallCounter;
+}
+
+function _safeError(context, error, correlationId) {
   _errorCounter++;
   var tz = 'UTC';
   try { tz = Session.getScriptTimeZone(); } catch (_) {}
-  const correlationId = 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
+  const corrId = correlationId || 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
-  console.error('[' + correlationId + '] ' + context + ': ' + message + (error && error.stack ? ' | stack: ' + error.stack : ''));
-  Logger.log('[' + correlationId + '] ' + context + ': ' + message);
-  // NO lanzar error para que el frontend reciba datos útiles en vez de fallar
-  return { success: false, error: message, correlationId: correlationId };
+  const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;
+  const executionTime = startTime > 0 ? Date.now() - parseInt(startTime) : 0;
+  console.error('[' + corrId + '] ' + context + ': ' + message + (error && error.stack ? ' | stack: ' + error.stack : ''));
+  Logger.log('[' + corrId + '] ' + context + ': ' + message + ' (execution: ' + executionTime + 'ms)');
+  return { success: false, error: message, correlationId: corrId, executionTimeMs: executionTime };
 }
+
+// ════════════════════════════════════════════════════════════════════
+// INPUT VALIDATOR - Validation module for API inputs
+// ════════════════════════════════════════════════════════════════════
+const INPUT_VALIDATOR = {
+  MAX_STRING_LENGTH: 1000,
+  MAX_MONTO: 999999999999, // 999B max
+  MAX_CANTIDAD: 999999999,
+  MAX_ITEMS: 100,
+  MAX_REFERENCIA_LENGTH: 200,
+
+  /**
+   * Sanitize string input
+   */
+  sanitizeString(value, maxLength) {
+    if (value === null || value === undefined) return '';
+    let str = String(value).trim();
+    str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''); // Remove control chars
+    if (maxLength) str = str.slice(0, maxLength);
+    return str;
+  },
+
+  /**
+   * Validate and parse currency value
+   */
+  parseMoneda(value, defaultValue) {
+    const parsed = _parseMoneda(value, defaultValue);
+    if (parsed === null || parsed === undefined || isNaN(parsed)) {
+      throw new Error('Valor monetario inválido');
+    }
+    if (Math.abs(parsed) > this.MAX_MONTO) {
+      throw new Error('El monto excede el límite permitido');
+    }
+    return parsed;
+  },
+
+  /**
+   * Validate ID (alphanumeric + dashes/underscores)
+   */
+  validateId(id) {
+    if (!id || typeof id !== 'string') throw new Error('ID requerido');
+    const cleaned = _sanitizeId(id);
+    if (!cleaned) throw new Error('ID inválido');
+    if (cleaned.length > 50) throw new Error('ID demasiado largo');
+    return cleaned;
+  },
+
+  /**
+   * Validate positive integer
+   */
+  validatePositiveInt(value, fieldName) {
+    const num = parseInt(value, 10);
+    if (isNaN(num) || num <= 0) {
+      throw new Error(fieldName + ' debe ser un número positivo');
+    }
+    if (num > this.MAX_CANTIDAD) {
+      throw new Error(fieldName + ' excede el límite permitido');
+    }
+    return num;
+  },
+
+  /**
+   * Validate array items count
+   */
+  validateItemCount(items) {
+    if (!Array.isArray(items)) throw new Error('Items debe ser un arreglo');
+    if (items.length === 0) throw new Error('Debe incluir al menos un item');
+    if (items.length > this.MAX_ITEMS) throw new Error('Demasiados items (máximo ' + this.MAX_ITEMS + ')');
+    return items;
+  }
+};
 
 const RATE_LIMITER = {
   WINDOW_MS: 60000,
@@ -52,12 +137,22 @@ const RATE_LIMITER = {
  * API Pública: Registrar abono
  */
 function registrarAbono(idTercero, valorAbono, referencia, tipo) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("registrarAbono");
     AuthService.checkPermission("registrar_abono");
-    return DOMAIN.registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo);
+    
+    // Input validation
+    const idTerceroValidado = INPUT_VALIDATOR.validateId(idTercero);
+    const valorValidado = INPUT_VALIDATOR.parseMoneda(valorAbono, 0);
+    const referenciaValidada = INPUT_VALIDATOR.sanitizeString(referencia, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
+    const tipoValidado = INPUT_VALIDATOR.sanitizeString(tipo, 10);
+    
+    const result = DOMAIN.registrarAbonoAtomic(idTerceroValidado, valorValidado, referenciaValidada, tipoValidado, correlationId);
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("registrarAbono", e);
+    return _safeError("registrarAbono", e, correlationId);
   }
 }
 
@@ -65,15 +160,17 @@ function registrarAbono(idTercero, valorAbono, referencia, tipo) {
  * API Pública: Obtener terceros ACTIVOS (o todos si se usa otra lógica interna, aquí expuesta filtrada)
  */
 function getTerceros(filtroTipo = null) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_terceros");
     const resultado = CACHE.getTerceros();
     if (filtroTipo) {
-      return resultado.filter(t => t.tipo === filtroTipo.toUpperCase());
+      return { ...resultado.filter(t => t.tipo === filtroTipo.toUpperCase()), correlationId, executionTimeMs: Date.now() - startTime };
     }
-    return resultado;
+    return { ...resultado, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getTerceros", e);
+    return _safeError("getTerceros", e, correlationId);
   }
 }
 
@@ -81,6 +178,8 @@ function getTerceros(filtroTipo = null) {
  * API Pública: Obtener cartera con filtros
  */
 function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cartera");
     
@@ -88,13 +187,13 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
-      return { items: [], nextPageToken: null, error: "Error al obtener cartera. Intente de nuevo." };
+      return { items: [], nextPageToken: null, error: "Error al obtener cartera. Intente de nuevo.", correlationId, executionTimeMs: Date.now() - startTime };
     }
     
-    return result;
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     Logger.log("ERROR getCartera: " + e.toString());
-    return { items: [], nextPageToken: null, error: _safeError("getCartera", e).error };
+    return { items: [], nextPageToken: null, error: _safeError("getCartera", e, correlationId).error, correlationId, executionTimeMs: Date.now() - startTime };
   }
 }
 
@@ -102,12 +201,15 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
  * API Pública: Guardar tercero
  */
 function saveTercero(tercero) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("saveTercero");
     AuthService.checkPermission("guardar_tercero");
-    return DOMAIN.saveTercero(tercero);
+    const result = DOMAIN.saveTercero(tercero);
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("saveTercero", e);
+    return _safeError("saveTercero", e, correlationId);
   }
 }
 
@@ -115,6 +217,8 @@ function saveTercero(tercero) {
  * API Pública: Obtener Dashboard
  */
 function getDashboardCartera() {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_dashboard");
 
@@ -379,12 +483,19 @@ function getUserInfo() {
  * API Pública: Procesar venta (contado o crédito)
  */
 function procesarVenta(carrito, opciones) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("procesarVenta");
     AuthService.checkPermission("registrar_venta");
-    return procesarVentaV2(carrito, opciones);
+    
+    // Input validation
+    INPUT_VALIDATOR.validateItemCount(carrito);
+    
+    const result = procesarVentaV2(carrito, opciones);
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("procesarVenta", e);
+    return _safeError("procesarVenta", e, correlationId);
   }
 }
 
@@ -590,8 +701,53 @@ function getRankingDeudores(topN) {
 function getConcentracionProveedores() {
   try {
     AuthService.checkPermission("ver_dashboard");
-    return DOMAIN.getConcentracionProveedores();
+    var result = DOMAIN.getConcentracionProveedores();
+    return { success: true, totalCompras: result.totalCompras, conteo: result.conteo, proveedores: result.proveedores };
   } catch (e) {
     return _safeError("getConcentracionProveedores", e);
+  }
+}
+
+// ════════════════════════════════════════════
+// FASE 4: LIBRO DIARIO CONTABLE - EXPORT
+// ════════════════════════════════════════════
+
+function exportarLibroDiario(fechaInicio, fechaFin) {
+  try {
+    AuthService.checkPermission("ver_auditoria");
+    var csv = LIBRO_DIARIO.exportarCSV(fechaInicio, fechaFin);
+    return { success: true, csv: csv };
+  } catch (e) {
+    return _safeError("exportarLibroDiario", e);
+  }
+}
+
+// ════════════════════════════════════════════
+// FASE 4.5: FLUJO DE CAJA
+// ════════════════════════════════════════════
+
+function getFlujoCajaResumen(dias) {
+  try {
+    AuthService.checkPermission("ver_dashboard");
+    var resumen = FLUJO_CAJA.getResumenDiario(dias || 30);
+    return {
+      success: true,
+      entradas: resumen.entradas,
+      salidas: resumen.salidas,
+      neto: resumen.neto,
+      saldo_actual: FLUJO_CAJA.obtenerSaldoActual()
+    };
+  } catch (e) {
+    return _safeError("getFlujoCajaResumen", e);
+  }
+}
+
+function exportarFlujoCaja(fechaInicio, fechaFin) {
+  try {
+    AuthService.checkPermission("ver_auditoria");
+    var csv = FLUJO_CAJA.exportarCSV(fechaInicio, fechaFin);
+    return { success: true, csv: csv };
+  } catch (e) {
+    return _safeError("exportarFlujoCaja", e);
   }
 }
