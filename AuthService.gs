@@ -215,20 +215,10 @@ const AuthService = {
     const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
     if (proxyValue) return proxyValue;
     
-    const secureValue = this._loadKey(keyName);
-    if (secureValue) return secureValue;
-    
-    // Legacy fallback - migration mode (temporary)
-    const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
-    if (legacy) {
-      console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a cifrado AES...");
-      this._storeKey(keyName, legacy);
-      PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
-      console.log("Migración completada para '" + keyName + "'. Configura el proxy para producción.");
-      return legacy;
-    }
-    
-    throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
+const secureValue = this._loadKey(keyName);
+     if (secureValue) return secureValue;
+     
+     throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
   },
 
   removeApiKey(keyName) {
@@ -268,16 +258,11 @@ const AuthService = {
       throw new Error("Configuración de usuarios corrupta: " + validation.error);
     }
     
-    const normalized = email.toLowerCase().trim();
-    return validation.parsed[normalized] || null;
-  },
-    } catch (e) {
-      console.error("ERROR_SCHEMA: AUTHORIZED_USERS - " + e.message);
-      throw new Error("Configuración de usuarios corrupta. Contacta al administrador.");
-    }
-  },
+const normalized = email.toLowerCase().trim();
+     return validation.parsed[normalized] || null;
+   },
 
-  checkPermission(accion) {
+   checkPermission(accion) {
     const requiredRole = PERMISSION_ROLES[accion];
     if (!requiredRole) {
       throw new Error('Acción desconocida: ' + accion + '. Revisa la configuración de PERMISSION_ROLES.');

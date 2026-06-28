@@ -16,26 +16,31 @@ class CacheIntegrityError extends Error {
 }
 
 let CACHE = {
-  terceros: null,
-  terceroIndex: {},  
-  cartera: null,
-  carteraIndex: {},  
-  lastRefreshTerceros: 0,
-  lastRefreshCartera: 0,
-  CACHE_TTL: 300000,
-  MAX_STALE_MS: 900000,
-  MAX_CONSECUTIVE_FAILURES: 3,
-  tercerosStale: false,
-  carteraStale: false,
-  tercerosStaleStart: 0,
-  carteraStaleStart: 0,
-  tercerosFailCount: 0,
-  carteraFailCount: 0,
-  // Circuit breaker states: 'closed' | 'open' | 'half_open'
-  tercerosCircuitState: 'closed',
-  carteraCircuitState: 'closed',
-  tercerosCircuitOpen: false,
-  carteraCircuitOpen: false,
+   terceros: null,
+   terceroIndex: {},  
+   cartera: null,
+   carteraIndex: {},  
+   lastRefreshTerceros: 0,
+   lastRefreshCartera: 0,
+   CACHE_TTL: 300000,
+   MAX_STALE_MS: 900000,
+   MAX_CONSECUTIVE_FAILURES: 3,
+   tercerosStale: false,
+   carteraStale: false,
+   tercerosStaleStart: 0,
+   carteraStaleStart: 0,
+   tercerosFailCount: 0,
+   carteraFailCount: 0,
+   // Cache hit tracking
+   _hitsTerceros: 0,
+   _missesTerceros: 0,
+   _hitsCartera: 0,
+   _missesCartera: 0,
+   // Circuit breaker states: 'closed' | 'open' | 'half_open'
+   tercerosCircuitState: 'closed',
+   carteraCircuitState: 'closed',
+   tercerosCircuitOpen: false,
+   carteraCircuitOpen: false,
   // === INICIO FIX C-02 ===
   _circuitOpenTercerosTimestamp: 0,
   _circuitOpenCarteraTimestamp: 0,
@@ -343,65 +348,79 @@ let CACHE = {
   },
   // === FIN FIX C-02 ===
 
-  isTercerosValid() {
-    // Check circuit state and auto-recover
-    const circuitState = this._getCircuitState('terceros');
-    
-    if (circuitState === 'open') {
-      this._autoRecoverCircuitBreaker('terceros');
-      const newState = this._getCircuitState('terceros');
-      if (newState === 'open') {
-        return false; // Still open after recovery check
-      }
-    }
-    
-    if (this.tercerosStale) {
-      if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
-        return false;
-      }
-      return true;
-    }
-    if (this.terceros === null) {
-      const cached = this._getNativeCache("terceros");
-      if (cached) {
-        this.terceros = cached.terceros;
-        this.terceroIndex = cached.terceroIndex;
-        this.lastRefreshTerceros = cached.lastRefreshTerceros;
-        this.lastChecksumTerceros = cached.lastChecksumTerceros;
-      }
-    }
-    return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
-  },
+isTercerosValid() {
+     // Track hit/miss
+     if (this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL) {
+       this._hitsTerceros++;
+     } else {
+       this._missesTerceros++;
+     }
+     
+     // Check circuit state and auto-recover
+     const circuitState = this._getCircuitState('terceros');
+     
+     if (circuitState === 'open') {
+       this._autoRecoverCircuitBreaker('terceros');
+       const newState = this._getCircuitState('terceros');
+       if (newState === 'open') {
+         return false; // Still open after recovery check
+       }
+     }
+     
+     if (this.tercerosStale) {
+       if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
+         return false;
+       }
+       return true;
+     }
+     if (this.terceros === null) {
+       const cached = this._getNativeCache("terceros");
+       if (cached) {
+         this.terceros = cached.terceros;
+         this.terceroIndex = cached.terceroIndex;
+         this.lastRefreshTerceros = cached.lastRefreshTerceros;
+         this.lastChecksumTerceros = cached.lastChecksumTerceros;
+       }
+     }
+     return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
+   },
 
-  isCarteraValid() {
-    // Check circuit state and auto-recover
-    const circuitState = this._getCircuitState('cartera');
-    
-    if (circuitState === 'open') {
-      this._autoRecoverCircuitBreaker('cartera');
-      const newState = this._getCircuitState('cartera');
-      if (newState === 'open') {
-        return false; // Still open after recovery check
-      }
-    }
-    
-    if (this.carteraStale) {
-      if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
-        return false;
-      }
-      return true;
-    }
-    if (this.cartera === null) {
-      const cached = this._getNativeCache("cartera");
-      if (cached) {
-        this.cartera = cached.cartera;
-        this.carteraIndex = cached.carteraIndex;
-        this.lastRefreshCartera = cached.lastRefreshCartera;
-        this.lastChecksumCartera = cached.lastChecksumCartera;
-      }
-    }
-    return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
-  },
+isCarteraValid() {
+     // Track hit/miss
+     if (this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL) {
+       this._hitsCartera++;
+     } else {
+       this._missesCartera++;
+     }
+     
+     // Check circuit state and auto-recover
+     const circuitState = this._getCircuitState('cartera');
+     
+     if (circuitState === 'open') {
+       this._autoRecoverCircuitBreaker('cartera');
+       const newState = this._getCircuitState('cartera');
+       if (newState === 'open') {
+         return false; // Still open after recovery check
+       }
+     }
+     
+     if (this.carteraStale) {
+       if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
+         return false;
+       }
+       return true;
+     }
+     if (this.cartera === null) {
+       const cached = this._getNativeCache("cartera");
+       if (cached) {
+         this.cartera = cached.cartera;
+         this.carteraIndex = cached.carteraIndex;
+         this.lastRefreshCartera = cached.lastRefreshCartera;
+         this.lastChecksumCartera = cached.lastChecksumCartera;
+       }
+     }
+     return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
+   },
 
   /**
    * Recarga caché (permite forzar refresco)
@@ -571,12 +590,19 @@ let CACHE = {
         failCount: this.carteraFailCount,
         circuitOpen: this.carteraCircuitOpen,
         circuitState: this.carteraCircuitState,
-        count: this.cartera ? this.cartera.length : 0,
-      },
-      metrics: {
-        circuitOpens: this.circuitOpens,
-        circuitCloses: this.circuitCloses,
-      },
+count: this.cartera ? this.cartera.length : 0,
+       },
+       metrics: {
+         circuitOpens: this.circuitOpens,
+         circuitCloses: this.circuitCloses,
+         hitRatioTerceros: this._hitsTerceros + this._missesTerceros > 0 
+           ? this._hitsTerceros / (this._hitsTerceros + this._missesTerceros) 
+           : 0,
+         hitRatioCartera: this._hitsCartera + this._missesCartera > 0 
+           ? this._hitsCartera / (this._hitsCartera + this._missesCartera) 
+           : 0,
+       },
+       ttl: this.CACHE_TTL,
       ttl: this.CACHE_TTL,
     };
   },
