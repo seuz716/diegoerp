@@ -1,16 +1,3 @@
-// =============================================================================
-// SESSION SERVICE WRAPPER - For testability
-// =============================================================================
-const SESSION_SERVICE = {
-  getCurrentUser() {
-    try {
-      return SESSION_SERVICE.getCurrentUser();
-    } catch (e) {
-      return { getEmail: () => null };
-    }
-  }
-};
-
 /**
  * LAYER 5: DOMAIN LOGIC — TRANSACCIONES SIMULADAS Y NEGOCIO
  * Resuelve Problemas #3, #4 y #5 
@@ -287,11 +274,11 @@ const DOMAIN = {
       tx.commit();
       CACHE.invalidateTerceros();
 
-      if (resultado.isUpdate) {
-        LOG_ENGINE.logEvent("UPDATE_TERCERO", "TERCEROS", id, { nombre: "*" }, { nombre }, "SUCCESS", { correlationId });
-      } else {
-        LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS", { correlationId });
-      }
+if (resultado.isUpdate) {
+         LOG_ENGINE.logEvent("UPDATE_TERCERO", "TERCEROS", id, { nombre: "*" }, { nombre }, "SUCCESS", { correlationId: TransactionManager.getCorrelationId() || ('tercero_' + Date.now()) });
+       } else {
+         LOG_ENGINE.logEvent("CREATE_TERCERO", "TERCEROS", id, {}, { nombre }, "SUCCESS", { correlationId: TransactionManager.getCorrelationId() || ('tercero_' + Date.now()) });
+       }
 
       return { success: true, id };
 
@@ -586,10 +573,10 @@ const DOMAIN = {
       };
 
 DAO.createCartera(record);
-       CACHE.invalidateCartera();
-       LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS", { correlationId: correlationId || ('cartera_' + Date.now()) });
-       
-       return idCartera;
+        CACHE.invalidateCartera();
+        LOG_ENGINE.logEvent("CREATE_CARTERA", "CARTERA", idCartera, {}, { tercero: idTerceroLimpio, total: totalLimpio }, "SUCCESS", { correlationId: TransactionManager.getCorrelationId() || ('cartera_' + Date.now()) });
+        
+        return idCartera;
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();
     }
@@ -696,8 +683,8 @@ DAO.createCartera(record);
 
         CACHE.invalidateCartera();
 
-        LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
-          {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: correlationId || ('compra_' + Date.now()) });
+LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
+           {}, { proveedor: idProv, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: TransactionManager.getCorrelationId() || ('compra_' + Date.now()) });
 
         return { success: true, id: idCompra, total: totalLimpio };
       } catch (e) {
@@ -799,8 +786,8 @@ DAO.createCartera(record);
 
         CACHE.invalidateCartera();
 
-        LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
-          { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS", { correlationId: correlationId || ('pago_' + Date.now()) });
+LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
+           { saldo_anterior: compra.saldo }, { saldo_nuevo: nuevoSaldo, pago: montoLimpio }, "SUCCESS", { correlationId: TransactionManager.getCorrelationId() || ('pago_' + Date.now()) });
 
         return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
       } catch (e) {

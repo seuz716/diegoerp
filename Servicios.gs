@@ -1,16 +1,3 @@
-// =============================================================================
-// SESSION SERVICE WRAPPER - For testability
-// =============================================================================
-const SESSION_SERVICE = {
-  getCurrentUser() {
-    try {
-      return SESSION_SERVICE.getCurrentUser();
-    } catch (e) {
-      return { getEmail: () => null };
-    }
-  }
-};
-
 /**
  * LAYER 3: SERVICIOS / LÓGICA DE NEGOCIO
  * Contiene funciones de alto nivel que orquestan las operaciones del DAO.

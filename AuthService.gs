@@ -1,40 +1,3 @@
-// =============================================================================
-// SESSION SERVICE WRAPPER - For testability
-// =============================================================================
-const SESSION_SERVICE = {
-  _mockUser: null,
-  
-  _resetMock() {
-    this._mockUser = null;
-  },
-  
-  _setMockUser(email) {
-    this._mockUser = email;
-  },
-  
-  getCurrentUser() {
-    if (this._mockUser) {
-      return { getEmail: () => this._mockUser };
-    }
-    try {
-      return Session.getActiveUser();
-    } catch (e) {
-      return { getEmail: () => null };
-    }
-  },
-  
-  getScriptTimeZone() {
-    if (this._mockUser) {
-      return "UTC";
-    }
-    try {
-      return Session.getScriptTimeZone();
-    } catch (e) {
-      return "UTC";
-    }
-  }
-};
-
 const ROLES = { ADMIN: 'ADMIN', OPERATOR: 'OPERATOR', VIEWER: 'VIEWER' };
 const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
@@ -109,32 +72,19 @@ const CRYPTO_SERVICE = {
   },
   
   _kdf(salt, info, iterations = 10000) {
-    // Proper HKDF with configurable iterations for key stretching
     const prk = Utilities.computeHmacSha256Signature(salt, this._getMasterKey());
-    const okm = [];
-    let previous = info;
-    
-    // First block
-    let block = Utilities.computeHmacSha256Signature(previous + info, prk);
-    okm.push(...block);
-    previous = String.fromCharCode(...block);
-    
-    // Additional iterations for key stretching (defensive against brute force)
+    let block = Utilities.computeHmacSha256Signature(info, prk);
     for (let i = 1; i < iterations; i++) {
-      block = Utilities.computeHmacSha256Signature(previous, prk);
-      previous = String.fromCharCode(...block);
+      block = Utilities.computeHmacSha256Signature(block, prk);
     }
-    
-    return okm.slice(0, 32); // 256 bits
+    return Array.from(block).slice(0, 32);
   },
   
   _deriveKey(iv, salt) {
-    const saltBytes = Utilities.newBlob(salt).getBytes();
-    const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
-    return this._deriveKey(iv, salt, 10000);  // 10000 iterations for key stretching
+    return this._deriveKeyWithIterations(iv, salt, 10000);
   },
   
-  _deriveKeyWithIterations(iv, salt, iterations) {
+  _deriveKeyWithIterations(iv, salt, iterations = 10000) {
     const saltBytes = Utilities.newBlob(salt).getBytes();
     const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
     return this._kdf(Utilities.newBlob(saltedIv).getBytes(), "DIECRP2026", iterations);
@@ -333,9 +283,6 @@ const normalized = email.toLowerCase().trim();
     const userRole = this.getUserRole(email);
     if (!userRole) {
       throw new Error('Acceso denegado. El usuario ' + email + ' no tiene ningún rol asignado para la acción ' + accion + '.');
-    }
-    if (!isSafeAction && email !== this._getCurrentUser()) {
-      throw new Error('Acceso denegado. Acción ' + accion + ' requiere identity verificable.');
     }
     const requiredLevel = ROLE_HIERARCHY[requiredRole];
     const userLevel = ROLE_HIERARCHY[userRole];

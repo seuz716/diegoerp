@@ -1,22 +1,3 @@
-// =============================================================================
-// SESSION SERVICE WRAPPER - For testability
-// =============================================================================
-const SESSION_SERVICE = {
-  getCurrentUser() {
-    try {
-      return SESSION_SERVICE.getCurrentUser();
-    } catch (e) {
-      return { getEmail: () => null };
-    }
-  },
-  getScriptTimeZone() {
-    try {
-      return SESSION_SERVICE.getScriptTimeZone();
-    } catch (e) {
-      return "UTC";
-    }
-  }
-};
 
 /**
  * Entry point — GAS Web App
