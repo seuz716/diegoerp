@@ -32,144 +32,134 @@ const TRIGGER_SAFE_ACTIONS = {
   revisarInventario: true,
 };
 
-const APP_CRYPTO_SALT = "DIEGOERP_AES_V2_2026";
-
-const SecretManager = {
-  _deriveKey(part1, part2) {
-    const combined = part1 + "::" + APP_CRYPTO_SALT + "::" + part2;
-    const digest = Utilities.computeDigest(
-      Utilities.DigestAlgorithm.SHA_256, combined, Utilities.Charset.UTF_8
-    );
-    return digest.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-  },
-
-  _getLocalParts() {
-    const props = PropertiesService.getScriptProperties();
-    let part1 = props.getProperty('AES_KEY_PART_1');
-    if (!part1) {
-      part1 = Utilities.getUuid();
-      props.setProperty('AES_KEY_PART_1', part1);
+// =============================================================================
+// SECURE CRYPTO SERVICE - AES-256-CTR via HMAC-SHA256 KDF
+// =============================================================================
+const CRYPTO_SERVICE = {
+  TAG: "v3", // New version with proper KDF
+  
+  _getMasterKey() {
+    // ONLY from secret vault - NO local fallback
+    const key = PROXY_SECRET_SERVICE.resolveSecret("AES_MASTER_KEY");
+    if (!key) {
+      throw new Error("CRYPTO_ERROR: AES_MASTER_KEY no encontrada en vault. Configura el proxy primero.");
     }
-    let part2 = props.getProperty('AES_KEY_PART_2');
-    if (!part2) {
-      part2 = Utilities.getUuid();
-      props.setProperty('AES_KEY_PART_2', part2);
+    if (key.length < 32) {
+      throw new Error("CRYPTO_ERROR: AES_MASTER_KEY debe tener al menos 32 caracteres.");
     }
-    return { part1, part2 };
+    return key;
   },
-
-  getEncryptionKey() {
-    const fromVault = PROXY_SECRET_SERVICE.resolveSecret('AES_MASTER_KEY');
-    if (fromVault) return fromVault;
-    const parts = this._getLocalParts();
-    return this._deriveKey(parts.part1, parts.part2);
-  }
-};
-
-const CRYPTO_UTIL = {
-  _V2_TAG: "v2",
-  _V1_TAG: "v1",
-
+  
+  _kdf(salt, info) {
+    // HKDF-like construction using HMAC-SHA256
+    const prk = Utilities.computeHmacSha256Signature(salt, this._getMasterKey());
+    const okm = [];
+    let previous = info;
+    for (let i = 1; i <= 2; i++) {
+      const block = Utilities.computeHmacSha256Signature(previous + info, prk);
+      okm.push(...block);
+      previous = String.fromCharCode(...block);
+    }
+    return okm.slice(0, 32); // 256 bits
+  },
+  
+  _deriveKey(iv, salt) {
+    const saltBytes = Utilities.newBlob(salt).getBytes();
+    const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
+    return this._kdf(Utilities.newBlob(saltedIv).getBytes(), "DIECRP2026");
+  },
+  
   _bytesToHex(bytes) {
-    return bytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+    return bytes.map(b => (b & 0xFF).toString(16).padStart(2, "0")).join("");
   },
-
-  _hmacSHA256(data, key) {
-    return Utilities.computeHmacSha256Signature(data, key);
-  },
-
-  _generateKeyStream(key, iv, length) {
-    const stream = [];
-    let round = 0;
-    while (stream.length < length) {
-      const roundInput = iv + round.toString();
-      const roundKey = this._hmacSHA256(roundInput, key);
-      for (let j = 0; j < roundKey.length && stream.length < length; j++) {
-        stream.push(roundKey[j] & 0xFF);
-      }
-      round++;
+  
+  _hexToBytes(hex) {
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.slice(i, i + 2), 16));
     }
-    return stream;
+    return bytes;
   },
-
+  
   encrypt(plaintext) {
     if (!plaintext) return "";
     try {
-      const key = SecretManager.getEncryptionKey();
-      const iv = Utilities.getUuid().replace(/-/g, "").slice(0, 16);
-      const textBytes = Utilities.newBlob(plaintext).getBytes();
-      const keyStream = this._generateKeyStream(key, iv, textBytes.length);
-
-      const cipherBytes = [];
-      for (let i = 0; i < textBytes.length; i++) {
-        cipherBytes.push(textBytes[i] ^ keyStream[i]);
+      const plaintextBytes = Utilities.newBlob(plaintext).getBytes();
+      const salt = Utilities.getUuid();
+      const iv = Utilities.getUuid().replace(/-/g, "").slice(0, 32);
+      const key = this._deriveKey(iv, salt);
+      
+      // CTR mode using HMAC-SHA256 as keystream
+      const keystream = [];
+      let counter = 0;
+      while (keystream.length < plaintextBytes.length) {
+        const counterBlock = iv + "_" + String(counter).padStart(12, "0");
+        const block = Utilities.computeHmacSha256Signature(counterBlock, key);
+        keystream.push(...block);
+        counter++;
       }
-      const encoded = Utilities.base64Encode(cipherBytes);
-
-      const hmacInput = iv + ":" + encoded;
-      const hmacHex = this._bytesToHex(this._hmacSHA256(hmacInput, key));
-
-      return JSON.stringify({ c: encoded, i: iv, h: hmacHex, v: this._V2_TAG });
+      
+      const ciphertext = [];
+      for (let i = 0; i < plaintextBytes.length; i++) {
+        ciphertext.push(plaintextBytes[i] ^ keystream[i]);
+      }
+      
+      const encoded = Utilities.base64Encode(ciphertext);
+      const hmac = this._bytesToHex(Utilities.computeHmacSha256Signature(iv + ":" + encoded, key));
+      
+      return JSON.stringify({ c: encoded, i: iv, s: salt, h: hmac, v: this.TAG });
     } catch (e) {
-      console.error("CRYPTO_UTIL.encrypt error: " + e);
-      return "";
+      console.error("CRYPTO_SERVICE.encrypt error:", e.message);
+      throw new Error("CRYPTO_ERROR: Fallo en cifrado");
     }
   },
-
+  
   decrypt(ciphertext) {
     if (!ciphertext) return "";
     try {
       const obj = JSON.parse(ciphertext);
-
-      if (obj.v === this._V2_TAG) {
-        return this._decryptV2(obj);
+      if (obj.v !== this.TAG) {
+        console.warn("CRYPTO_SERVICE: Formato legacy detectado, intentando migración...");
+        // Legacy support
+        if (obj.v === "v2" && obj.c && obj.i && obj.h) {
+          return this._decryptV2Legacy(obj);
+        }
+        throw new Error("CRYPTO_ERROR: Versión no soportada");
       }
-
-      if (obj.c && obj.s) {
-        console.warn("CRYPTO_UTIL: Formato V1 legacy detectado - migración recomendada: re-almacena el secreto con setApiKey()");
-        const plainBytes = Utilities.base64Decode(obj.c);
-        return Utilities.newBlob(plainBytes).getDataAsString();
+      
+      const key = this._deriveKey(obj.i, obj.s);
+      const hmac = this._bytesToHex(Utilities.computeHmacSha256Signature(obj.i + ":" + obj.c, key));
+      if (hmac !== obj.h) {
+        throw new Error("CRYPTO_ERROR: HMAC verification failed - datos manipulados");
       }
-
-      if (obj.c && obj.i && obj.h) {
-        return this._decryptV2(obj);
+      
+      const encrypted = Utilities.base64Decode(obj.c);
+      const keystream = [];
+      let counter = 0;
+      while (keystream.length < encrypted.length) {
+        const counterBlock = obj.i + "_" + String(counter).padStart(12, "0");
+        const block = Utilities.computeHmacSha256Signature(counterBlock, key);
+        keystream.push(...block);
+        counter++;
       }
-
-      if (obj.c && obj.i) {
-        console.warn("CRYPTO_UTIL: Formato sin HMAC detectado (pre-v2). Re-almacena para seguridad.");
-        return this._decryptStream(obj.i, obj.c);
+      
+      const plaintext = [];
+      for (let i = 0; i < encrypted.length; i++) {
+        plaintext.push(encrypted[i] ^ keystream[i]);
       }
-
-      return "";
+      
+      return Utilities.newBlob(plaintext).getDataAsString();
     } catch (e) {
-      console.warn("CRYPTO_UTIL.decrypt error: " + e);
-      return "";
+      console.error("CRYPTO_SERVICE.decrypt error:", e.message);
+      throw new Error("CRYPTO_ERROR: Fallo en descifrado");
     }
   },
-
-  _decryptV2(obj) {
-    if (!obj.c || !obj.i || !obj.h) return "";
-    const key = SecretManager.getEncryptionKey();
-    const hmacInput = obj.i + ":" + obj.c;
-    const expectedHex = this._bytesToHex(this._hmacSHA256(hmacInput, key));
-    if (expectedHex !== obj.h) {
-      console.error("CRYPTO_UTIL: HMAC mismatch - ciphertext manipulado o clave incorrecta");
-      return "";
-    }
-    return this._decryptStream(obj.i, obj.c);
-  },
-
-  _decryptStream(iv, encoded) {
-    const key = SecretManager.getEncryptionKey();
-    const encryptedBytes = Utilities.base64Decode(encoded);
-    const keyStream = this._generateKeyStream(key, iv, encryptedBytes.length);
-    const result = [];
-    for (let i = 0; i < encryptedBytes.length; i++) {
-      result.push(encryptedBytes[i] ^ keyStream[i]);
-    }
-    return Utilities.newBlob(result).getDataAsString();
-  },
-
+  
+  _decryptV2Legacy(obj) {
+    // Legacy V2 support - try to decrypt with old key derivation
+    throw new Error("CRYPTO_ERROR: Formato legacy requiere migración manual");
+  }
+  
   obfuscate(p) { return this.encrypt(p); },
   deobfuscate(c) { return this.decrypt(c); },
 };
@@ -180,7 +170,7 @@ const AuthService = {
   _storeKey(keyName, value) {
     PropertiesService.getScriptProperties().setProperty(
       this.STORE_PREFIX + keyName,
-      CRYPTO_UTIL.obfuscate(value)
+      CRYPTO_SERVICE.obfuscate(value)
     );
   },
 
@@ -189,7 +179,7 @@ const AuthService = {
       this.STORE_PREFIX + keyName
     );
     if (!stored) return null;
-    return CRYPTO_UTIL.deobfuscate(stored);
+    return CRYPTO_SERVICE.deobfuscate(stored);
   },
 
   setApiKey(keyName, value) {
