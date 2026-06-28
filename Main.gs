@@ -1,3 +1,23 @@
+// =============================================================================
+// SESSION SERVICE WRAPPER - For testability
+// =============================================================================
+const SESSION_SERVICE = {
+  getCurrentUser() {
+    try {
+      return SESSION_SERVICE.getCurrentUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  },
+  getScriptTimeZone() {
+    try {
+      return SESSION_SERVICE.getScriptTimeZone();
+    } catch (e) {
+      return "UTC";
+    }
+  }
+};
+
 /**
  * Entry point — GAS Web App
  */
@@ -121,7 +141,7 @@ function _notificarErrorTrigger(context, error) {
   if (lastSent) return; // ya se notificó en los últimos 10 min
 
   try {
-    const adminEmail = Session.getActiveUser().getEmail();
+    const adminEmail = SESSION_SERVICE.getCurrentUser().getEmail();
     if (adminEmail) {
       MailApp.sendEmail({
         to: adminEmail,

@@ -1,3 +1,16 @@
+// =============================================================================
+// SESSION SERVICE WRAPPER - For testability
+// =============================================================================
+const SESSION_SERVICE = {
+  getCurrentUser() {
+    try {
+      return SESSION_SERVICE.getCurrentUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  }
+};
+
 /**
  * LAYER 5: DOMAIN LOGIC — TRANSACCIONES SIMULADAS Y NEGOCIO
  * Resuelve Problemas #3, #4 y #5 
@@ -434,7 +447,7 @@ const DOMAIN = {
         tx.commit();
 
         // === GENERAR ASIENTO CONTABLE PARA ABONO ===
-        const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+        const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
         LIBRO_DIARIO.registrarAbonoCliente(
           new Date(),
           "ABONO-" + Date.now(),
@@ -765,7 +778,7 @@ DAO.createCartera(record);
         tx.commit();
 
         // === GENERAR ASIENTO CONTABLE PARA PAGO PROVEEDOR ===
-        const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+        const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
         LIBRO_DIARIO.registrarPagoProveedor(
           new Date(),
           "PAGO-" + pagoId,

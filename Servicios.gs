@@ -1,3 +1,16 @@
+// =============================================================================
+// SESSION SERVICE WRAPPER - For testability
+// =============================================================================
+const SESSION_SERVICE = {
+  getCurrentUser() {
+    try {
+      return SESSION_SERVICE.getCurrentUser();
+    } catch (e) {
+      return { getEmail: () => null };
+    }
+  }
+};
+
 /**
  * LAYER 3: SERVICIOS / LÓGICA DE NEGOCIO
  * Contiene funciones de alto nivel que orquestan las operaciones del DAO.
@@ -152,7 +165,7 @@ function procesarVentaV2(carrito, opciones) {
     state.current = VENTA_STATES.COMPLETED;
 
     // === GENERAR ASIENTO CONTABLE ===
-    const usuario = Session.getActiveUser().getEmail() || "SYSTEM";
+    const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
     const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
     
     if (esCredito && idTercero) {
