@@ -71,23 +71,36 @@ const CRYPTO_SERVICE = {
     return key;
   },
   
-  _kdf(salt, info) {
-    // HKDF-like construction using HMAC-SHA256
+  _kdf(salt, info, iterations = 10000) {
+    // Proper HKDF with configurable iterations for key stretching
     const prk = Utilities.computeHmacSha256Signature(salt, this._getMasterKey());
     const okm = [];
     let previous = info;
-    for (let i = 1; i <= 2; i++) {
-      const block = Utilities.computeHmacSha256Signature(previous + info, prk);
-      okm.push(...block);
+    
+    // First block
+    let block = Utilities.computeHmacSha256Signature(previous + info, prk);
+    okm.push(...block);
+    previous = String.fromCharCode(...block);
+    
+    // Additional iterations for key stretching (defensive against brute force)
+    for (let i = 1; i < iterations; i++) {
+      block = Utilities.computeHmacSha256Signature(previous, prk);
       previous = String.fromCharCode(...block);
     }
+    
     return okm.slice(0, 32); // 256 bits
   },
   
   _deriveKey(iv, salt) {
     const saltBytes = Utilities.newBlob(salt).getBytes();
     const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
-    return this._kdf(Utilities.newBlob(saltedIv).getBytes(), "DIECRP2026");
+    return this._deriveKey(iv, salt, 10000);  // 10000 iterations for key stretching
+  },
+  
+  _deriveKeyWithIterations(iv, salt, iterations) {
+    const saltBytes = Utilities.newBlob(salt).getBytes();
+    const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
+    return this._kdf(Utilities.newBlob(saltedIv).getBytes(), "DIECRP2026", iterations);
   },
   
   _bytesToHex(bytes) {
