@@ -67,6 +67,7 @@ const CRYPTO_SERVICE = {
     if (key.length < 32) {
       throw new Error("CRYPTO_ERROR: AES_MASTER_KEY debe tener al menos 32 caracteres.");
     }
+    this._memoryCache["AES_MASTER_KEY"] = key;
     return key;
   },
   
