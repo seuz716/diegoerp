@@ -227,6 +227,10 @@ const AuthService = {
     return null;
   },
 
+  /**
+   * Validates and retrieves user role from AUTHORIZED_USERS JSON
+   * Schema: { "email@domain.com": "ADMIN|OPERATOR|VIEWER" }
+   */
   getUserRole(email) {
     if (!email) return null;
     const props = PropertiesService.getScriptProperties();
@@ -234,11 +238,24 @@ const AuthService = {
     if (!raw) return null;
     try {
       const roleMap = JSON.parse(raw);
+      // Validate schema: must be object with string values
+      if (typeof roleMap !== "object" || roleMap === null) {
+        throw new Error("El mapa de roles no es un objeto válido");
+      }
+      const validRoles = Object.values(ROLES);
+      for (const [userEmail, role] of Object.entries(roleMap)) {
+        if (typeof userEmail !== "string" || !userEmail.includes("@")) {
+          throw new Error("Formato de email inválido en AUTHORIZED_USERS");
+        }
+        if (typeof role !== "string" || !validRoles.includes(role)) {
+          throw new Error("Rol inválido para " + userEmail + ": " + role);
+        }
+      }
       const normalized = email.toLowerCase().trim();
       return roleMap[normalized] || null;
     } catch (e) {
-      console.error("ERROR: El JSON de AUTHORIZED_USERS está corrupto: " + e.message);
-      return null;
+      console.error("ERROR_SCHEMA: AUTHORIZED_USERS - " + e.message);
+      throw new Error("Configuración de usuarios corrupta. Contacta al administrador.");
     }
   },
 
