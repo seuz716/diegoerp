@@ -602,10 +602,9 @@ count: this.cartera ? this.cartera.length : 0,
            ? this._hitsCartera / (this._hitsCartera + this._missesCartera) 
            : 0,
        },
-       ttl: this.CACHE_TTL,
-      ttl: this.CACHE_TTL,
+ttl: this.CACHE_TTL
     };
-  },
+   },
 
   _readSheetRaw(sheet, startRow, totalRows, numCols) {
     if (totalRows <= 0) return [];
@@ -979,3 +978,8 @@ count: this.cartera ? this.cartera.length : 0,
     return null;
   }
 };
+    
+// =============================================================================
+// CACHE INSTANCE - Singleton export
+// =============================================================================
+const CACHE = new CacheService();
