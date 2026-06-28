@@ -1,7 +1,14 @@
 /**
  * LAYER 5: DOMAIN LOGIC — TRANSACCIONES SIMULADAS Y NEGOCIO
  * Resuelve Problemas #3, #4 y #5 
+ * 
+ * Dependencies (loaded in order):
+ * - Config.gs (SESSION_SERVICE, TransactionManager)
+ * - Accounting.gs (LIBRO_DIARIO, FLUJO_CAJA)
  */
+
+// Ensure dependencies are available
+// These are global objects defined in their respective modules
 
 /**
  * Mecanismo transaccional write-ahead para Apps Script.
