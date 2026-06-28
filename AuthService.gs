@@ -190,20 +190,24 @@ const AuthService = {
   },
 
   getApiKey(keyName) {
+    // Phase 2: No silent fallback - require secure configuration
     const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
     if (proxyValue) return proxyValue;
-    const value = this._loadKey(keyName);
-    if (value) return value;
+    
+    const secureValue = this._loadKey(keyName);
+    if (secureValue) return secureValue;
+    
+    // Legacy fallback - migration mode (temporary)
     const legacy = PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName);
     if (legacy) {
       console.warn("API Key '" + keyName + "' en legacy plain-text. Migrando a cifrado AES...");
       this._storeKey(keyName, legacy);
       PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
-      console.log("Migración completada para '" + keyName + "'.");
+      console.log("Migración completada para '" + keyName + "'. Configura el proxy para producción.");
       return legacy;
     }
-    console.error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada.");
-    throw new Error("Configuración de seguridad incompleta: API Key '" + keyName + "' no configurada en proxy ni localmente.");
+    
+    throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
   },
 
   removeApiKey(keyName) {
