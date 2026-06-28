@@ -68,9 +68,28 @@ function runAllRegressionTests() {
     return 'Invalid result structure';
   });
   
+  _test('buildResourceIndex creates Set structure', () => {
+    const index = LOCK_MANAGER._buildResourceIndex();
+    return index instanceof Set ? true : 'Not a Set';
+  });
+  
+  // ===== CacheService Tests =====
+  _test('getCircuitState returns valid structure', () => {
+    const result = CACHE.getCircuitState('terceros');
+    if (result && typeof result.state === 'string' && typeof result.failCount === 'number') {
+      return true;
+    }
+    return 'Invalid circuit state structure';
+  });
+  
+  _test('forceResetCircuit clears state', () => {
+    CACHE.forceResetCircuit('terceros');
+    const state = CACHE.getCircuitState('terceros');
+    return state.state === 'closed' && state.failCount === 0 ? true : 'Reset failed';
+  });
+  
   // ===== AuditLog Tests =====
   _test('logEvent accepts correlationId', () => {
-    // Cannot write to sheet in test mode, but structure validates
     const opts = { correlationId: 'TEST-123', executionTimeMs: 50 };
     if (typeof LOG_ENGINE._getCorrelationId === 'function') {
       const corr = LOG_ENGINE._getCorrelationId('TEST-123');
@@ -86,6 +105,18 @@ function runAllRegressionTests() {
       return true;
     }
     return 'Sanitization failed';
+  });
+  
+  // ===== SchemaValidator Tests =====
+  _test('validateRoleMap rejects invalid JSON', () => {
+    const result = SCHEMA_VALIDATOR.validateRoleMap('not valid json');
+    return result.valid === false ? true : 'Should reject invalid JSON';
+  });
+  
+  _test('validateRoleMap accepts valid role map', () => {
+    const input = '{"test@example.com":"ADMIN"}';
+    const result = SCHEMA_VALIDATOR.validateRoleMap(input);
+    return result.valid === true && result.parsed['test@example.com'] === 'ADMIN' ? true : 'Should accept valid map';
   });
   
   return {

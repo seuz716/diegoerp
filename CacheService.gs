@@ -344,23 +344,15 @@ let CACHE = {
   // === FIN FIX C-02 ===
 
   isTercerosValid() {
-    // Check circuit state
+    // Check circuit state and auto-recover
     const circuitState = this._getCircuitState('terceros');
     
     if (circuitState === 'open') {
       this._autoRecoverCircuitBreaker('terceros');
-      if (this._getCircuitState('terceros') !== 'closed') {
-        return false; // Still in open or half_open
+      const newState = this._getCircuitState('terceros');
+      if (newState === 'open') {
+        return false; // Still open after recovery check
       }
-    }
-    
-    // HALF_OPEN: allow one request to test
-    if (circuitState === 'half_open') {
-      // In half-open, we allow the request but mark that we're testing
-      this._setCircuitState('terceros', 'closed');
-      this.tercerosCircuitOpen = false;
-      this._incrementMetric('circuitCloses');
-      Logger.log("[FIX-C-02] HALF_OPEN: proceeding with request, circuit now closed");
     }
     
     if (this.tercerosStale) {
@@ -382,23 +374,15 @@ let CACHE = {
   },
 
   isCarteraValid() {
-    // Check circuit state
+    // Check circuit state and auto-recover
     const circuitState = this._getCircuitState('cartera');
     
     if (circuitState === 'open') {
       this._autoRecoverCircuitBreaker('cartera');
-      if (this._getCircuitState('cartera') !== 'closed') {
-        return false; // Still in open or half_open
+      const newState = this._getCircuitState('cartera');
+      if (newState === 'open') {
+        return false; // Still open after recovery check
       }
-    }
-    
-    // HALF_OPEN: allow one request to test
-    if (circuitState === 'half_open') {
-      // In half-open, we allow the request but mark that we're testing
-      this._setCircuitState('cartera', 'closed');
-      this.carteraCircuitOpen = false;
-      this._incrementMetric('circuitCloses');
-      Logger.log("[FIX-C-02] HALF_OPEN: proceeding with request, circuit now closed");
     }
     
     if (this.carteraStale) {
@@ -422,19 +406,38 @@ let CACHE = {
   /**
    * Recarga caché (permite forzar refresco)
    */
+  _transitionToHalfOpen(kind) {
+    const currentTs = kind === 'terceros' ? this._circuitOpenTercerosTimestamp : this._circuitOpenCarteraTimestamp;
+    const storedTs = Number(PropertiesService.getScriptProperties().getProperty(
+      kind === 'terceros' ? 'CIRCUIT_OPEN_TERCEROS_TS' : 'CIRCUIT_OPEN_CARTERA_TS'
+    ) || '0');
+    
+    const ts = currentTs || storedTs;
+    if (!ts || (Date.now() - ts) < this.CIRCUIT_AUTO_CLOSE_MS) {
+      return false;
+    }
+    
+    Logger.log(`[CB-HALF_OPEN] Transitioning ${kind} circuit to HALF_OPEN after ${this.CIRCUIT_AUTO_CLOSE_MS}ms`);
+    this._setCircuitState(kind, 'half_open');
+    return true;
+  },
+
   refresh(forceRefresh = false) {
     validateAndMapSchemas();
     if (!this._metricsLoaded) this._loadMetrics();
 
     if (forceRefresh) {
-        this.invalidate();
+      this.invalidate();
     }
 
+    // Check for half-open transition before refresh
     if (!this.isTercerosValid()) {
+      this._transitionToHalfOpen('terceros');
       this._refreshTerceros();
     }
 
     if (!this.isCarteraValid()) {
+      this._transitionToHalfOpen('cartera');
       this._refreshCartera();
     }
   },
