@@ -205,24 +205,40 @@ const LOCK_MANAGER = {
     return { cleaned, scanned };
   },
 
+  /**
+   * Builds index of ALL resource IDs in the system (O(n) instead of O(n*m))
+   * Uses ID columns specifically for faster lookup
+   */
   _buildResourceIndex() {
     const index = new Set();
     try {
       const ss = getActiveSpreadsheet();
-      const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
-      const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
+      const COL_TER = CARTERA_CONFIG.COLUMNS.TERCEROS;
+      const COL_CAR = CARTERA_CONFIG.COLUMNS.CARTERA;
       
+      // Only read ID columns (much faster than entire sheets)
+      const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
       if (tercerosSheet) {
-        const data = tercerosSheet.getDataRange().getValues();
-        data.forEach(row => {
-          row.forEach(cell => index.add(String(cell)));
-        });
+        const lastRow = tercerosSheet.getLastRow();
+        if (lastRow > 1) {
+          const ids = tercerosSheet.getRange(2, COL_TER.id, lastRow - 1, 1).getValues();
+          ids.forEach(row => {
+            const id = String(row[0] || "").trim();
+            if (id) index.add(id);
+          });
+        }
       }
+      
+      const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
       if (carteraSheet) {
-        const data = carteraSheet.getDataRange().getValues();
-        data.forEach(row => {
-          row.forEach(cell => index.add(String(cell)));
-        });
+        const lastRow = carteraSheet.getLastRow();
+        if (lastRow > 1) {
+          const ids = carteraSheet.getRange(2, COL_CAR.id_tercero, lastRow - 1, 1).getValues();
+          ids.forEach(row => {
+            const id = String(row[0] || "").trim();
+            if (id) index.add(id);
+          });
+        }
       }
     } catch (e) {
       Logger.log("WARNING: No se pudo construir índice de recursos: " + e.message);
