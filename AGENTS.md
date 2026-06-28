@@ -26,3 +26,30 @@
 
 ## Protocolo de extensión
 Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archivos asignados.
+
+## TABLA DE PROGRESO
+
+   Modelo                         │ Fase                           │ Tarea                         │ Estado
+  ────────────────────────────────┼────────────────────────────────┼───────────────────────────────┼───────────────────────────────
+   A                              │ Inf.                           │ Criptografía                  │ ✅
+   A                              │ Inf.                           │ JSON Schemas                  │ ✅
+   A                              │ Inf.                           │ Lock Manager                  │ ✅
+   A                              │ Inf.                           │ Circuit Breaker               │ ✅
+   B                              │ Validación                     │ Entradas                      │ ✅
+   B                              │ Validación                     │ Negocio                       │ ✅
+   B                              │ Rendimiento                    │ Props cache                   │ ✅
+   B                              │ Rendimiento                    │ Batch writes                  │ ✅
+   B                              │ Rendimiento                    │ JSON minimize                 │ ✅
+   B                              │ Observabilidad                 │ Rate metrics                  │ ✅
+
+  --------
+
+  Commits totales: 17 en main
+
+  --------
+
+  Correcciones arquitectónicas CacheService.gs completadas:
+  - ✅ Eliminada instanciación fallida `const CACHE = new CacheService()`
+  - ✅ Consolidado: _transitionToHalfOpen integrado en _autoRecoverCircuitBreaker
+  - ✅ Límite 999999 en el contador de métricas circuitOpens/circuitCloses
+  - ✅ getHealth() completado con failCount, nextRetryMs, checksumValidationStatus
