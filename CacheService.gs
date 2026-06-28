@@ -178,6 +178,48 @@ let CACHE = {
    * @param {boolean} testResult - true if test succeeded, false otherwise
    * @returns {boolean} true if circuit is now closed (service recovered)
    */
+  /**
+   * Executes a function with circuit breaker protection and retry logic
+   * @param {string} kind - 'terceros' or 'cartera'
+   * @param {Function} fn - Function to execute
+   * @param {number} maxRetries - Maximum retries (default 3)
+   * @returns {*} Result of the function
+   */
+  executeWithCircuit(kind, fn, maxRetries = 3) {
+    const state = this._getCircuitState(kind);
+    
+    // If circuit is OPEN, reject immediately
+    if (state === 'open') {
+      throw new Error(`Circuit breaker OPEN for ${kind}. Service unavailable.`);
+    }
+    
+    // If circuit is HALF_OPEN, only allow one request at a time
+    if (state === 'half_open') {
+      this._setCircuitState(kind, 'half_open');
+      // Already in half-open, execute with test
+    }
+    
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const result = fn();
+        // Success - close circuit
+        this._halfOpenCircuit(kind, true);
+        return result;
+      } catch (e) {
+        lastError = e;
+        Logger.log(`[FIX-C-02] Attempt ${attempt + 1}/${maxRetries} failed: ${e.message}`);
+        if (attempt < maxRetries - 1) {
+          Utilities.sleep(1000 * (attempt + 1)); // Exponential backoff
+        }
+      }
+    }
+    
+    // All retries failed - open circuit
+    this._halfOpenCircuit(kind, false);
+    throw lastError;
+  },
+
   _halfOpenCircuit(kind, testResult) {
     if (!testResult) {
       // Test failed - go back to OPEN with exponential backoff
@@ -234,9 +276,7 @@ let CACHE = {
     return true;
   },
   
-  // stalenessKey removed
-    return kind === 'terceros' ? 'stalenessTerceros' : 'stalenessCartera';
-  },
+
 
   /**
    * Force reset circuit breaker (admin function)
