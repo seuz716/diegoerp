@@ -626,7 +626,8 @@ DAO.createCartera(record);
     }
   },
 
-  registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura) {
+  registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura, correlationId) {
+    const corrId = correlationId || ('compra_' + Date.now());
     const idProv = _sanitizeId(proveedorId);
     if (!idProv) return _error("ID proveedor inválido.");
     const totalLimpio = _parseMoneda(total, NaN);

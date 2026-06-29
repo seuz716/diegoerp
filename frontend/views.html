@@ -1,0 +1,1317 @@
+<script>
+// ════════════════════════════════════════════════════════════════
+// VIEWS — Controladores de vista del frontend MicroERP
+// Extraído de index_v3_SaaS.html
+// ════════════════════════════════════════════════════════════════
+
+// ────────────────────────────────────────────────────────────────
+// 1. DASHBOARD
+// ────────────────────────────────────────────────────────────────
+
+function cargarDashboard() {
+  var view = document.getElementById('view-dashboard');
+  view.classList.add('is-loading');
+  view.setAttribute('aria-busy', 'true');
+
+  var alertsBody = document.getElementById('alerts-body');
+  mostrarLoader(alertsBody);
+
+  var promise;
+  if (App.data.dashboard) {
+    promise = Promise.resolve(App.data.dashboard);
+  } else {
+    promise = App.api.getDashboard();
+  }
+
+  return promise.then(function (data) {
+    if (!App.data.dashboard) App.data.dashboard = data;
+      if (data.success === false || data.error) {
+        mostrarError(alertsBody, data.error || 'Error al cargar dashboard');
+        view.classList.remove('is-loading');
+        return;
+      }
+      document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
+      document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
+      document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
+      document.getElementById('stat-vencido-cxp').textContent = App.formatearMoneda(data.vencidaCxP);
+      var expo = data.porCobrar - data.porPagar;
+      document.getElementById('stat-exposicion').textContent = App.formatearMoneda(expo);
+
+      if (data.proximosVencimientos7 !== undefined) {
+        document.getElementById('stat-prox7').textContent = App.formatearMoneda(data.proximosVencimientos7);
+        document.getElementById('stat-prox15').textContent = App.formatearMoneda(data.proximosVencimientos15);
+        document.getElementById('stat-prox30').textContent = App.formatearMoneda(data.proximosVencimientos30);
+      }
+      if (data.topDeudores && data.topDeudores.length > 0) {
+        var top = data.topDeudores[0];
+        document.getElementById('stat-topdeudor').textContent = top.nombre || '—';
+        document.getElementById('stat-topdeudor-meta').textContent = App.formatearMoneda(top.saldo_vencido) + ' (' + (top.max_dias || 0) + 'd)';
+      }
+      if (data.concentracionProveedores) {
+        var c = data.concentracionProveedores;
+        var totalP = c.total || 0;
+        document.getElementById('stat-concprov').textContent = (c.items ? c.items.length : 0) + ' prov.';
+        document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : '—';
+      }
+
+      App.api.getFlujoCajaResumen(30).then(function (flujo) {
+        if (flujo && flujo.success !== false) {
+          document.getElementById('stat-saldo-caja').textContent = App.formatearMoneda(flujo.saldo_actual);
+          document.getElementById('stat-flujo-neto').textContent = "30d: " + (flujo.neto >= 0 ? "+" : "") + App.formatearMoneda(flujo.neto);
+        }
+      }).catch(function () {
+      });
+
+      document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
+
+      var container = document.getElementById('alerts-body');
+      container.innerHTML = '';
+      if (data.alertas.length === 0) {
+        mostrarVacio(container, 'Sin alertas');
+      } else {
+        data.alertas.forEach(function (a, i) {
+          var row = document.createElement('div');
+          row.className = 'alert-row' + (i === 0 ? ' critical' : '');
+
+          var rankDiv = document.createElement('div');
+          rankDiv.className = 'rank' + (i === 0 ? ' top' : '');
+          rankDiv.textContent = '#' + (i + 1);
+          row.appendChild(rankDiv);
+
+          var infoDiv = document.createElement('div');
+          var nameDiv = document.createElement('div');
+          nameDiv.className = 'alert-name';
+          nameDiv.textContent = a.nombre || '—';
+          var idDiv = document.createElement('div');
+          idDiv.className = 'alert-id';
+          idDiv.textContent = a.id_tercero || '';
+          infoDiv.appendChild(nameDiv);
+          infoDiv.appendChild(idDiv);
+          row.appendChild(infoDiv);
+
+          var rightDiv = document.createElement('div');
+          rightDiv.className = 'alert-right';
+          var amountDiv = document.createElement('div');
+          amountDiv.className = 'alert-amount';
+          amountDiv.textContent = App.formatearMoneda(a.saldo);
+          var diasDiv = document.createElement('div');
+          diasDiv.className = 'alert-dias';
+          diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? 'ía' : 'ías');
+          rightDiv.appendChild(amountDiv);
+          rightDiv.appendChild(diasDiv);
+          row.appendChild(rightDiv);
+
+          container.appendChild(row);
+        });
+      }
+
+      view.classList.remove('is-loading');
+      view.removeAttribute('aria-busy');
+    })
+    .catch(function (err) {
+      mostrarError(alertsBody, err.message || err);
+      showError(err.message || err);
+      view.classList.remove('is-loading');
+      view.removeAttribute('aria-busy');
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 2. IA
+// ────────────────────────────────────────────────────────────────
+
+function crearSeccionIA(labelText) {
+  var sec = document.createElement('div');
+  sec.className = 'ir-section';
+  if (labelText) {
+    var lbl = document.createElement('div');
+    lbl.className = 'ir-label';
+    lbl.textContent = labelText;
+    sec.appendChild(lbl);
+  }
+  return sec;
+}
+
+function renderizarAnalisis(analisis) {
+  var c = document.getElementById('ia-results');
+  c.textContent = '';
+
+  var secResumen = crearSeccionIA('Resumen ejecutivo');
+  var valResumen = document.createElement('div');
+  valResumen.className = 'ir-value';
+  valResumen.textContent = analisis.resumen_ejecutivo || '';
+  secResumen.appendChild(valResumen);
+  c.appendChild(secResumen);
+
+  var secConfianza = crearSeccionIA(null);
+  var badge = document.createElement('div');
+  badge.className = 'ir-badge';
+  badge.textContent = 'Confianza: ' + (analisis.nivel_confianza_general || 0) + '%';
+  secConfianza.appendChild(badge);
+  c.appendChild(secConfianza);
+
+  if (analisis.alertas_criticas && analisis.alertas_criticas.length) {
+    var secAlertas = crearSeccionIA('Alertas críticas');
+    analisis.alertas_criticas.forEach(function (a) {
+      var item = document.createElement('div');
+      item.className = 'ir-alert-item';
+      item.textContent = a.titulo || a.mensaje || a.descripcion || '';
+      secAlertas.appendChild(item);
+    });
+    c.appendChild(secAlertas);
+  }
+
+  if (analisis.analisis_riesgo_cartera) {
+    var r = analisis.analisis_riesgo_cartera;
+    var secRiesgo = crearSeccionIA('Análisis de riesgo');
+    var grid = document.createElement('div');
+    grid.className = 'ir-grid';
+    Object.keys(r).forEach(function (k) {
+      var gridItem = document.createElement('div');
+      gridItem.className = 'ir-grid-item';
+      var glabel = document.createElement('div');
+      glabel.className = 'ir-glabel';
+      glabel.textContent = k.replace(/_/g, ' ');
+      var gvalue = document.createElement('div');
+      gvalue.className = 'ir-gvalue';
+      var val = r[k];
+      if (Array.isArray(val)) {
+        gvalue.textContent = val.map(function(item) {
+          if (typeof item === 'object' && item !== null) {
+            return item.nombre || item.id_tercero || JSON.stringify(item);
+          }
+          return item;
+        }).join(', ');
+      } else if (typeof val === 'object' && val !== null) {
+        gvalue.textContent = Object.values(val).join(', ');
+      } else {
+        gvalue.textContent = String(val);
+      }
+      gridItem.appendChild(glabel);
+      gridItem.appendChild(gvalue);
+      grid.appendChild(gridItem);
+    });
+    secRiesgo.appendChild(grid);
+    c.appendChild(secRiesgo);
+  }
+
+  if (analisis.segmentacion_terceros) {
+    var s = analisis.segmentacion_terceros;
+    var secSeg = crearSeccionIA('Segmentación');
+    var gridSeg = document.createElement('div');
+    gridSeg.className = 'ir-grid';
+    Object.keys(s).forEach(function (k) {
+      var gridItem = document.createElement('div');
+      gridItem.className = 'ir-grid-item';
+      var glabel = document.createElement('div');
+      glabel.className = 'ir-glabel';
+      glabel.textContent = k.replace(/_/g, ' ');
+      var gvalue = document.createElement('div');
+      gvalue.className = 'ir-gvalue';
+      var val = s[k];
+      if (Array.isArray(val)) {
+        gvalue.textContent = val.map(function(item) {
+          if (typeof item === 'object' && item !== null) {
+            return item.nombre || item.id || JSON.stringify(item);
+          }
+          return item;
+        }).join(', ');
+      } else if (typeof val === 'object' && val !== null) {
+        gvalue.textContent = Object.values(val).join(', ');
+      } else {
+        gvalue.textContent = String(val);
+      }
+      gridItem.appendChild(glabel);
+      gridItem.appendChild(gvalue);
+      gridSeg.appendChild(gridItem);
+    });
+    secSeg.appendChild(gridSeg);
+    c.appendChild(secSeg);
+  }
+
+  if (analisis.anomalias_detectadas && analisis.anomalias_detectadas.length) {
+    var secAno = crearSeccionIA('Anomalías detectadas');
+    analisis.anomalias_detectadas.forEach(function (a) {
+      var item = document.createElement('div');
+      item.className = 'ir-ano-item';
+      item.textContent = typeof a === 'string' ? a : (a.titulo || a.mensaje || a.descripcion || JSON.stringify(a));
+      secAno.appendChild(item);
+    });
+    c.appendChild(secAno);
+  }
+
+  if (analisis.recomendaciones_accionables && analisis.recomendaciones_accionables.length) {
+    var secRec = crearSeccionIA('Recomendaciones');
+    analisis.recomendaciones_accionables.forEach(function (r) {
+      var item = document.createElement('div');
+      item.className = 'ir-rec-item';
+      item.textContent = typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || JSON.stringify(r));
+      secRec.appendChild(item);
+    });
+    c.appendChild(secRec);
+  }
+
+  c.style.display = 'block';
+}
+
+function analizarConGeminiFresco() {
+  var btnHeader = document.getElementById('btn-analizar-ia');
+  var btnPanel = document.getElementById('btn-analizar-completo');
+  var results = document.getElementById('ia-results');
+  var textoOriginalH = btnHeader.textContent;
+  var textoOriginalP = btnPanel.textContent;
+
+  btnHeader.disabled = true;
+  btnHeader.textContent = '◈ Analizando...';
+  btnPanel.disabled = true;
+  btnPanel.textContent = '◈ Analizando...';
+  results.style.display = 'none';
+
+  var progressBar = document.getElementById('ia-progress');
+  var progressBarInner = document.getElementById('ia-progress-bar');
+  var progressText = document.getElementById('ia-progress-text');
+  progressBar.style.display = 'block';
+  progressBarInner.className = 'ia-progress-bar-active';
+  progressText.textContent = 'Consultando Gemini 2.5 Flash...';
+
+  App.api.analizarConGeminiFresco()
+    .then(function (resp) {
+      progressBarInner.className = '';
+      progressBarInner.style.width = '100%';
+      setTimeout(function(){ progressBar.style.display = 'none'; }, 500);
+      if (resp && resp.success && resp.analisis) {
+        renderizarAnalisis(resp.analisis);
+      } else {
+        var errorMsg = (resp && resp.error) ? resp.error : 'El análisis no devolvió datos válidos.';
+        if (resp && resp.correlationId) {
+          errorMsg += ' (Ref: ' + resp.correlationId + ')';
+        }
+        showError(errorMsg);
+      }
+    })
+    .catch(function (err) {
+      progressBarInner.className = '';
+      progressBar.style.display = 'none';
+      var msg = err.message || err || 'Error al conectar con el servicio de IA.';
+      if (msg.indexOf('rate') > -1 || msg.indexOf('límite') > -1) {
+        msg = 'Límite de uso alcanzado. Intenta de nuevo en unos minutos.';
+      } else if (msg.indexOf('timeout') > -1 || msg.indexOf('tiempo') > -1) {
+        msg = 'La solicitud tardó demasiado. Intenta de nuevo.';
+      }
+      var iaEl = document.getElementById('ia-results');
+      iaEl.textContent = '';
+      var errDiv = document.createElement('div');
+      errDiv.className = 'error-banner show';
+      errDiv.style.margin = '0';
+      errDiv.textContent = msg;
+      iaEl.appendChild(errDiv);
+      iaEl.style.display = 'block';
+      showToast(msg, 'error');
+    })
+    .then(function () {
+      btnHeader.disabled = false;
+      btnHeader.textContent = textoOriginalH;
+      btnPanel.disabled = false;
+      btnPanel.textContent = textoOriginalP;
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 3. EXPORTACIONES CSV
+// ────────────────────────────────────────────────────────────────
+
+function exportarLibroDiarioCSV() {
+  var btn = document.getElementById('btn-exportar-libro');
+  var textoOriginal = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = 'Exportando...';
+  
+  App.api.exportarLibroDiario()
+    .then(function (resp) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      
+      if (resp && resp.success) {
+        var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'libro_diario_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Libro diario exportado correctamente', 'success');
+      } else {
+        showToast(resp.error || 'Error exportando libro diario', 'error');
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      showToast(err.message || 'Error de conexión', 'error');
+    });
+}
+
+function exportarFlujoCajaCSV() {
+  var btn = document.getElementById('btn-exportar-flujo');
+  var textoOriginal = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = 'Exportando...';
+  
+  App.api.exportarFlujoCaja()
+    .then(function (resp) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      
+      if (resp && resp.success) {
+        var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'flujo_caja_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Flujo de caja exportado correctamente', 'success');
+      } else {
+        showToast(resp.error || 'Error exportando flujo', 'error');
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+      showToast(err.message || 'Error de conexión', 'error');
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 4. CARTERA
+// ────────────────────────────────────────────────────────────────
+
+var currentCarteraPageToken = 0;
+var carteraPageSize = 1000;
+
+function cargarCartera(append) {
+  var view = document.getElementById('view-cartera');
+  view.setAttribute('aria-busy', 'true');
+  var tbody = document.querySelector('#view-cartera .data-table tbody');
+  var tableSection = view.querySelector('.table-section');
+
+  if (append !== true) {
+    currentCarteraPageToken = 0;
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8);color:var(--muted);">Cargando cartera...</td></tr>';
+    
+    tableSection.classList.remove('scroll-hint');
+    setTimeout(function() {
+      if (tableSection.scrollWidth > tableSection.clientWidth) {
+        tableSection.classList.add('scroll-hint');
+      }
+    }, 500);
+  } else {
+    var loadMoreRow = document.getElementById('row-cargar-mas');
+    if (loadMoreRow) {
+      loadMoreRow.parentNode.removeChild(loadMoreRow);
+    }
+  }
+
+  var filterTipoEl = document.getElementById('filter-tipo');
+  var filterEstadoEl = document.getElementById('filter-estado');
+  var filtroTipo = filterTipoEl.value || null;
+  var filtroEstado = filterEstadoEl.value || null;
+
+  App.api.getCartera(filtroTipo, filtroEstado, carteraPageSize, currentCarteraPageToken)
+    .then(function (res) {
+      if (append !== true) {
+        tbody.innerHTML = '';
+      }
+
+      if (!res || (typeof res === 'object' && !res.items)) {
+        var errorMsg = 'Respuesta vacía del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
+        App.api.getCarteraDebug(filtroTipo, filtroEstado)
+          .then(function (debug) {
+            var diagMsg = '';
+            if (res && res.permissionDenied) {
+              diagMsg = 'Acceso denegado. Verifique que su usuario tenga rol asignado (VIEWER o superior).';
+            } else if (debug.checks && debug.checks.sheetExists === false) {
+              diagMsg = 'Error: Hoja "Cartera" no encontrada en el spreadsheet.';
+            } else if (debug.checks && debug.checks.sheetLastRow < 2) {
+              diagMsg = 'La hoja Cartera existe pero no tiene datos. Agregue registros a la cartera.';
+            } else if (debug.checks && debug.checks.rawDataCount === 0) {
+              diagMsg = 'No se pudieron leer datos de la hoja Cartera.';
+            } else if (debug.checks && debug.checks.apiResult && debug.checks.apiResult.error) {
+              diagMsg = 'Error en API: ' + debug.checks.apiResult.error;
+            } else if (debug.errors && debug.errors.length > 0) {
+              diagMsg = 'Errores detectados: ' + debug.errors.join(' | ');
+            } else if (debug.checks && debug.checks.rawDataCount > 0 && (!debug.checks.apiResult || debug.checks.apiResult.itemsCount === 0)) {
+              diagMsg = 'La hoja tiene ' + debug.checks.rawDataCount + ' filas, pero el filtro no coincide. Verifique los valores de los campos Tipo (debe ser CxC/CxP) y Estado.';
+              if (debug.checks.tiposEnHoja) {
+                diagMsg += '<br><br>Tipos encontrados en hoja: ' + JSON.stringify(debug.checks.tiposEnHoja);
+              }
+            } else {
+              diagMsg = errorMsg;
+            }
+            mostrarError(tbody, diagMsg + '</span>');
+          })
+          .catch(function () {
+            mostrarError(tbody, 'Respuesta vacía del servidor - diagnóstico falló');
+          });
+        return;
+      }
+      
+      if (res.error) {
+        mostrarError(tbody, res.error);
+        return;
+      }
+
+      var data = res.items || [];
+      var nextToken = res.nextPageToken;
+
+      if (!append && data.length === 0) {
+        var td = document.createElement('td');
+        td.colSpan = 5;
+        mostrarVacio(td, 'No se encontraron registros con los filtros actuales');
+        var tr = document.createElement('tr');
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      } else {
+        data.forEach(function (item) {
+          var estadoInfo = App.mapearEstadoCartera(item.estado);
+          var isVencida = item.estado === 'VENCIDA';
+
+          var tr = document.createElement('tr');
+          if (isVencida) tr.className = 'row-red';
+
+          var tdFecha = document.createElement('td');
+          tdFecha.className = 'td-mono td-muted';
+          tdFecha.textContent = App.formatearFecha(item.fecha);
+          tr.appendChild(tdFecha);
+
+          var tdTercero = document.createElement('td');
+          var nombreDiv = document.createElement('div');
+          nombreDiv.className = 'td-bold';
+          nombreDiv.textContent = item.nombre_tercero || '—';
+          var idTerceroDiv = document.createElement('div');
+          idTerceroDiv.className = 'td-muted';
+          idTerceroDiv.textContent = item.id_tercero || '';
+          tdTercero.appendChild(nombreDiv);
+          tdTercero.appendChild(idTerceroDiv);
+          tr.appendChild(tdTercero);
+
+          var tdSaldo = document.createElement('td');
+          tdSaldo.className = 'td-mono td-bold';
+          if (isVencida) tdSaldo.style.color = 'var(--red)';
+          tdSaldo.textContent = App.formatearMoneda(item.saldo);
+          tr.appendChild(tdSaldo);
+
+          var tdEstado = document.createElement('td');
+          var badgeSpan = document.createElement('span');
+          badgeSpan.className = 'badge ' + estadoInfo.cls;
+          badgeSpan.textContent = estadoInfo.label;
+          tdEstado.appendChild(badgeSpan);
+          tr.appendChild(tdEstado);
+
+          var tdVenc = document.createElement('td');
+          if (item.fecha_vencimiento) {
+            if (isVencida && item.dias_vencido > 0) {
+              var vencFechaDiv = document.createElement('div');
+              vencFechaDiv.className = 'td-mono';
+              vencFechaDiv.style.fontSize = 'var(--text-sm)';
+              vencFechaDiv.textContent = App.formatearFecha(item.fecha_vencimiento);
+              var vencDiasDiv = document.createElement('div');
+              vencDiasDiv.className = 'td-muted';
+              vencDiasDiv.style.color = 'var(--red)';
+              vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías');
+              tdVenc.appendChild(vencFechaDiv);
+              tdVenc.appendChild(vencDiasDiv);
+            } else {
+              var vencSpan = document.createElement('span');
+              vencSpan.className = 'td-mono';
+              vencSpan.style.fontSize = 'var(--text-sm)';
+              vencSpan.textContent = App.formatearFecha(item.fecha_vencimiento);
+              tdVenc.appendChild(vencSpan);
+            }
+          } else {
+            var vencDashSpan = document.createElement('span');
+            vencDashSpan.className = 'td-mono';
+            vencDashSpan.style.fontSize = 'var(--text-sm)';
+            vencDashSpan.textContent = '—';
+            tdVenc.appendChild(vencDashSpan);
+          }
+          tr.appendChild(tdVenc);
+
+          tbody.appendChild(tr);
+        });
+
+        if (nextToken !== null && nextToken !== undefined) {
+          var trLoadMore = document.createElement('tr');
+          trLoadMore.id = 'row-cargar-mas';
+          var tdLoadMore = document.createElement('td');
+          tdLoadMore.colSpan = 5;
+          tdLoadMore.style.textAlign = 'center';
+          tdLoadMore.style.padding = 'var(--space-3)';
+
+          var btnLoadMore = document.createElement('button');
+          btnLoadMore.className = 'btn btn-outline btn-sm';
+          btnLoadMore.style.margin = '0 auto';
+          btnLoadMore.textContent = 'Cargar más';
+          btnLoadMore.addEventListener('click', function () {
+            currentCarteraPageToken = nextToken;
+            cargarCartera(true);
+          });
+
+          tdLoadMore.appendChild(btnLoadMore);
+          trLoadMore.appendChild(tdLoadMore);
+          tbody.appendChild(trLoadMore);
+        }
+      }
+    })
+    .catch(function (err) {
+      mostrarError(tbody, err.message || err);
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = '↻ Reintentar';
+      btn.style.marginLeft = 'var(--space-3)';
+      btn.addEventListener('click', function () {
+        cargarCartera(append);
+      });
+      tbody.querySelector('.error-banner').appendChild(btn);
+    });
+  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
+}
+
+// ────────────────────────────────────────────────────────────────
+// 5. ABONOS / PAGOS
+// ────────────────────────────────────────────────────────────────
+
+function cargarAbonoSelect() {
+  var select = document.getElementById('abono-cliente');
+  select.innerHTML = '<option value="">Seleccione un tercero...</option>';
+  var promise = App.data.terceros ? Promise.resolve(App.data.terceros) : App.api.getTerceros(null);
+  promise
+    .then(function (data) {
+      var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
+      if (items.length) {
+        items.forEach(function (t) {
+          var opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+          select.appendChild(opt);
+        });
+      }
+    })
+    .catch(function (err) {
+      console.error('Error cargando terceros en abono:', err);
+      showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+    });
+}
+
+function ejecutarAbono() {
+  var btn = document.getElementById('btn-ejecutar-abono');
+  var errorEl = document.getElementById('abono-error');
+  errorEl.classList.remove('show');
+  errorEl.textContent = '';
+
+  var idTercero = document.getElementById('abono-cliente').value;
+  var tipo = document.getElementById('abono-tipo').value;
+  var montoInput = document.getElementById('abono-monto').value;
+  var centavos = App.toCents(montoInput);
+  var referencia = document.getElementById('abono-referencia').value.trim();
+
+  if (!idTercero) { errorEl.textContent = 'Seleccione un tercero.'; errorEl.classList.add('show'); return; }
+  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1, sin decimales).'; errorEl.classList.add('show'); return; }
+  if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
+
+  confirmarAccion(['¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
+  btn.disabled = true;
+  btn.classList.add('is-processing');
+  btn.textContent = '→ Procesando...';
+
+  App.api.registrarAbono(idTercero, centavos, referencia, tipo)
+    .then(function (r) {
+      btn.disabled = false;
+      btn.classList.remove('is-processing');
+      btn.textContent = '→ Ejecutar movimiento';
+      if (r && r.success === false) {
+        errorEl.textContent = r.message || 'Error al registrar el abono.';
+        errorEl.classList.add('show');
+      } else {
+        document.getElementById('abono-monto').value = '';
+        document.getElementById('abono-referencia').value = '';
+        var successEl = document.getElementById('abono-success');
+        successEl.textContent = 'Abono registrado exitosamente.';
+        successEl.style.display = 'block';
+        setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
+        document.getElementById('abono-cliente').value = '';
+        App.data.dashboard = null;
+        App.data.cartera = null;
+        cargarDashboard();
+        cargarCartera();
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.classList.remove('is-processing');
+      btn.textContent = '→ Ejecutar movimiento';
+      errorEl.textContent = err.message || err || 'Error al registrar el abono.';
+      errorEl.classList.add('show');
+    });
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 6. TERCEROS
+// ────────────────────────────────────────────────────────────────
+
+function cargarTerceros() {
+  var view = document.getElementById('view-terceros');
+  view.setAttribute('aria-busy', 'true');
+  var tbody = document.querySelector('#view-terceros .data-table tbody');
+  var busquedaInput = document.getElementById('busqueda-terceros');
+  var filtroBusqueda = busquedaInput ? busquedaInput.value.toLowerCase().trim() : '';
+  
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>';
+
+  App.api.getTerceros(null)
+    .then(function (data) {
+      tbody.innerHTML = '';
+      var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
+      if (!items || items.length === 0) {
+        var td = document.createElement('td');
+        td.colSpan = 5;
+        mostrarVacio(td, 'No se encontraron terceros');
+        var tr = document.createElement('tr');
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      } else {
+        var datosFiltrados = filtroBusqueda ? items.filter(function(t) {
+          return (t.id && t.id.toLowerCase().includes(filtroBusqueda)) ||
+                 (t.nombre && t.nombre.toLowerCase().includes(filtroBusqueda));
+        }) : items;
+        
+        if (datosFiltrados.length === 0 && filtroBusqueda) {
+          var td2 = document.createElement('td');
+          td2.colSpan = 5;
+          mostrarVacio(td2, 'Sin coincidencias para "' + busquedaInput.value + '"');
+          var tr2 = document.createElement('tr');
+          tr2.appendChild(td2);
+          tbody.appendChild(tr2);
+        } else {
+          datosFiltrados.forEach(function (item) {
+            var tipoInfo = App.mapearTipoTercero(item.tipo);
+            var tr = document.createElement('tr');
+
+          var tdId = document.createElement('td');
+          tdId.className = 'td-mono td-muted';
+          tdId.textContent = item.id || '—';
+          tr.appendChild(tdId);
+
+          var tdNombre = document.createElement('td');
+          tdNombre.style.fontWeight = '500';
+          tdNombre.textContent = item.nombre || '—';
+          tr.appendChild(tdNombre);
+
+          var tdTipo = document.createElement('td');
+          var tipoSpan = document.createElement('span');
+          tipoSpan.className = 'badge ' + tipoInfo.cls;
+          tipoSpan.textContent = tipoInfo.label;
+          tdTipo.appendChild(tipoSpan);
+          tr.appendChild(tdTipo);
+
+          var tdLimite = document.createElement('td');
+          tdLimite.className = 'td-mono';
+          tdLimite.textContent = App.formatearMoneda(item.limite_credito);
+          tr.appendChild(tdLimite);
+
+          var tdAcciones = document.createElement('td');
+          tdAcciones.style.display = 'none';
+          tr.appendChild(tdAcciones);
+
+          tbody.appendChild(tr);
+        });
+      }
+    })
+    .catch(function (err) {
+      mostrarError(tbody, err.message || err);
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = '↻ Reintentar';
+      btn.style.marginLeft = 'var(--space-3)';
+      btn.addEventListener('click', cargarTerceros);
+      tbody.querySelector('.error-banner').appendChild(btn);
+    });
+  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
+}
+
+function abrirModalTercero() {
+  var modal = document.getElementById('modal-tercero');
+  document.getElementById('tercero-nombre').value = '';
+  document.getElementById('tercero-tipo').value = 'CLIENTE';
+  document.getElementById('tercero-limite').value = '';
+  document.getElementById('tercero-telefono').value = '';
+  document.getElementById('tercero-activo').checked = true;
+  document.getElementById('tercero-error').style.display = 'none';
+  document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
+  document.getElementById('main').setAttribute('aria-hidden', 'true');
+  modal.classList.add('active');
+  modal._opener = document.activeElement;
+  var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  var first = focusables[0], last = focusables[focusables.length - 1];
+  setTimeout(function(){ if(first) first.focus(); }, 50);
+  function trap(e){
+    if(e.key!=='Tab') return;
+    if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}
+    else{if(document.activeElement===last){e.preventDefault();first.focus();}}
+  }
+  modal.addEventListener('keydown',trap);
+  modal._trap = trap;
+}
+
+function cerrarModalTercero() {
+  var modal = document.getElementById('modal-tercero');
+  modal.classList.remove('active');
+  modal.removeEventListener('keydown',modal._trap);
+  document.getElementById('sidebar').removeAttribute('aria-hidden');
+  document.getElementById('main').removeAttribute('aria-hidden');
+  if(modal._opener) modal._opener.focus();
+}
+
+function confirmarAccion(lineas, onConfirm) {
+  var modal = document.getElementById('modal-confirm');
+  var msgEl = document.getElementById('modal-confirm-msg');
+  msgEl.textContent = '';
+  lineas.forEach(function(l, i) {
+    if (i > 0) msgEl.appendChild(document.createElement('br'));
+    msgEl.appendChild(document.createTextNode(l));
+  });
+  modal.classList.add('active');
+  var btnOk = document.getElementById('modal-confirm-ok');
+  var btnCan = document.getElementById('modal-confirm-cancel');
+  function cleanup() {
+    modal.classList.remove('active');
+    btnOk.removeEventListener('click', onOk);
+    btnCan.removeEventListener('click', onCancel);
+    modal.removeEventListener('click', onOverlayClick);
+  }
+  function onOk() { cleanup(); onConfirm(); }
+  function onCancel() { cleanup(); }
+  function onOverlayClick(e) { if (e.target === modal) cleanup(); }
+  btnOk.addEventListener('click', onOk);
+  btnCan.addEventListener('click', onCancel);
+  modal.addEventListener('click', onOverlayClick);
+  btnOk.focus();
+}
+
+function guardarTercero() {
+  var btnGuardar = document.getElementById('btn-tercero-guardar');
+  var errorEl = document.getElementById('tercero-error');
+  var nit = document.getElementById('tercero-nit').value.trim().toUpperCase();
+  var nombre = document.getElementById('tercero-nombre').value.trim();
+  var tipo = document.getElementById('tercero-tipo').value;
+  var limiteRaw = document.getElementById('tercero-limite').value;
+  var telefono = document.getElementById('tercero-telefono').value.trim();
+  var activo = document.getElementById('tercero-activo').checked;
+
+  if (!nit) {
+    errorEl.textContent = 'El NIT / identificación es obligatorio.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!nombre) {
+    errorEl.textContent = 'El nombre es obligatorio.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (limiteRaw && limiteRaw.indexOf('.') !== -1) {
+    errorEl.textContent = 'El límite de crédito no debe contener decimales. Use valores enteros.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  var limite = App.toCents(limiteRaw);
+  errorEl.style.display = 'none';
+  btnGuardar.disabled = true;
+  btnGuardar.textContent = 'Guardando...';
+
+  App.api.saveTercero({
+    id: nit,
+    nombre: nombre,
+    tipo: tipo,
+    limite_credito: limite,
+    telefono: telefono,
+    activo: activo
+  }).then(function (r) {
+    btnGuardar.disabled = false;
+    btnGuardar.textContent = 'Guardar';
+    if (r && r.success === false) {
+      errorEl.textContent = r.message || 'Error al guardar tercero.';
+      errorEl.style.display = 'block';
+    } else {
+      cerrarModalTercero();
+      cargarTerceros();
+    }
+  }).catch(function (err) {
+    btnGuardar.disabled = false;
+    btnGuardar.textContent = 'Guardar';
+    errorEl.textContent = err.message || err || 'Error al guardar tercero.';
+    errorEl.style.display = 'block';
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 7. VENTAS
+// ────────────────────────────────────────────────────────────────
+
+App.productosCache = [];
+
+async function cargarVentas() {
+  App.productosCache = [];
+  await cargarVentasProductos();
+  cargarVentasTerceros();
+  document.getElementById('venta-tipo').value = 'CONTADO';
+  document.getElementById('venta-tercero-row').style.display = 'none';
+  document.getElementById('venta-dias-row').style.display = 'none';
+  document.getElementById('venta-error').classList.remove('show');
+  document.getElementById('venta-success').style.display = 'none';
+  var container = document.getElementById('venta-productos');
+  container.innerHTML = '';
+  agregarFilaProducto();
+  calcularTotalVenta();
+}
+
+function cargarVentasProductos() {
+  return App.api.getProductos().then(function (data) {
+    App.productosCache = data || [];
+    var selects = document.querySelectorAll('.venta-producto-select');
+    selects.forEach(function (sel) {
+      llenarSelectProductos(sel);
+    });
+  }).catch(function (err) {
+    console.error('Error cargando productos:', err);
+    showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+  });
+}
+
+function llenarSelectProductos(sel) {
+  var current = sel.value;
+  sel.innerHTML = '<option value="">Seleccionar...</option>';
+  App.productosCache.forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.nombre + ' (' + p.id + ')';
+    opt.dataset.precio = p.precio;
+    sel.appendChild(opt);
+  });
+  if (current) sel.value = current;
+}
+
+function cargarVentasTerceros() {
+  var select = document.getElementById('venta-cliente');
+  select.innerHTML = '<option value="">Seleccione un cliente...</option>';
+  App.api.getTerceros(null).then(function (data) {
+    var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
+    if (items.length) {
+      items.forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+        select.appendChild(opt);
+      });
+    }
+  }).catch(function (err) {
+    console.error('Error cargando terceros en ventas:', err);
+    showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
+  });
+}
+
+function agregarFilaProducto() {
+  var container = document.getElementById('venta-productos');
+  var template = document.getElementById('row-template');
+  var fragment = template.content.cloneNode(true);
+  container.appendChild(fragment);
+  var row = container.lastElementChild;
+  var selects = row.querySelectorAll('.venta-producto-select, .venta-cantidad, .venta-precio');
+  selects.forEach(function (el) {
+    if (el.tagName === 'SELECT') el.value = '';
+    else if (el.classList.contains('venta-cantidad')) el.value = '1';
+    else if (el.classList.contains('venta-precio')) el.value = '0';
+  });
+  llenarSelectProductos(row.querySelector('.venta-producto-select'));
+  row.querySelector('.venta-producto-select').addEventListener('change', function () {
+    var opt = this.options[this.selectedIndex];
+    var precioInput = this.closest('.venta-producto-row').querySelector('.venta-precio');
+    if (opt && opt.dataset.precio) {
+      precioInput.value = opt.dataset.precio;
+    }
+    calcularTotalVenta();
+  });
+  row.querySelector('.venta-cantidad').addEventListener('input', calcularTotalVenta);
+  row.querySelector('.venta-precio').addEventListener('input', calcularTotalVenta);
+  row.querySelector('.btn-remove-producto').addEventListener('click', function () {
+    if (container.querySelectorAll('.venta-producto-row').length > 1) {
+      row.remove();
+      calcularTotalVenta();
+    }
+  });
+  calcularTotalVenta();
+}
+
+function calcularTotalVenta() {
+  var total = 0;
+  document.querySelectorAll('.venta-producto-row').forEach(function (row) {
+    var cant = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
+    var precio = parseFloat(row.querySelector('.venta-precio').value) || 0;
+    total += cant * precio;
+  });
+  document.getElementById('venta-total').textContent = App.formatearMoneda(total * 100);
+}
+
+function registrarVenta() {
+  var btn = document.getElementById('btn-registrar-venta');
+  var errorEl = document.getElementById('venta-error');
+  var successEl = document.getElementById('venta-success');
+  errorEl.classList.remove('show');
+  errorEl.textContent = '';
+  successEl.style.display = 'none';
+
+  var tipo = document.getElementById('venta-tipo').value;
+  var idTercero = document.getElementById('venta-cliente').value;
+  var diasCredito = parseInt(document.getElementById('venta-dias').value, 10) || 30;
+
+  var carrito = [];
+  var precioError = false;
+  document.querySelectorAll('.venta-producto-row').forEach(function (row) {
+    var id = row.querySelector('.venta-producto-select').value;
+    var cantidad = parseInt(row.querySelector('.venta-cantidad').value, 10) || 0;
+    var precioRaw = row.querySelector('.venta-precio').value;
+    if (precioRaw && precioRaw.indexOf('.') !== -1) {
+      precioError = true;
+      return;
+    }
+    var precio = App.toCents(precioRaw);
+    if (id && cantidad > 0) {
+      carrito.push({ id: id, cantidad: cantidad, precio: precio });
+    }
+  });
+
+  if (precioError) {
+    errorEl.textContent = 'Los precios no deben contener decimales. Ingrese valores enteros.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  if (carrito.length === 0) {
+    errorEl.textContent = 'Agregue al menos un producto al carrito.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  if (tipo === 'CxC' && !idTercero) {
+    errorEl.textContent = 'Seleccione un cliente para ventas a crédito.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  var totalStr = document.getElementById('venta-total').textContent;
+  confirmarAccion(['¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
+  btn.disabled = true;
+  btn.classList.add('is-processing');
+  btn.textContent = '→ Procesando...';
+
+  App.api.procesarVenta(carrito, { tipo: tipo, idTercero: idTercero || null, diasCredito: diasCredito })
+    .then(function (r) {
+      btn.disabled = false;
+      btn.classList.remove('is-processing');
+      btn.textContent = '→ Registrar venta';
+      if (r && r.success === false) {
+        errorEl.textContent = r.message || 'Error al registrar venta.';
+        errorEl.classList.add('show');
+      } else {
+        successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'Crédito' : 'Contado');
+        successEl.style.display = 'block';
+        setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
+        var container = document.getElementById('venta-productos');
+        container.innerHTML = '';
+        agregarFilaProducto();
+        calcularTotalVenta();
+        document.getElementById('venta-cliente').value = '';
+        App.data.dashboard = null;
+        App.data.cartera = null;
+        cargarDashboard();
+        cargarCartera();
+      }
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.classList.remove('is-processing');
+      btn.textContent = '→ Registrar venta';
+      errorEl.textContent = err.message || err || 'Error al registrar venta.';
+      errorEl.classList.add('show');
+    });
+  });
+}
+
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'venta-tipo') {
+    var isCredito = e.target.value === 'CxC';
+    document.getElementById('venta-tercero-row').style.display = isCredito ? 'block' : 'none';
+    document.getElementById('venta-dias-row').style.display = isCredito ? 'block' : 'none';
+  }
+});
+
+// ────────────────────────────────────────────────────────────────
+// 8. COMPRAS
+// ────────────────────────────────────────────────────────────────
+
+var _compraList = [];
+
+function cargarCompras(append) {
+  var body = document.getElementById('compras-body');
+  if (!body) return;
+
+  if (!append) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando compras...</td></tr>';
+  }
+
+  var filtroProv = document.getElementById('compras-filter-prov') ? document.getElementById('compras-filter-prov').value || null : null;
+  var filtroEstado = document.getElementById('compras-filter-estado') ? document.getElementById('compras-filter-estado').value || null : null;
+
+  App.api.getCompras(filtroProv, filtroEstado).then(function (res) {
+    if (!res || res.success === false) {
+      mostrarError(body, (res && res.error) || 'Error al cargar compras');
+      return;
+    }
+    _compraList = res.items || [];
+
+    if (!append) body.innerHTML = '';
+
+    if (_compraList.length === 0) {
+      body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin compras registradas</td></tr>';
+      return;
+    }
+
+    _compraList.forEach(function (c) {
+      if (append && body.querySelector('[data-id="' + c.id + '"]')) return;
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-id', c.id);
+      var estado = c.estado || 'PENDIENTE';
+      var venc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
+      var hoy = new Date();
+      var vencida = venc && (venc - hoy < 0) && estado !== 'PAGADA';
+
+      var rowClass = '';
+      if (estado === 'PAGADA') rowClass = 'row-green';
+      else if (estado === 'PENDIENTE') rowClass = 'row-red';
+      else if (estado === 'PARCIAL') rowClass = 'row-yellow';
+      if (vencida && estado !== 'PAGADA') rowClass = 'row-red';
+
+      if (rowClass) tr.className = rowClass;
+
+      var htmlStr =
+        '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || '—') + '</td>' +
+        '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || '—') + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.total) + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.pagado || 0) + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(c.saldo) + '</td>' +
+        '<td>' + escapeHtml(estado) + '</td>' +
+        '<td style="font-size:var(--text-sm);">' + (venc ? venc.toLocaleDateString('es-CO') : '—') + '</td>' +
+        '<td>' +
+          (estado !== 'PAGADA'
+            ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + c.id + '" data-saldo="' + (c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
+            : '') +
+        '</td>';
+      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
+        ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-saldo', 'id']})
+        : htmlStr;
+
+      body.appendChild(tr);
+    });
+
+    body.querySelectorAll('.btn-pagar-compra').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        abrirModalPagoCompra(btn.dataset.id, btn.dataset.saldo);
+      });
+    });
+  }).catch(function (err) {
+    mostrarError(body, err.message || err);
+  });
+}
+
+function abrirModalNuevaCompra() {
+  var modal = document.getElementById('modal-compra');
+  document.getElementById('compra-error').style.display = 'none';
+  document.getElementById('compra-success').style.display = 'none';
+  document.getElementById('compra-factura').value = '';
+  document.getElementById('compra-vencimiento').value = '';
+  document.getElementById('compra-total').value = '';
+  document.getElementById('compra-items').value = '';
+  var sel = document.getElementById('compra-proveedor');
+  sel.innerHTML = '<option value="">Seleccionar...</option>';
+  App.api.getTerceros('PROVEEDOR,AMBOS').then(function (res) {
+    if (res && res.items) {
+      res.items.forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.id + ' — ' + (t.nombre || '—');
+        sel.appendChild(opt);
+      });
+    }
+  });
+  modal.classList.add('active');
+}
+
+function cerrarModalNuevaCompra() {
+  document.getElementById('modal-compra').classList.remove('active');
+}
+
+function guardarCompra() {
+  var proveedorId = document.getElementById('compra-proveedor').value;
+  var factura = document.getElementById('compra-factura').value.trim();
+  var vencimiento = document.getElementById('compra-vencimiento').value;
+  var total = parseInt(document.getElementById('compra-total').value, 10);
+  var itemsRaw = document.getElementById('compra-items').value.trim();
+  var errEl = document.getElementById('compra-error');
+
+  if (!proveedorId) { errEl.textContent = 'Seleccione un proveedor'; errEl.style.display = 'block'; return; }
+  if (!total || total < 1) { errEl.textContent = 'Ingrese un total válido'; errEl.style.display = 'block'; return; }
+  if (!itemsRaw) { errEl.textContent = 'Ingrese al menos un item'; errEl.style.display = 'block'; return; }
+
+  var items = [];
+  var lines = itemsRaw.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split(',').map(function (s) { return s.trim(); });
+    if (parts.length < 3) continue;
+    var prod = parts[0];
+    var cant = parseInt(parts[1], 10);
+    var prec = parseInt(parts[2], 10);
+    if (!prod || !cant || !prec) continue;
+    items.push({ id: prod, cantidad: cant, precio_unitario: prec });
+  }
+
+  if (items.length === 0) { errEl.textContent = 'Ningún item válido. Formato: id, cantidad, precio'; errEl.style.display = 'block'; return; }
+
+  errEl.style.display = 'none';
+  var btn = document.getElementById('btn-compra-guardar');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  App.api.registrarCompra(proveedorId, items, total, vencimiento || null, factura || null).then(function (res) {
+    btn.disabled = false;
+    btn.textContent = 'Guardar compra';
+    if (res && res.success === false) {
+      errEl.textContent = res.error || 'Error al registrar compra';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
+    document.getElementById('compra-success').style.display = 'block';
+    setTimeout(cerrarModalNuevaCompra, 1500);
+    cargarCompras();
+  }).catch(function (err) {
+    btn.disabled = false;
+    btn.textContent = 'Guardar compra';
+    errEl.textContent = err.message || err;
+    errEl.style.display = 'block';
+  });
+}
+
+var _pagoCompraId = null;
+
+function abrirModalPagoCompra(idCompra, saldo) {
+  _pagoCompraId = idCompra;
+  document.getElementById('pago-compra-title').textContent = 'Pagar compra #' + idCompra;
+  document.getElementById('pago-compra-monto').value = Math.round(parseInt(saldo) / 100) || '';
+  document.getElementById('pago-compra-ref').value = '';
+  document.getElementById('pago-compra-error').style.display = 'none';
+  document.getElementById('modal-pago-compra').classList.add('active');
+}
+
+function cerrarModalPagoCompra() {
+  document.getElementById('modal-pago-compra').classList.remove('active');
+  _pagoCompraId = null;
+}
+
+function ejecutarPagoCompra() {
+  var montoInput = document.getElementById('pago-compra-monto').value;
+  var montoCentavos = App.toCents(montoInput);
+  var ref = document.getElementById('pago-compra-ref').value.trim();
+  var errEl = document.getElementById('pago-compra-error');
+
+  if (!montoCentavos || montoCentavos < 100) { errEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  var btn = document.getElementById('btn-pago-compra-ejecutar');
+  btn.disabled = true;
+  btn.textContent = 'Procesando...';
+
+  App.api.registrarPagoProveedor(_pagoCompraId, montoCentavos, ref || 'Pago manual').then(function (res) {
+    btn.disabled = false;
+    btn.textContent = 'Pagar';
+    if (res && res.success === false) {
+      errEl.textContent = res.error || 'Error al procesar pago';
+      errEl.style.display = 'block';
+      return;
+    }
+    cerrarModalPagoCompra();
+    showToast('Pago registrado exitosamente', 'success');
+    cargarCompras();
+  }).catch(function (err) {
+    btn.disabled = false;
+    btn.textContent = 'Pagar';
+    errEl.textContent = err.message || err;
+    errEl.style.display = 'block';
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// 9. VENCIMIENTOS
+// ────────────────────────────────────────────────────────────────
+
+function cargarVencimientos() {
+  var body = document.getElementById('venc-body');
+  if (!body) return;
+
+  body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando vencimientos...</td></tr>';
+
+  var dias = parseInt(document.getElementById('venc-dias').value || '30', 10);
+
+  App.api.getProximosVencimientos(dias).then(function (res) {
+    if (!res || res.success === false) {
+      mostrarError(body, (res && res.error) || 'Error al cargar vencimientos');
+      return;
+    }
+    var items = res.items || [];
+    document.getElementById('venc-total').textContent = App.formatearMoneda(res.total || 0);
+
+    body.innerHTML = '';
+    if (items.length === 0) {
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin vencimientos próximos</td></tr>';
+      return;
+    }
+
+    items.forEach(function (v) {
+      var tr = document.createElement('tr');
+      var tipo = v.tipo || v.origen || 'CxC';
+      var labelTipo = tipo === 'CxP' ? 'Cuenta por pagar' : tipo === 'compra' ? 'Compra' : 'Cuenta por cobrar';
+      var vencHtml =
+        '<td><span class="badge badge-' + (tipo === 'CxP' || tipo === 'compra' ? 'yellow' : 'red') + '" style="font-size:var(--text-micro);">' + escapeHtml(labelTipo) + '</span></td>' +
+        '<td>' + escapeHtml(v.nombre_tercero || v.nombre || '—') + '</td>' +
+        '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
+        '<td>' + (v.dias_para_vencer || 0) + ' d' + '</td>' +
+        '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : '—') + '</td>';
+      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
+        ? DOMPurify.sanitize(vencHtml, {ALLOWED_TAGS: ['td', 'tr', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan']})
+        : vencHtml;
+      body.appendChild(tr);
+    });
+  }).catch(function (err) {
+    mostrarError(body, err.message || err);
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// UTILIDADES COMPARTIDAS
+// ────────────────────────────────────────────────────────────────
+
+function generarIdTemporal() {
+  return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+</script>
