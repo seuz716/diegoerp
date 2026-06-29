@@ -500,9 +500,9 @@
   </section>
 
   <!-- MODAL NUEVA COMPRA -->
-  <div class="modal-overlay" id="modal-compra" role="dialog" aria-modal="true" aria-label="Nueva compra">
+  <div class="modal-overlay" id="modal-compra" role="dialog" aria-modal="true" aria-labelledby="modal-compra-title" aria-describedby="compra-error">
     <div class="modal-box">
-      <div class="modal-title">Registrar compra</div>
+      <div class="modal-title" id="modal-compra-title">Registrar compra</div>
       <div class="form-row">
         <label class="form-label">Proveedor</label>
         <select class="form-field" id="compra-proveedor"><option value="">Seleccionar...</option></select>
@@ -533,7 +533,7 @@
   </div>
 
   <!-- MODAL PAGO COMPRA -->
-  <div class="modal-overlay" id="modal-pago-compra" role="dialog" aria-modal="true" aria-label="Pagar compra">
+  <div class="modal-overlay" id="modal-pago-compra" role="dialog" aria-modal="true" aria-labelledby="pago-compra-title" aria-describedby="pago-compra-error">
     <div class="modal-box">
       <div class="modal-title" id="pago-compra-title">Pagar compra</div>
       <div class="form-row">
@@ -553,9 +553,9 @@
   </div>
 
   <!-- MODAL NUEVO TERCERO -->
-  <div class="modal-overlay" id="modal-tercero" role="dialog" aria-modal="true" aria-label="Nuevo tercero">
+  <div class="modal-overlay" id="modal-tercero" role="dialog" aria-modal="true" aria-labelledby="modal-tercero-title" aria-describedby="tercero-error">
     <div class="modal-box">
-      <div class="modal-title">Nuevo tercero</div>
+      <div class="modal-title" id="modal-tercero-title">Nuevo tercero</div>
       <div class="form-row">
         <label class="form-label">NIT / Identificación</label>
         <input type="text" class="form-field" id="tercero-nit" placeholder="NIT o cédula" maxlength="30" autocomplete="off">
@@ -623,6 +623,21 @@
 <button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">↑</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+// Fallback: si CDN falla, DOMPurify no está disponible pero el fallback es seguro
+(function() {
+  if (typeof DOMPurify === 'undefined') {
+    console.warn('[DOMPurify] CDN fallback: using textContent for sanitization');
+    window.DOMPurify = {
+      sanitize: function(str, opts) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(str)));
+        return div.innerHTML;
+      }
+    };
+  }
+})();
+</script>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/app').getContent() ?>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/views').getContent() ?>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/init').getContent() ?>
