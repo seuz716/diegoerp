@@ -1,0 +1,165 @@
+<script>
+'use strict';
+var App = App || {};
+
+function callServer(funcName) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  var timeoutMs = funcName === 'analizarConGeminiFresco' ? 180000 : 30000;
+
+  return new Promise(function (resolve, reject) {
+    var timer = setTimeout(function () {
+      var errorMsg = 'El servidor tardó demasiado en responder para la operación: ' + funcName + ' (Límite: ' + (timeoutMs / 1000) + 's).';
+      showError(errorMsg);
+      reject(new Error(errorMsg));
+    }, timeoutMs);
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .withFailureHandler(function (error) {
+        clearTimeout(timer);
+        reject(error.message || error);
+      })
+      [funcName].apply(null, args);
+  });
+}
+
+App.api = {
+  getDashboard: function () { return callServer('getDashboardCartera'); },
+  getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
+  getCarteraDebug: function (filtroTipo, filtroEstado) { return callServer('getCarteraDebug', filtroTipo, filtroEstado); },
+  getTerceros: function (filtroTipo) { return callServer('getTerceros', filtroTipo); },
+  registrarAbono: function (idTercero, valorAbono, referencia, tipo) { return callServer('registrarAbono', idTercero, valorAbono, referencia, tipo); },
+  saveTercero: function (tercero) { return callServer('saveTercero', tercero); },
+  analizarConGeminiFresco: function () { return callServer('analizarConGeminiFresco'); },
+  getAuditHistory: function (tabla, idRegistro, limit) { return callServer('getAuditHistory', tabla, idRegistro, limit); },
+  getUserInfo: function () { return callServer('getUserInfo'); },
+  procesarVenta: function (carrito, opciones) { return callServer('procesarVenta', carrito, opciones); },
+  getProductos: function () { return callServer('getProductos'); },
+  registrarCompra: function (proveedorId, items, total, fechaVencimiento, factura) { return callServer('registrarCompra', proveedorId, items, total, fechaVencimiento, factura); },
+  getCompras: function (filtroProveedor, filtroEstado) { return callServer('getCompras', filtroProveedor, filtroEstado); },
+  getDetalleCompra: function (idCompra) { return callServer('getDetalleCompra', idCompra); },
+  registrarPagoProveedor: function (idCompra, monto, referencia) { return callServer('registrarPagoProveedor', idCompra, monto, referencia); },
+  getProximosVencimientos: function (dias) { return callServer('getProximosVencimientos', dias); },
+  getRankingDeudores: function (topN) { return callServer('getRankingDeudores', topN); },
+  getConcentracionProveedores: function () { return callServer('getConcentracionProveedores'); },
+  getFlujoCajaResumen: function (dias) { return callServer('getFlujoCajaResumen', dias); },
+  exportarLibroDiario: function (fechaInicio, fechaFin) { return callServer('exportarLibroDiario', fechaInicio, fechaFin); },
+  exportarFlujoCaja: function (fechaInicio, fechaFin) { return callServer('exportarFlujoCaja', fechaInicio, fechaFin); },
+  getCacheHealth: function () { return callServer('getCacheHealth'); },
+  getCacheMetrics: function () { return callServer('getCacheMetrics'); },
+  verificarConfiguracionIA: function () { return callServer('verificarConfiguracionIA'); },
+};
+
+App.formatearMoneda = function (centavos) {
+  if (centavos == null || isNaN(centavos)) return '$0';
+  return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+};
+
+App.toCents = function (amount) {
+  var num = Number(amount);
+  if (isNaN(num) || num < 0) return 0;
+  if (num % 1 !== 0) {
+    console.warn('toCents: valor con decimales convertido: ' + amount + ' -> ' + Math.round(num * 100) + ' centavos. Evite usar decimales.');
+  }
+  if (num > 9007199254740991) { return 0; }
+  return Math.round(num * 100);
+};
+
+App.formatearFecha = function (dateObj) {
+  if (!dateObj) return '\u2014';
+  var d = dateObj instanceof Date ? dateObj : new Date(dateObj);
+  if (isNaN(d.getTime())) return '\u2014';
+  var meses = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
+  return d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
+};
+
+App.mapearEstadoCartera = function (estado) {
+  var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-partial' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
+  return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
+};
+
+/**
+ * Mostrar respuesta del servidor para diagnóstico
+ */
+function mostrarRespuestaServidor(res, container) {
+  container.innerHTML = '';
+  var pre = document.createElement('pre');
+  pre.style.cssText = 'font-size:var(--text-xs);color:var(--text);padding:var(--space-3);background:var(--bg-2);overflow:auto;max-height:400px;';
+  pre.textContent = JSON.stringify(res, null, 2);
+  container.appendChild(pre);
+}
+
+App.mapearTipoTercero = function (tipo) {
+  var map = { CLIENTE: { label: 'Cliente', cls: 'badge-open' }, PROVEEDOR: { label: 'Proveedor', cls: '' }, AMBOS: { label: 'Ambos', cls: 'badge-open' } };
+  return map[tipo] || { label: tipo || '\u2014', cls: 'badge-done' };
+};
+
+function mostrarLoader(contenedor) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'loader-brutal';
+  div.textContent = 'Cargando';
+  div.setAttribute('role', 'status');
+  div.setAttribute('aria-live', 'polite');
+  contenedor.appendChild(div);
+}
+
+function mostrarError(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'error-banner show';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
+
+function mostrarVacio(contenedor, mensaje) {
+  contenedor.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'empty-state';
+  div.textContent = mensaje;
+  contenedor.appendChild(div);
+}
+
+App.data = {
+  dashboard: null, cartera: null, terceros: null,
+  refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
+  refreshCartera: function (filtroTipo, filtroEstado) { var self = this; return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) { self.cartera = d; return d; }); },
+  refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
+};
+
+function escapeHtml(str) {
+  if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+    return DOMPurify.sanitize(String(str), {ALLOWED_TAGS: []});
+  }
+  var div = document.createElement('div');
+  div.appendChild(document.createTextNode(str));
+  return div.innerHTML;
+}
+
+function showError(msg) {
+  var banner = document.getElementById('error-banner');
+  banner.textContent = msg;
+  banner.classList.add('show');
+}
+
+function showToast(msg, type) {
+  type = type || 'error';
+  var container = document.getElementById('toast-container');
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  if (type === 'error') el.setAttribute('role', 'alert');
+  container.appendChild(el);
+  setTimeout(function () {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+  }, 5000);
+}
+
+function generarIdTemporal() {
+  return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+</script>

@@ -1,0 +1,199 @@
+<script>
+/* ── GAS IFRAME FIX ──
+   En GAS, el HTML se sirve dentro de un iframe. El <meta viewport>
+   del HTML interno NO controla el zoom del navegador porque el viewport
+   solo aplica al documento raíz. Este script:
+   1. Fuerza font-size base en móvil (JS tiene más especificidad que CSS heredado)
+   2. Notifica al host de GAS cambios de altura via ResizeObserver
+*/
+(function(){
+  var ua = navigator.userAgent;
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  if(isMobile){
+    document.documentElement.style.fontSize = '16px';
+  }
+  if(window.ResizeObserver){
+    new ResizeObserver(function(){
+      var h = document.body.scrollHeight;
+      try { google.script.run.withFailureHandler(function(){}).setHeight(h); } catch(e) {}
+    }).observe(document.body);
+  }
+})();
+
+// Pull to refresh hint (mobile only)
+function mostrarHintRefrescar() {
+  var hint = document.getElementById('refresh-hint');
+  if (!hint || window.innerWidth >= 769) return;
+  hint.classList.add('show');
+  clearTimeout(hint._timer);
+  hint._timer = setTimeout(function() { hint.classList.remove('show'); }, 2000);
+}
+
+// Navegación
+document.querySelectorAll('.nav-item').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active', 'is-loading'); b.removeAttribute('aria-current'); });
+    btn.classList.add('active');
+    btn.setAttribute('aria-current', 'page');
+    btn.classList.add('is-loading');
+    var viewId = btn.dataset.view;
+    document.querySelectorAll('.view').forEach(function (v) {
+      v.classList.remove('active');
+      v.setAttribute('aria-hidden', 'true');
+    });
+    document.getElementById('error-banner').classList.remove('show');
+    var view = document.getElementById('view-' + viewId);
+    if (view) {
+      view.classList.add('active');
+      view.removeAttribute('aria-hidden');
+      if (viewId === 'dashboard') cargarDashboard();
+      if (viewId === 'cartera') cargarCartera();
+      if (viewId === 'terceros') cargarTerceros();
+      if (viewId === 'abonos') cargarAbonoSelect();
+      if (viewId === 'ventas') cargarVentas();
+      if (viewId === 'compras') cargarCompras();
+      if (viewId === 'vencimientos') cargarVencimientos();
+    }
+    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', vencimientos: 'Vencimientos' };
+    document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
+    mostrarHintRefrescar();
+    setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
+  });
+});
+
+// Información de usuario
+function cargarUserInfo() {
+  var userEl = document.getElementById('sidebar-user');
+  App.api.getUserInfo()
+    .then(function (info) {
+      if (info && info.email) {
+        userEl.textContent = '';
+        var emailDiv = document.createElement('div');
+        emailDiv.className = 'user-email';
+        emailDiv.textContent = info.email;
+        var roleDiv = document.createElement('div');
+        roleDiv.className = 'user-role';
+        roleDiv.textContent = info.role || 'Sin rol';
+        userEl.appendChild(emailDiv);
+        userEl.appendChild(roleDiv);
+      } else {
+        userEl.innerHTML = '<div class="user-error">Sesión no disponible</div>';
+      }
+    })
+    .catch(function (err) {
+      console.error('Error cargando info de usuario:', err);
+      userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
+    });
+}
+
+// Delegación venta-tipo
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'venta-tipo') {
+    var isCredito = e.target.value === 'CxC';
+    document.getElementById('venta-tercero-row').style.display = isCredito ? 'block' : 'none';
+    document.getElementById('venta-dias-row').style.display = isCredito ? 'block' : 'none';
+  }
+});
+
+// DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function () {
+  (function() {
+    var activeView = document.querySelector('#sidebar .nav-item.active');
+    if (activeView) {
+      var viewId = activeView.dataset.view;
+      var bottomItem = document.querySelector('#bottom-nav .nav-item[data-view="' + viewId + '"]');
+      if (bottomItem) bottomItem.classList.add('active');
+    }
+  })();
+
+  cargarUserInfo();
+  cargarDashboard();
+  mostrarHintRefrescar();
+
+  document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
+  document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
+  document.getElementById('btn-tercero-guardar').addEventListener('click', guardarTercero);
+  document.getElementById('modal-tercero').addEventListener('click', function (e) {
+    if (e.target === this) cerrarModalTercero();
+  });
+
+  var busquedaTerceros = document.getElementById('busqueda-terceros');
+  if (busquedaTerceros) {
+    busquedaTerceros.addEventListener('input', function() {
+      clearTimeout(busquedaTerceros._timer);
+      busquedaTerceros._timer = setTimeout(cargarTerceros, 300);
+    });
+  }
+
+  document.getElementById('btn-nueva-compra').addEventListener('click', abrirModalNuevaCompra);
+  document.getElementById('btn-compra-cancelar').addEventListener('click', cerrarModalNuevaCompra);
+  document.getElementById('btn-compra-guardar').addEventListener('click', guardarCompra);
+  document.getElementById('modal-compra').addEventListener('click', function (e) { if (e.target === this) cerrarModalNuevaCompra(); });
+  document.getElementById('btn-pago-compra-cancelar').addEventListener('click', cerrarModalPagoCompra);
+  document.getElementById('btn-pago-compra-ejecutar').addEventListener('click', ejecutarPagoCompra);
+  document.getElementById('modal-pago-compra').addEventListener('click', function (e) { if (e.target === this) cerrarModalPagoCompra(); });
+  document.getElementById('compras-filter-prov').addEventListener('change', cargarCompras);
+  document.getElementById('compras-filter-estado').addEventListener('change', cargarCompras);
+
+  document.getElementById('btn-actualizar-venc').addEventListener('click', cargarVencimientos);
+  document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
+});
+
+// Event listeners sueltos
+document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
+document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
+document.getElementById('btn-exportar-libro').addEventListener('click', exportarLibroDiarioCSV);
+document.getElementById('btn-exportar-flujo').addEventListener('click', exportarFlujoCajaCSV);
+document.getElementById('btn-ejecutar-abono').addEventListener('click', ejecutarAbono);
+document.getElementById('btn-registrar-venta').addEventListener('click', registrarVenta);
+document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
+document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
+document.getElementById('filter-estado').addEventListener('change', cargarCartera);
+
+// Theme toggle
+function actualizarLabelTema(){
+  var label=document.getElementById('theme-toggle-label');
+  if(label) label.textContent=document.documentElement.dataset.theme==='dark'?'Oscuro':'Claro';
+}
+actualizarLabelTema();
+document.getElementById('theme-toggle').addEventListener('click',function(){
+  var next=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem('theme',next);
+  actualizarLabelTema();
+});
+
+// Offline detection
+var offlineBanner = document.getElementById('offline-banner');
+function actualizarEstadoRed() {
+  if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : 'block';
+}
+actualizarEstadoRed();
+window.addEventListener('online', actualizarEstadoRed);
+window.addEventListener('offline', actualizarEstadoRed);
+
+// Back to top
+var btnBackTop = document.getElementById('btn-back-top');
+if (btnBackTop) {
+  var mainEl = document.getElementById('main');
+  btnBackTop.addEventListener('click', function() {
+    var target = mainEl && mainEl.scrollTop > 0 ? mainEl : window;
+    target.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  var scrollTargets = [mainEl, window].filter(Boolean);
+  function onScroll() {
+    btnBackTop.classList.toggle('show', (mainEl ? mainEl.scrollTop : window.scrollY || window.pageYOffset) > 300);
+  }
+  scrollTargets.forEach(function(t) { t.addEventListener('scroll', onScroll, { passive: true }); });
+}
+
+// Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modalTercero = document.getElementById('modal-tercero');
+    var modalConfirm = document.getElementById('modal-confirm');
+    if (modalTercero && modalTercero.classList.contains('active')) cerrarModalTercero();
+    if (modalConfirm && modalConfirm.classList.contains('active')) modalConfirm.classList.remove('active');
+  }
+});
+</script>

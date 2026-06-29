@@ -521,3 +521,38 @@ const SESSION_SERVICE = {
     }
   }
 };
+
+// ─ SETUP INICIAL (consolidado) ─
+
+function setupSistema() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ssId = ss.getId();
+  PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssId);
+
+  Logger.log("=== SETUP MICROERP ===");
+  Logger.log("Spreadsheet: " + ss.getName());
+  Logger.log("ID: " + ssId);
+
+  const requiredSheets = ["Terceros", "Cartera", "Movimientos_Cartera", "AUDIT_LOG", "Productos"];
+  let mensaje = "\nHOJAS:\n";
+
+  for (const nombre of requiredSheets) {
+    const hoja = ss.getSheetByName(nombre);
+    if (hoja) {
+      mensaje += "✅ " + nombre + ": " + hoja.getLastRow() + " filas\n";
+    } else {
+      mensaje += "❌ " + nombre + ": NO EXISTE\n";
+    }
+  }
+
+  Logger.log(mensaje);
+  CONFIG.reloadSchema();
+
+  return {
+    success: true,
+    spreadsheetId: ssId,
+    spreadsheetName: ss.getName(),
+    sheets: requiredSheets.map(n => ({ name: n, exists: !!ss.getSheetByName(n) })),
+    message: "Sistema configurado correctamente"
+  };
+}

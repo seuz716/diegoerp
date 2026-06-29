@@ -137,6 +137,17 @@ const RATE_LIMITER = {
 };
 
 /**
+ * Helper for retry with circuit breaker protection
+ * @param {Function} fn - Function to execute
+ * @param {string} kind - Cache kind ('terceros' or 'cartera')
+ * @param {number} maxRetries - Maximum retries (default 3)
+ * @returns {*} Result of the function
+ */
+function _withRetry(fn, kind, maxRetries = 3) {
+  return CACHE.executeWithCircuit(kind, fn, maxRetries);
+}
+
+/**
  * API Pública: Registrar abono
  */
 // Latency histogram buckets (ms)
@@ -194,9 +205,9 @@ function getTerceros(filtroTipo = null) {
     AuthService.checkPermission("ver_terceros");
     const resultado = CACHE.getTerceros();
     if (filtroTipo) {
-      return { ...resultado.filter(t => t.tipo === filtroTipo.toUpperCase()), correlationId, executionTimeMs: Date.now() - startTime };
+      return { items: resultado.filter(t => t.tipo === filtroTipo.toUpperCase()), correlationId, executionTimeMs: Date.now() - startTime };
     }
-    return { ...resultado, correlationId, executionTimeMs: Date.now() - startTime };
+    return { items: resultado, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("getTerceros", e, correlationId);
   }
@@ -252,7 +263,7 @@ function getDashboardCartera() {
 
     // === INICIO FIX M-05 ===
     // Ensure cache is fresh
-    CACHE.refresh();
+    _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
 
     const hoy = _today();
 
@@ -431,11 +442,12 @@ function getDashboardCartera() {
  * API Pública: Obtener historial de auditoría
  */
 function getAuditHistory(tabla, idRegistro, limit = 50) {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_auditoria");
-    return LOG_ENGINE.getHistory(tabla, idRegistro, limit);
+    return { ...LOG_ENGINE.getHistory(tabla, idRegistro, limit), correlationId };
   } catch (e) {
-    return _safeError("getAuditHistory", e);
+    return _safeError("getAuditHistory", e, correlationId);
   }
 }
 
@@ -443,15 +455,17 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
  * API Pública: Obtener estado de la caché (staleness info)
  */
 function getCacheHealth() {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cache");
     return {
       staleness: CACHE.getStalenessInfo(),
       consistency: CACHE.verifyConsistency(),
       timestamp: new Date().toISOString(),
+      correlationId
     };
   } catch (e) {
-    return _safeError("getCacheHealth", e);
+    return _safeError("getCacheHealth", e, correlationId);
   }
 }
 
@@ -459,9 +473,10 @@ function getCacheHealth() {
  * API Pública: Métricas de salud del caché (circuit breaker, persistidas)
  */
 function getCacheMetrics() {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cache");
-    CACHE.refresh();
+    _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
     return {
       success: true,
       metrics: {
@@ -471,9 +486,10 @@ function getCacheMetrics() {
         consistency: CACHE.verifyConsistency(),
       },
       timestamp: new Date().toISOString(),
+      correlationId
     };
   } catch (e) {
-    return _safeError("getCacheMetrics", e);
+    return _safeError("getCacheMetrics", e, correlationId);
   }
 }
 
@@ -531,6 +547,7 @@ function procesarVenta(carrito, opciones) {
  * API Pública: Obtener productos desde la hoja Productos
  */
 function getProductos() {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
     validateAndMapSchemas();
@@ -549,9 +566,9 @@ function getProductos() {
         precio: parseFloat(data[i][COL.precio]) || 0,
       });
     }
-    return productos;
+    return { success: true, productos, correlationId };
   } catch (e) {
-    return _safeError("getProductos", e);
+    return _safeError("getProductos", e, correlationId);
   }
 }
 
@@ -644,16 +661,19 @@ function getCarteraDebug(filtroTipo, filtroEstado) {
 // ════════════════════════════════════════════
 
 function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
+  const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("registrarCompra");
     AuthService.checkPermission("registrar_compra");
-    return DOMAIN.registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura);
+    const result = DOMAIN.registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura, correlationId);
+    return { ...result, correlationId };
   } catch (e) {
-    return _safeError("registrarCompra", e);
+    return _safeError("registrarCompra", e, correlationId);
   }
 }
 
 function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
     CACHE.refresh();
@@ -670,30 +690,33 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
     });
     var start = page * pageSize;
     var paginated = compras.slice(start, start + pageSize);
-    return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize };
+    return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize, correlationId };
   } catch (e) {
-    return _safeError("getCompras", e);
+    return _safeError("getCompras", e, correlationId);
   }
 }
 
 function getDetalleCompra(idCompra) {
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
     var detalles = DAO_COMPRAS.getDetallesByCompra(idCompra);
     var pagos = DAO_COMPRAS.getPagosByCompra(idCompra);
-    return { success: true, detalles: detalles, pagos: pagos };
+    return { success: true, detalles: detalles, pagos: pagos, correlationId };
   } catch (e) {
-    return _safeError("getDetalleCompra", e);
+    return _safeError("getDetalleCompra", e, correlationId);
   }
 }
 
 function registrarPagoProveedor(idCompra, monto, referencia) {
+  const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("registrarPagoProveedor");
     AuthService.checkPermission("registrar_pago_proveedor");
-    return DOMAIN.procesarPagoProveedorAtomic(idCompra, monto, referencia);
+    const result = DOMAIN.procesarPagoProveedorAtomic(idCompra, monto, referencia, correlationId);
+    return { ...result, correlationId };
   } catch (e) {
-    return _safeError("registrarPagoProveedor", e);
+    return _safeError("registrarPagoProveedor", e, correlationId);
   }
 }
 
