@@ -131,12 +131,40 @@ function mostrarVacio(contenedor, mensaje) {
   contenedor.appendChild(div);
 }
 
-App.data = {
-  dashboard: null, cartera: null, terceros: null,
-  refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
-  refreshCartera: function (filtroTipo, filtroEstado) { var self = this; return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) { self.cartera = d; return d; }); },
-  refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
-};
+App.data = (function () {
+  var CACHE_TTL = { dashboard: 60000, cartera: 45000, terceros: 120000 };
+  var _store = { dashboard: null, cartera: null, terceros: null };
+  var _timestamps = { dashboard: 0, cartera: 0, terceros: 0 };
+  var _deps = { cartera: ['dashboard'], dashboard: [], terceros: [] };
+
+  function _isStale(key) {
+    return !_store[key] || (Date.now() - _timestamps[key] > CACHE_TTL[key]);
+  }
+
+  function _invalidate(key) {
+    _store[key] = null;
+    _timestamps[key] = 0;
+    (_deps[key] || []).forEach(function (dep) { _store[dep] = null; _timestamps[dep] = 0; });
+  }
+
+  return {
+    get dashboard() { return _isStale('dashboard') ? null : _store.dashboard; },
+    set dashboard(v) { _store.dashboard = v; _timestamps.dashboard = Date.now(); },
+    get cartera() { return _isStale('cartera') ? null : _store.cartera; },
+    set cartera(v) { _store.cartera = v; _timestamps.cartera = Date.now(); },
+    get terceros() { return _isStale('terceros') ? null : _store.terceros; },
+    set terceros(v) { _store.terceros = v; _timestamps.terceros = Date.now(); },
+    invalidate: function (key) {
+      if (key) { _invalidate(key); return; }
+      _store.dashboard = null; _timestamps.dashboard = 0;
+      _store.cartera = null; _timestamps.cartera = 0;
+      _store.terceros = null; _timestamps.terceros = 0;
+    },
+    refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
+    refreshCartera: function (filtroTipo, filtroEstado) { var self = this; return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) { self.cartera = d; return d; }); },
+    refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
+  };
+})();
 
 function escapeHtml(str) {
   if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
@@ -145,6 +173,10 @@ function escapeHtml(str) {
   var div = document.createElement('div');
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function showError(msg) {

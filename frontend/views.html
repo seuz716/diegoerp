@@ -389,7 +389,7 @@ function exportarFlujoCajaCSV() {
 // ────────────────────────────────────────────────────────────────
 
 var currentCarteraPageToken = 0;
-var carteraPageSize = 1000;
+var carteraPageSize = 100;
 
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
@@ -419,7 +419,7 @@ function cargarCartera(append) {
   var filtroTipo = filterTipoEl.value || null;
   var filtroEstado = filterEstadoEl.value || null;
 
-  App.api.getCartera(filtroTipo, filtroEstado, carteraPageSize, currentCarteraPageToken)
+  return App.api.getCartera(filtroTipo, filtroEstado, carteraPageSize, currentCarteraPageToken)
     .then(function (res) {
       if (append !== true) {
         tbody.innerHTML = '';
@@ -587,7 +587,7 @@ function cargarAbonoSelect() {
   var select = document.getElementById('abono-cliente');
   select.innerHTML = '<option value="">Seleccione un tercero...</option>';
   var promise = App.data.terceros ? Promise.resolve(App.data.terceros) : App.api.getTerceros(null);
-  promise
+  return promise
     .then(function (data) {
       var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
       if (items.length) {
@@ -642,8 +642,7 @@ function ejecutarAbono() {
         successEl.style.display = 'block';
         setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
         document.getElementById('abono-cliente').value = '';
-        App.data.dashboard = null;
-        App.data.cartera = null;
+        App.data.invalidate();
         cargarDashboard();
         cargarCartera();
       }
@@ -671,7 +670,7 @@ function cargarTerceros() {
   
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>';
 
-  App.api.getTerceros(null)
+  return App.api.getTerceros(null)
     .then(function (data) {
       tbody.innerHTML = '';
       var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
@@ -742,6 +741,33 @@ function cargarTerceros() {
   setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
+function _announce(msg) {
+  var el = document.getElementById('view-announcements');
+  if (el) el.textContent = msg;
+}
+
+function _trapFocus(modal) {
+  var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  modal._first = focusables[0];
+  modal._last = focusables[focusables.length - 1];
+  setTimeout(function() { if (modal._first) modal._first.focus(); }, 50);
+  function trap(e) {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey) { if (document.activeElement === modal._first) { e.preventDefault(); if (modal._last) modal._last.focus(); } }
+    else { if (document.activeElement === modal._last) { e.preventDefault(); if (modal._first) modal._first.focus(); } }
+  }
+  modal.addEventListener('keydown', trap);
+  modal._trap = trap;
+  modal._opener = document.activeElement;
+}
+
+function _untrapFocus(modal) {
+  if (modal._trap) modal.removeEventListener('keydown', modal._trap);
+  if (modal._opener) modal._opener.focus();
+  modal._trap = null;
+  modal._opener = null;
+}
+
 function abrirModalTercero() {
   var modal = document.getElementById('modal-tercero');
   document.getElementById('tercero-nombre').value = '';
@@ -753,26 +779,17 @@ function abrirModalTercero() {
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
-  modal._opener = document.activeElement;
-  var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
-  var first = focusables[0], last = focusables[focusables.length - 1];
-  setTimeout(function(){ if(first) first.focus(); }, 50);
-  function trap(e){
-    if(e.key!=='Tab') return;
-    if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}
-    else{if(document.activeElement===last){e.preventDefault();first.focus();}}
-  }
-  modal.addEventListener('keydown',trap);
-  modal._trap = trap;
+  _trapFocus(modal);
+  _announce('Modal nuevo tercero abierto');
 }
 
 function cerrarModalTercero() {
   var modal = document.getElementById('modal-tercero');
   modal.classList.remove('active');
-  modal.removeEventListener('keydown',modal._trap);
+  _untrapFocus(modal);
   document.getElementById('sidebar').removeAttribute('aria-hidden');
   document.getElementById('main').removeAttribute('aria-hidden');
-  if(modal._opener) modal._opener.focus();
+  _announce('Modal tercero cerrado');
 }
 
 function confirmarAccion(lineas, onConfirm) {
@@ -783,22 +800,32 @@ function confirmarAccion(lineas, onConfirm) {
     if (i > 0) msgEl.appendChild(document.createElement('br'));
     msgEl.appendChild(document.createTextNode(l));
   });
+  document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
+  document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
+  _trapFocus(modal);
+  _announce('Confirmación requerida');
   var btnOk = document.getElementById('modal-confirm-ok');
   var btnCan = document.getElementById('modal-confirm-cancel');
   function cleanup() {
     modal.classList.remove('active');
+    _untrapFocus(modal);
+    document.getElementById('sidebar').removeAttribute('aria-hidden');
+    document.getElementById('main').removeAttribute('aria-hidden');
     btnOk.removeEventListener('click', onOk);
     btnCan.removeEventListener('click', onCancel);
     modal.removeEventListener('click', onOverlayClick);
+    modal.removeEventListener('keydown', onEscape);
+    _announce('Confirmación cerrada');
   }
   function onOk() { cleanup(); onConfirm(); }
   function onCancel() { cleanup(); }
-  function onOverlayClick(e) { if (e.target === modal) cleanup(); }
+  function onEscape(e) { if (e.key === 'Escape') onCancel(); }
+  function onOverlayClick(e) { if (e.target === modal) onCancel(); }
   btnOk.addEventListener('click', onOk);
   btnCan.addEventListener('click', onCancel);
   modal.addEventListener('click', onOverlayClick);
-  btnOk.focus();
+  modal.addEventListener('keydown', onEscape);
 }
 
 function guardarTercero() {
@@ -1025,11 +1052,24 @@ function registrarVenta() {
     for (var iT = 0; iT < itemsT.length; iT++) {
       if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
     }
-    if (cliente && cliente.limite_credito > 0 && totalVentaCentavos > cliente.limite_credito) {
-      errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el límite de crédito del cliente (' + App.formatearMoneda(cliente.limite_credito) + ').';
-      errorEl.classList.add('show');
-      return;
+    // === FIX: Validar crédito disponible (límite - saldo actual) ===
+    if (cliente && cliente.limite_credito > 0) {
+      var saldoActual = 0;
+      var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
+      for (var iCa = 0; iCa < carteraItems.length; iCa++) {
+        var itemC = carteraItems[iCa];
+        if (itemC.id_tercero === idTercero && itemC.estado !== 'CANCELADA') {
+          saldoActual += itemC.saldo || 0;
+        }
+      }
+      var creditoDisponible = cliente.limite_credito - saldoActual;
+      if (totalVentaCentavos > creditoDisponible) {
+        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crédito disponible del cliente (' + App.formatearMoneda(creditoDisponible) + '). Saldo actual: ' + App.formatearMoneda(saldoActual) + ', Límite: ' + App.formatearMoneda(cliente.limite_credito) + '.';
+        errorEl.classList.add('show');
+        return;
+      }
     }
+    // === FIN FIX ===
   }
 
   var totalStr = document.getElementById('venta-total').textContent;
@@ -1055,8 +1095,7 @@ function registrarVenta() {
         agregarFilaProducto();
         calcularTotalVenta();
         document.getElementById('venta-cliente').value = '';
-        App.data.dashboard = null;
-        App.data.cartera = null;
+        App.data.invalidate();
         cargarDashboard();
         cargarCartera();
       }
@@ -1088,7 +1127,7 @@ function cargarCompras(append) {
   var filtroProv = document.getElementById('compras-filter-prov') ? document.getElementById('compras-filter-prov').value || null : null;
   var filtroEstado = document.getElementById('compras-filter-estado') ? document.getElementById('compras-filter-estado').value || null : null;
 
-  App.api.getCompras(filtroProv, filtroEstado).then(function (res) {
+  return App.api.getCompras(filtroProv, filtroEstado).then(function (res) {
     if (!res || res.success === false) {
       mostrarError(body, (res && res.error) || 'Error al cargar compras');
       return;
@@ -1103,9 +1142,9 @@ function cargarCompras(append) {
     }
 
     _compraList.forEach(function (c) {
-      if (append && body.querySelector('[data-id="' + c.id + '"]')) return;
+      if (append && body.querySelector('[data-id="' + escapeAttr(c.id) + '"]')) return;
       var tr = document.createElement('tr');
-      tr.setAttribute('data-id', c.id);
+      tr.setAttribute('data-id', escapeAttr(c.id));
       var estado = c.estado || 'PENDIENTE';
       var venc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
       var hoy = new Date();
@@ -1129,12 +1168,12 @@ function cargarCompras(append) {
         '<td style="font-size:var(--text-sm);">' + (venc ? venc.toLocaleDateString('es-CO') : '—') + '</td>' +
         '<td>' +
           (estado !== 'PAGADA'
-            ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + c.id + '" data-saldo="' + (c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
+            ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + escapeAttr(c.id) + '" data-saldo="' + escapeAttr(c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
             : '') +
         '</td>';
       tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
         ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-saldo', 'id']})
-        : htmlStr;
+        : htmlStr; // Safe: valores escapeados con escapeHtml() + validación numérica
 
       body.appendChild(tr);
     });
@@ -1169,11 +1208,20 @@ function abrirModalNuevaCompra() {
       });
     }
   });
+  document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
+  document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
+  _trapFocus(modal);
+  _announce('Modal nueva compra abierto');
 }
 
 function cerrarModalNuevaCompra() {
-  document.getElementById('modal-compra').classList.remove('active');
+  var modal = document.getElementById('modal-compra');
+  modal.classList.remove('active');
+  _untrapFocus(modal);
+  document.getElementById('sidebar').removeAttribute('aria-hidden');
+  document.getElementById('main').removeAttribute('aria-hidden');
+  _announce('Modal compra cerrado');
 }
 
 function guardarCompra() {
@@ -1230,17 +1278,27 @@ function guardarCompra() {
 var _pagoCompraId = null;
 
 function abrirModalPagoCompra(idCompra, saldo) {
+  var modal = document.getElementById('modal-pago-compra');
   _pagoCompraId = idCompra;
   document.getElementById('pago-compra-title').textContent = 'Pagar compra #' + idCompra;
   document.getElementById('pago-compra-monto').value = Math.round(parseInt(saldo) / 100) || '';
   document.getElementById('pago-compra-ref').value = '';
   document.getElementById('pago-compra-error').style.display = 'none';
-  document.getElementById('modal-pago-compra').classList.add('active');
+  document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
+  document.getElementById('main').setAttribute('aria-hidden', 'true');
+  modal.classList.add('active');
+  _trapFocus(modal);
+  _announce('Modal pago de compra abierto');
 }
 
 function cerrarModalPagoCompra() {
-  document.getElementById('modal-pago-compra').classList.remove('active');
+  var modal = document.getElementById('modal-pago-compra');
+  modal.classList.remove('active');
+  _untrapFocus(modal);
+  document.getElementById('sidebar').removeAttribute('aria-hidden');
+  document.getElementById('main').removeAttribute('aria-hidden');
   _pagoCompraId = null;
+  _announce('Modal pago cerrado');
 }
 
 function ejecutarPagoCompra() {
@@ -1287,7 +1345,7 @@ function cargarVencimientos() {
 
   var dias = parseInt(document.getElementById('venc-dias').value || '30', 10);
 
-  App.api.getProximosVencimientos(dias).then(function (res) {
+  return App.api.getProximosVencimientos(dias).then(function (res) {
     if (!res || res.success === false) {
       mostrarError(body, (res && res.error) || 'Error al cargar vencimientos');
       return;
@@ -1309,7 +1367,7 @@ function cargarVencimientos() {
         '<td><span class="badge badge-' + (tipo === 'CxP' || tipo === 'compra' ? 'yellow' : 'red') + '" style="font-size:var(--text-micro);">' + escapeHtml(labelTipo) + '</span></td>' +
         '<td>' + escapeHtml(v.nombre_tercero || v.nombre || '—') + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
-        '<td>' + (v.dias_para_vencer || 0) + ' d' + '</td>' +
+        '<td>' + escapeHtml(String(v.dias_para_vencer || 0)) + ' d' + '</td>' +
         '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : '—') + '</td>';
       tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
         ? DOMPurify.sanitize(vencHtml, {ALLOWED_TAGS: ['td', 'tr', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan']})

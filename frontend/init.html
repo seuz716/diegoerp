@@ -65,7 +65,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       if (result && typeof result.then === 'function') {
         result.then(function() { btn.classList.remove('is-loading'); }).catch(function() { btn.classList.remove('is-loading'); });
       } else {
-        setTimeout(function() { btn.classList.remove('is-loading'); }, 800);
+        btn.classList.remove('is-loading');
       }
     } else {
       btn.classList.remove('is-loading');
@@ -209,10 +209,16 @@ if (btnBackTop) {
 // Escape key
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    var modalTercero = document.getElementById('modal-tercero');
-    var modalConfirm = document.getElementById('modal-confirm');
-    if (modalTercero && modalTercero.classList.contains('active')) cerrarModalTercero();
-    if (modalConfirm && modalConfirm.classList.contains('active')) modalConfirm.classList.remove('active');
+    var modals = ['modal-pago-compra', 'modal-compra', 'modal-tercero'];
+    for (var i = 0; i < modals.length; i++) {
+      var m = document.getElementById(modals[i]);
+      if (m && m.classList.contains('active')) {
+        if (modals[i] === 'modal-tercero') cerrarModalTercero();
+        else if (modals[i] === 'modal-compra') cerrarModalNuevaCompra();
+        else if (modals[i] === 'modal-pago-compra') cerrarModalPagoCompra();
+        break;
+      }
+    }
   }
 });
 </script>
