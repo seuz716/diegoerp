@@ -29,6 +29,13 @@ function mostrarHintRefrescar() {
   hint._timer = setTimeout(function() { hint.classList.remove('show'); }, 2000);
 }
 
+// Live region for screen reader announcements
+var liveRegion = document.createElement('div');
+liveRegion.setAttribute('aria-live', 'polite');
+liveRegion.setAttribute('aria-atomic', 'true');
+liveRegion.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+document.body.appendChild(liveRegion);
+
 // Navegación
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
@@ -46,18 +53,30 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
     if (view) {
       view.classList.add('active');
       view.removeAttribute('aria-hidden');
-      if (viewId === 'dashboard') cargarDashboard();
-      if (viewId === 'cartera') cargarCartera();
-      if (viewId === 'terceros') cargarTerceros();
-      if (viewId === 'abonos') cargarAbonoSelect();
-      if (viewId === 'ventas') cargarVentas();
-      if (viewId === 'compras') cargarCompras();
-      if (viewId === 'vencimientos') cargarVencimientos();
     }
     var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', vencimientos: 'Vencimientos' };
     document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
     mostrarHintRefrescar();
-    setTimeout(function(){ btn.classList.remove('is-loading'); }, 2000);
+
+    var fnMap = { dashboard: cargarDashboard, cartera: cargarCartera, terceros: cargarTerceros, abonos: cargarAbonoSelect, ventas: cargarVentas, compras: cargarCompras, vencimientos: cargarVencimientos };
+    var loadFn = fnMap[viewId];
+    if (loadFn) {
+      var result = loadFn();
+      if (result && typeof result.then === 'function') {
+        result.then(function() { btn.classList.remove('is-loading'); }).catch(function() { btn.classList.remove('is-loading'); });
+      } else {
+        setTimeout(function() { btn.classList.remove('is-loading'); }, 800);
+      }
+    } else {
+      btn.classList.remove('is-loading');
+    }
+
+    // Focus and announce
+    if (view) {
+      view.setAttribute('tabindex', '-1');
+      view.focus();
+    }
+    liveRegion.textContent = 'Vista ' + (viewTitles[viewId] || viewId) + ' cargada';
   });
 });
 
