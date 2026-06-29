@@ -102,7 +102,44 @@ parseMoneda(value, defaultValue) {
     if (items.length === 0) throw new Error('Debe incluir al menos un item');
     if (items.length > this.MAX_ITEMS) throw new Error('Demasiados items (máximo ' + this.MAX_ITEMS + ')');
     return items;
-  }
+  },
+
+  /**
+   * Validate date string or Date object
+   */
+  validateDate(value, fieldName) {
+    if (!value) throw new Error((fieldName || 'Fecha') + ' es requerida');
+    if (value instanceof Date && !isNaN(value.getTime())) return value;
+    var date = new Date(String(value));
+    if (isNaN(date.getTime())) throw new Error((fieldName || 'Fecha') + ' inválida');
+    return date;
+  },
+
+  /**
+   * Validate enum value
+   */
+  validateEnum(value, allowedValues, fieldName) {
+    var sanitized = this.sanitizeString(value, 20).toUpperCase();
+    if (!sanitized || allowedValues.indexOf(sanitized) === -1) {
+      throw new Error((fieldName || 'Valor') + ' inválido. Permitidos: ' + allowedValues.join(', '));
+    }
+    return sanitized;
+  },
+
+  /**
+   * Sanitize tercero object fields
+   */
+  sanitizeTercero(tercero) {
+    if (!tercero || typeof tercero !== 'object') throw new Error('Datos de tercero inválidos');
+    var id = this.validateId(tercero.id);
+    var nombre = this.sanitizeString(tercero.nombre, this.MAX_STRING_LENGTH);
+    var tipo = this.validateEnum(tercero.tipo, ['CLIENTE', 'PROVEEDOR', 'AMBOS'], 'Tipo de tercero');
+    var email = this.sanitizeString(tercero.email, 200);
+    var telefono = this.sanitizeString(tercero.telefono, 50);
+    var direccion = this.sanitizeString(tercero.direccion, this.MAX_STRING_LENGTH);
+    var limite_credito = this.parseMoneda(tercero.limite_credito, 0);
+    return { id: id, nombre: nombre, tipo: tipo, email: email, telefono: telefono, direccion: direccion, limite_credito: limite_credito };
+  },
 };
 
 const RATE_LIMITER = {
@@ -245,7 +282,8 @@ function saveTercero(tercero) {
   try {
     RATE_LIMITER.check("saveTercero");
     AuthService.checkPermission("guardar_tercero");
-    const result = DOMAIN.saveTercero(tercero);
+    const terceroValidado = INPUT_VALIDATOR.sanitizeTercero(tercero);
+    const result = DOMAIN.saveTercero(terceroValidado);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("saveTercero", e, correlationId);
@@ -535,6 +573,12 @@ function procesarVenta(carrito, opciones) {
     
     // Input validation
     INPUT_VALIDATOR.validateItemCount(carrito);
+    if (!opciones || typeof opciones !== 'object') throw new Error('Opciones de venta inválidas');
+    var tipo = INPUT_VALIDATOR.validateEnum(opciones.tipo, ['CONTADO', 'CXC', 'CREDITO'], 'Tipo de venta');
+    if (tipo !== 'CONTADO') {
+      INPUT_VALIDATOR.validateId(opciones.idTercero);
+      INPUT_VALIDATOR.validatePositiveInt(opciones.dias, 'Días de crédito');
+    }
     
     const result = procesarVentaV2(carrito, opciones);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
@@ -665,7 +709,11 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
   try {
     RATE_LIMITER.check("registrarCompra");
     AuthService.checkPermission("registrar_compra");
-    const result = DOMAIN.registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura, correlationId);
+    INPUT_VALIDATOR.validateId(proveedorId);
+    INPUT_VALIDATOR.validateItemCount(items);
+    var totalValidado = INPUT_VALIDATOR.parseMoneda(total, 0);
+    var facturaValidada = INPUT_VALIDATOR.sanitizeString(factura, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
+    const result = DOMAIN.registrarCompraAtomic(proveedorId, items, totalValidado, fechaVencimiento, facturaValidada, correlationId);
     return { ...result, correlationId };
   } catch (e) {
     return _safeError("registrarCompra", e, correlationId);
@@ -700,8 +748,9 @@ function getDetalleCompra(idCompra) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
-    var detalles = DAO_COMPRAS.getDetallesByCompra(idCompra);
-    var pagos = DAO_COMPRAS.getPagosByCompra(idCompra);
+    var idValidado = INPUT_VALIDATOR.validateId(idCompra);
+    var detalles = DAO_COMPRAS.getDetallesByCompra(idValidado);
+    var pagos = DAO_COMPRAS.getPagosByCompra(idValidado);
     return { success: true, detalles: detalles, pagos: pagos, correlationId };
   } catch (e) {
     return _safeError("getDetalleCompra", e, correlationId);
@@ -713,7 +762,10 @@ function registrarPagoProveedor(idCompra, monto, referencia) {
   try {
     RATE_LIMITER.check("registrarPagoProveedor");
     AuthService.checkPermission("registrar_pago_proveedor");
-    const result = DOMAIN.procesarPagoProveedorAtomic(idCompra, monto, referencia, correlationId);
+    var idCompraValidado = INPUT_VALIDATOR.validateId(idCompra);
+    var montoValidado = INPUT_VALIDATOR.parseMoneda(monto, 0);
+    var referenciaValidada = INPUT_VALIDATOR.sanitizeString(referencia, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
+    const result = DOMAIN.procesarPagoProveedorAtomic(idCompraValidado, montoValidado, referenciaValidada, correlationId);
     return { ...result, correlationId };
   } catch (e) {
     return _safeError("registrarPagoProveedor", e, correlationId);
@@ -766,6 +818,8 @@ function getConcentracionProveedores() {
 function exportarLibroDiario(fechaInicio, fechaFin) {
   try {
     AuthService.checkPermission("ver_auditoria");
+    if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
+    if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
     var csv = LIBRO_DIARIO.exportarCSV(fechaInicio, fechaFin);
     return { success: true, csv: csv };
   } catch (e) {
@@ -796,6 +850,8 @@ function getFlujoCajaResumen(dias) {
 function exportarFlujoCaja(fechaInicio, fechaFin) {
   try {
     AuthService.checkPermission("ver_auditoria");
+    if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
+    if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
     var csv = FLUJO_CAJA.exportarCSV(fechaInicio, fechaFin);
     return { success: true, csv: csv };
   } catch (e) {
