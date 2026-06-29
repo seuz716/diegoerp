@@ -1,0 +1,66 @@
+/*
+ * DESIGN TOKENS — System-wide design constants
+ * Generated: 2026-06-28
+ * 
+ * These tokens should be the SINGLE SOURCE OF TRUTH for all design values.
+ * All components must use these tokens, not hardcoded values.
+ */
+
+:root {
+  /* ========== SPACING ========== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-12: 48px;
+  
+  /* Layout specific */
+  --space-80: 80px;
+  --space-76: 76px;
+
+  /* ========== SIZING ========== */
+  --sidebar-width: 220px;
+  --main-max-width: 900px;
+  --modal-max-width: 480px;
+  --toast-max-width: 360px;
+  
+  /* Component sizes */
+  --loader-size: 14px;
+  --icon-size-lg: 18px;
+  --icon-size-sm: 14px;
+  --button-height-lg: 44px;
+  --button-height-sm: 40px;
+  --alert-icon-width: 32px;
+
+  /* ========== TYPOGRAPHY ========== */
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 17px;
+  --font-size-2xl: 20px;
+  
+  /* ========== TRANSITIONS ========== */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  
+  /* Easing curves */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.87, 0, 0.13, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* For backward compatibility - alias existing variables */
+:root {
+  --text-xs: var(--font-size-xs);
+  --text-sm: var(--font-size-sm);
+  --text-base: var(--font-size-base);
+  --text-lg: var(--font-size-lg);
+}
