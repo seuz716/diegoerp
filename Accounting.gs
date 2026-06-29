@@ -10,6 +10,28 @@ const LIBRO_DIARIO_TIPOS = {
   PAGO_PROVEEDOR: "PAGO_PROVEEDOR",
 };
 
+function _generarCSV(sheetName, colMap, headerRow, fieldGetter, fechaInicio, fechaFin) {
+  try {
+    const sheet = getSheet(sheetName);
+    const data = sheet.getDataRange().getValues();
+    const tz = _getTimeZone();
+    const fi = _safeDate(fechaInicio);
+    const ff = _safeDate(fechaFin);
+    const rows = data.slice(1).filter(r => {
+      const f = _safeDate(r[colMap.fecha]);
+      return (!fi || !f || f >= fi) && (!ff || !f || f <= ff);
+    });
+    const csv = [headerRow];
+    for (const r of rows) {
+      csv.push(fieldGetter(r, colMap, tz));
+    }
+    return csv.join("\n");
+  } catch (e) {
+    Logger.log("ERROR _generarCSV(" + sheetName + "): " + e.toString());
+    return "";
+  }
+}
+
 const FLUJO_CAJA_TIPOS = {
   ENTRADA_ABONO: "ENTRADA_ABONO",
   SALIDA_PAGO_PROV: "SALIDA_PAGO_PROV",
@@ -70,38 +92,20 @@ const LIBRO_DIARIO = {
   },
 
   exportarCSV(fechaInicio, fechaFin) {
-    try {
-      const sheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
-      const data = sheet.getDataRange().getValues();
-      const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
-
-      const tz = _getTimeZone();
-      const fi = _safeDate(fechaInicio);
-      const ff = _safeDate(fechaFin);
-
-      const rows = data.slice(1).filter(r => {
-        const f = _safeDate(r[COL.fecha]);
-        return (!fi || !f || f >= fi) && (!ff || !f || f <= ff);
-      });
-
-      const csv = ["ID,Fecha,Tipo,ID_Referencia,Tercero,Monto,Usuario,Descripcion"];
-      for (const r of rows) {
-        csv.push([
-          r[COL.id] || "",
-          Utilities.formatDate(_safeDate(r[COL.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
-          r[COL.tipo] || "",
-          r[COL.id_referencia] || "",
-          r[COL.tercero] || "",
-          r[COL.monto] || 0,
-          r[COL.usuario] || "",
-          r[COL.descripcion] || ""
-        ].join(","));
-      }
-      return csv.join("\n");
-    } catch (e) {
-      Logger.log("ERROR LIBRO_DIARIO.exportarCSV: " + e.toString());
-      return "";
-    }
+    const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
+    return _generarCSV(CONFIG.SHEETS.LIBRO_DIARIO, COL,
+      "ID,Fecha,Tipo,ID_Referencia,Tercero,Monto,Usuario,Descripcion",
+      (r, c, tz) => [
+        r[c.id] || "",
+        Utilities.formatDate(_safeDate(r[c.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
+        r[c.tipo] || "",
+        r[c.id_referencia] || "",
+        r[c.tercero] || "",
+        r[c.monto] || 0,
+        r[c.usuario] || "",
+        r[c.descripcion] || ""
+      ].join(","),
+      fechaInicio, fechaFin);
   }
 };
 
@@ -179,36 +183,18 @@ const FLUJO_CAJA = {
   },
 
   exportarCSV(fechaInicio, fechaFin) {
-    try {
-      const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
-      const data = sheet.getDataRange().getValues();
-      const COL = CONFIG.COLUMNS.FLUJO_CAJA;
-
-      const tz = _getTimeZone();
-      const fi = _safeDate(fechaInicio);
-      const ff = _safeDate(fechaFin);
-
-      const rows = data.slice(1).filter(r => {
-        const f = _safeDate(r[COL.fecha]);
-        return (!fi || !f || f >= fi) && (!ff || !f || f <= ff);
-      });
-
-      const csv = ["ID,Fecha,Tipo,Concepto,Monto,Referencia,Usuario"];
-      for (const r of rows) {
-        csv.push([
-          r[COL.id] || "",
-          Utilities.formatDate(_safeDate(r[COL.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
-          r[COL.tipo] || "",
-          r[COL.concepto] || "",
-          r[COL.monto] || 0,
-          r[COL.referencia] || "",
-          r[COL.usuario] || ""
-        ].join(","));
-      }
-      return csv.join("\n");
-    } catch (e) {
-      Logger.log("ERROR FLUJO_CAJA.exportarCSV: " + e.toString());
-      return "";
-    }
+    const COL = CONFIG.COLUMNS.FLUJO_CAJA;
+    return _generarCSV(CONFIG.SHEETS.FLUJO_CAJA, COL,
+      "ID,Fecha,Tipo,Concepto,Monto,Referencia,Usuario",
+      (r, c, tz) => [
+        r[c.id] || "",
+        Utilities.formatDate(_safeDate(r[c.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
+        r[c.tipo] || "",
+        r[c.concepto] || "",
+        r[c.monto] || 0,
+        r[c.referencia] || "",
+        r[c.usuario] || ""
+      ].join(","),
+      fechaInicio, fechaFin);
   }
 };
