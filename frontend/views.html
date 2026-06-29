@@ -816,6 +816,11 @@ function guardarTercero() {
     errorEl.style.display = 'block';
     return;
   }
+  if (nit.replace(/[^A-Z0-9]/g, '').length < 3) {
+    errorEl.textContent = 'NIT inválido. Debe contener al menos 3 caracteres alfanuméricos (sin puntos ni guiones).';
+    errorEl.style.display = 'block';
+    return;
+  }
   if (!nombre) {
     errorEl.textContent = 'El nombre es obligatorio.';
     errorEl.style.display = 'block';
@@ -1010,6 +1015,23 @@ function registrarVenta() {
     return;
   }
 
+  if (tipo === 'CxC' && idTercero) {
+    var totalVentaCentavos = 0;
+    for (var iC = 0; iC < carrito.length; iC++) {
+      totalVentaCentavos += carrito[iC].cantidad * carrito[iC].precio;
+    }
+    var cliente = null;
+    var itemsT = App.data.terceros && App.data.terceros.items ? App.data.terceros.items : [];
+    for (var iT = 0; iT < itemsT.length; iT++) {
+      if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
+    }
+    if (cliente && cliente.limite_credito > 0 && totalVentaCentavos > cliente.limite_credito) {
+      errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el límite de crédito del cliente (' + App.formatearMoneda(cliente.limite_credito) + ').';
+      errorEl.classList.add('show');
+      return;
+    }
+  }
+
   var totalStr = document.getElementById('venta-total').textContent;
   confirmarAccion(['¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
@@ -1048,14 +1070,6 @@ function registrarVenta() {
     });
   });
 }
-
-document.addEventListener('change', function (e) {
-  if (e.target.id === 'venta-tipo') {
-    var isCredito = e.target.value === 'CxC';
-    document.getElementById('venta-tercero-row').style.display = isCredito ? 'block' : 'none';
-    document.getElementById('venta-dias-row').style.display = isCredito ? 'block' : 'none';
-  }
-});
 
 // ────────────────────────────────────────────────────────────────
 // 8. COMPRAS
@@ -1307,11 +1321,4 @@ function cargarVencimientos() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────
-// UTILIDADES COMPARTIDAS
-// ────────────────────────────────────────────────────────────────
-
-function generarIdTemporal() {
-  return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
-}
 </script>
