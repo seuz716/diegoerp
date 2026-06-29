@@ -661,35 +661,6 @@ function getVentasDelDia() {
 }
 
 /**
- * API Pública: Verificar configuración de IA
- */
-function verificarConfiguracionIA() {
-  try {
-    const checks = {
-      geminiKeyConfigured: false,
-      proxyConfigured: false,
-      error: null,
-    };
-    
-    // Check proxy
-    const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
-    checks.proxyConfigured = !!proxyUrl;
-    
-    // Check Gemini API key
-    try {
-      const key = AuthService.getApiKey("GEMINI_API_KEY");
-      checks.geminiKeyConfigured = !!key;
-    } catch (keyErr) {
-      checks.error = "GEMINI_API_KEY error: " + keyErr.message;
-    }
-    
-    return { success: true, checks };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-}
-
-/**
  * API Pública: Diagnóstico avanzado de cartera
  */
 function getCarteraDebug(filtroTipo, filtroEstado) {

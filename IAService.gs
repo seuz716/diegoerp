@@ -903,12 +903,19 @@ function removeGeminiKey() {
 }
 
 /**
- * Verifies if the Gemini API Key is configured.
+ * Verifies IA configuration: Gemini API key + proxy.
  */
 function verificarConfiguracionIA() {
   AuthService.checkPermission("ver_configuracion");
   const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
+  const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
   return {
+    success: true,
+    checks: {
+      geminiKeyConfigured: configurada,
+      proxyConfigured: !!proxyUrl,
+      error: null,
+    },
     configurada,
     key_preview: null,
     modelo: IA_SERVICE.MODEL,
