@@ -2,14 +2,21 @@
 'use strict';
 var App = App || {};
 
+App.TIMEOUTS = {
+  analizarConGeminiFresco: 180000,
+  getDashboardCartera: 60000,
+  getCartera: 45000,
+};
+App.DEFAULT_TIMEOUT = 30000;
+
 function callServer(funcName) {
   var args = Array.prototype.slice.call(arguments, 1);
-  var timeoutMs = funcName === 'analizarConGeminiFresco' ? 180000 : 30000;
+  var timeoutMs = App.TIMEOUTS[funcName] || App.DEFAULT_TIMEOUT;
 
   return new Promise(function (resolve, reject) {
     var timer = setTimeout(function () {
       var errorMsg = 'El servidor tardó demasiado en responder para la operación: ' + funcName + ' (Límite: ' + (timeoutMs / 1000) + 's).';
-      showError(errorMsg);
+      App.logError(errorMsg, funcName);
       reject(new Error(errorMsg));
     }, timeoutMs);
 
@@ -20,6 +27,7 @@ function callServer(funcName) {
       })
       .withFailureHandler(function (error) {
         clearTimeout(timer);
+        App.logError(error.message || error, funcName);
         reject(error.message || error);
       })
       [funcName].apply(null, args);
@@ -141,8 +149,12 @@ function escapeHtml(str) {
 
 function showError(msg) {
   var banner = document.getElementById('error-banner');
-  banner.textContent = msg;
-  banner.classList.add('show');
+  if (banner) {
+    banner.textContent = msg;
+    banner.classList.add('show');
+  } else {
+    showToast(msg, 'error');
+  }
 }
 
 function showToast(msg, type) {
@@ -158,6 +170,12 @@ function showToast(msg, type) {
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
   }, 5000);
 }
+
+App.logError = function (message, context) {
+  var tag = '[' + (context || 'App') + '] ' + (message || 'Error desconocido');
+  console.error(tag);
+  try { showToast(context ? message : 'Error: ' + message, 'error'); } catch (e) {}
+};
 
 function generarIdTemporal() {
   return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
