@@ -590,29 +590,102 @@ function procesarVenta(carrito, opciones) {
 /**
  * API Pública: Obtener productos desde la hoja Productos
  */
-function getProductos() {
+function getProductos(filtro) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
     validateAndMapSchemas();
-    const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-    const data = sheet.getDataRange().getValues();
-    const COL = CONFIG.COLUMNS.PRODUCTOS;
-    const productos = [];
-    for (let i = 1; i < data.length; i++) {
-      const id = String(data[i][COL.id] || "").trim();
-      const nombre = String(data[i][COL.nombre] || "").trim();
-      if (!id || !nombre) continue;
-      productos.push({
-        id: id,
-        nombre: nombre,
-        stock: parseInt(data[i][COL.stock]) || 0,
-        precio: parseFloat(data[i][COL.precio]) || 0,
-      });
+    var filtroLimpio = null;
+    if (filtro && typeof filtro === 'object') {
+      filtroLimpio = {};
+      if (filtro.activo !== undefined) filtroLimpio.activo = !!filtro.activo;
+      if (filtro.categoria) filtroLimpio.categoria = String(filtro.categoria).trim();
+      if (filtro.busqueda) filtroLimpio.busqueda = String(filtro.busqueda).trim();
     }
-    return { success: true, productos, correlationId };
+    var lista = DAO_PRODUCTOS.listar(filtroLimpio);
+    var productos = lista.map(function(p) {
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        stock: p.stock,
+        precio_compra: p.precio_compra,
+        precio_venta: p.precio_venta,
+        categoria: p.categoria,
+        activo: p.activo,
+      };
+    });
+    return { success: true, productos: productos, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("getProductos", e, correlationId);
+  }
+}
+
+/**
+ * API Pública: Crear producto
+ */
+function crearProducto(nombre, precioCompra, precioVenta, categoria) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("crearProducto");
+    AuthService.checkPermission("registrar_compra");
+    var nombreLimpio = INPUT_VALIDATOR.sanitizeString(nombre, 200);
+    if (!nombreLimpio) throw new Error("Nombre del producto es requerido");
+    var pc = INPUT_VALIDATOR.parseMoneda(precioCompra, 0);
+    var pv = INPUT_VALIDATOR.parseMoneda(precioVenta, 0);
+    var cat = INPUT_VALIDATOR.sanitizeString(categoria, 100);
+    var result = DAO_PRODUCTOS.crear({ nombre: nombreLimpio, precio_compra: pc, precio_venta: pv, categoria: cat });
+    return { success: true, id: result.id, nombre: result.nombre, stock: 0, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("crearProducto", e, correlationId);
+  }
+}
+
+/**
+ * API Pública: Obtener producto por ID
+ */
+function getProducto(id) {
+  const correlationId = generateCorrelationId();
+  try {
+    AuthService.checkPermission("revisar_inventario");
+    var idValidado = INPUT_VALIDATOR.validateId(id);
+    var producto = DAO_PRODUCTOS.obtener(idValidado);
+    if (!producto) throw new Error("Producto no encontrado: " + idValidado);
+    return { success: true, producto: producto, correlationId: correlationId };
+  } catch (e) {
+    return _safeError("getProducto", e, correlationId);
+  }
+}
+
+/**
+ * API Pública: Actualizar producto
+ */
+function actualizarProducto(id, cambios) {
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("actualizarProducto");
+    AuthService.checkPermission("registrar_compra");
+    var idValidado = INPUT_VALIDATOR.validateId(id);
+    if (!cambios || typeof cambios !== 'object') throw new Error("Cambios inválidos");
+    var cambiosLimpios = {};
+    if (cambios.nombre !== undefined) cambiosLimpios.nombre = INPUT_VALIDATOR.sanitizeString(cambios.nombre, 200);
+    if (cambios.precio_compra !== undefined) cambiosLimpios.precio_compra = INPUT_VALIDATOR.parseMoneda(cambios.precio_compra, 0);
+    if (cambios.precio_venta !== undefined) cambiosLimpios.precio_venta = INPUT_VALIDATOR.parseMoneda(cambios.precio_venta, 0);
+    if (cambios.categoria !== undefined) cambiosLimpios.categoria = INPUT_VALIDATOR.sanitizeString(cambios.categoria, 100);
+    if (cambios.activo !== undefined) {
+      var a = String(cambios.activo).trim().toUpperCase();
+      if (a !== PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.ACTIVO && a !== PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.INACTIVO) {
+        throw new Error("Estado activo inválido. Use " + PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.ACTIVO + " o " + PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.INACTIVO);
+      }
+      cambiosLimpios.activo = a;
+    }
+    if (Object.keys(cambiosLimpios).length === 0) throw new Error("No hay campos válidos para actualizar");
+    var result = DAO_PRODUCTOS.actualizar(idValidado, cambiosLimpios);
+    var producto = DAO_PRODUCTOS.obtener(idValidado);
+    return { success: true, id: idValidado, producto: producto, correlationId: correlationId };
+  } catch (e) {
+    return _safeError("actualizarProducto", e, correlationId);
   }
 }
 
@@ -657,6 +730,41 @@ function getVentasDelDia() {
   } catch (e) {
     Logger.log("ERROR getVentasDelDia: " + e.toString());
     return { success: false, ventas: [], total: 0, error: e.message };
+  }
+}
+
+/**
+ * API Pública: Registrar venta de productos (reduce stock, registra kardex)
+ */
+function registrarVentaAtomic(clienteId, items, total, correlationId) {
+  try {
+    AuthService.checkPermission("registrar_venta");
+    const result = DOMAIN.registrarVentaAtomic(clienteId, items, total, correlationId);
+    return result;
+  } catch (e) {
+    return _safeError("registrarVentaAtomic", e, correlationId);
+  }
+}
+
+/**
+ * API Pública: Obtener kardex de un producto
+ */
+function getKardexProducto(idProducto, limit) {
+  try {
+    return DOMAIN.getKardexProducto(idProducto, limit || 100);
+  } catch (e) {
+    return _safeError("getKardexProducto", e, null);
+  }
+}
+
+/**
+ * API Pública: Obtener kardex general (últimos 30 días)
+ */
+function getKardex(limit) {
+  try {
+    return DOMAIN.getKardex(limit || 500);
+  } catch (e) {
+    return _safeError("getKardex", e, null);
   }
 }
 
@@ -795,6 +903,21 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
     return { success: true, csv: csv };
   } catch (e) {
     return _safeError("exportarLibroDiario", e);
+  }
+}
+
+/**
+ * API Pública: Activar/desactivar producto
+ */
+function toggleActivoProducto(id) {
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("actualizarProducto");
+    AuthService.checkPermission("registrar_compra");
+    var result = DAO_PRODUCTOS.toggleActivo(id);
+    return { success: true, id: result.id, activo: result.activo, correlationId: correlationId };
+  } catch (e) {
+    return _safeError("toggleActivoProducto", e, correlationId);
   }
 }
 

@@ -330,17 +330,150 @@ _test('validateRoleMap accepts valid role map', () => {
    });
 
    _test('Optimistic locking error structure', () => {
-     const optimisticErr = new Error('OptimisticLockError');
-     optimisticErr.type = 'OPTIMISTIC_LOCK_FAILURE';
-     if (optimisticErr.type === 'OPTIMISTIC_LOCK_FAILURE') {
-       return true;
-     }
-     return 'Error type not set correctly';
+      const optimisticErr = new Error('OptimisticLockError');
+      optimisticErr.type = 'OPTIMISTIC_LOCK_FAILURE';
+      if (optimisticErr.type === 'OPTIMISTIC_LOCK_FAILURE') {
+        return true;
+      }
+      return 'Error type not set correctly';
+    });
+
+   // ===== Schema/Config Validation (Pareto P2) =====
+   _test('CONFIG.SCHEMA_definitions.PRODUCTOS has all 9 keys', () => {
+     const keys = Object.keys(CONFIG.SCHEMA_definitions.PRODUCTOS);
+     return keys.length === 9 &&
+       keys.indexOf('categoria') !== -1 &&
+       keys.indexOf('activo') !== -1 &&
+       keys.indexOf('fecha_creacion') !== -1
+       ? true : 'Expected 9 keys, got ' + keys.length + ': ' + keys.join(',');
    });
-  
-  return {
-    passed: TEST_RESULTS.passed,
-    failed: TEST_RESULTS.failed,
-    tests: TEST_RESULTS.tests
-  };
+
+   _test('CONFIG.COLUMNS.PRODUCTOS indices are sequential 0-8', () => {
+     const cols = CONFIG.COLUMNS.PRODUCTOS;
+     return cols.id === 0 && cols.nombre === 1 && cols.stock === 2 &&
+       cols.precio_compra === 3 && cols.precio_venta === 4 &&
+       cols.categoria === 5 && cols.activo === 6 &&
+       cols.fecha_creacion === 7 && cols.version === 8
+       ? true : 'Indices mismatch: ' + JSON.stringify(cols);
+   });
+
+   _test('CONFIG.reloadSchema returns success structure', () => {
+     try {
+       const result = CONFIG.reloadSchema();
+       return result.success === true ? true : 'reloadSchema failed: ' + JSON.stringify(result);
+     } catch (e) {
+       return 'reloadSchema threw: ' + e.message;
+     }
+   });
+
+   _test('CONFIG.isSchemaStale returns boolean', () => {
+     const stale = CONFIG.isSchemaStale(60000);
+     return typeof stale === 'boolean' ? true : 'Expected boolean, got ' + typeof stale;
+   });
+
+   // ===== DAO.gs Structural (Pareto P3) =====
+   _test('DAO has required methods', () => {
+     return typeof DAO.getTerceroById === 'function' &&
+       typeof DAO.updateCarteraBatch === 'function' &&
+       typeof DAO.batchInsert === 'function' &&
+       typeof DAO.getCarteraByTerceroAndTipo === 'function'
+       ? true : 'Missing DAO methods';
+   });
+
+   _test('DAO_PRODUCTOS has all required methods', () => {
+     return typeof DAO_PRODUCTOS.listar === 'function' &&
+       typeof DAO_PRODUCTOS.obtener === 'function' &&
+       typeof DAO_PRODUCTOS.crear === 'function' &&
+       typeof DAO_PRODUCTOS.actualizar === 'function' &&
+       typeof DAO_PRODUCTOS.incrementarStock === 'function' &&
+       typeof DAO_PRODUCTOS.toggleActivo === 'function'
+       ? true : 'Missing DAO_PRODUCTOS methods';
+   });
+
+   // ===== Productos DAO Tests =====
+   _test('DAO_PRODUCTOS.listar returns array', () => {
+     const list = DAO_PRODUCTOS.listar();
+     return Array.isArray(list) ? true : 'listar did not return array';
+   });
+
+   _test('DAO_PRODUCTOS.crear rejects empty name', () => {
+     const result = DAO_PRODUCTOS.crear({ nombre: '' });
+     return result.success === false ? true : 'Should reject empty name';
+   });
+
+   _test('DAO_PRODUCTOS.obtener returns null for non-existent', () => {
+     const p = DAO_PRODUCTOS.obtener('__NO_EXISTE__');
+     return p === null ? true : 'Should return null';
+   });
+
+   _test('DAO_PRODUCTOS.incrementarStock validates stock', () => {
+     try {
+       DAO_PRODUCTOS.incrementarStock('__NO_EXISTE__', 1);
+       return 'Should have thrown for non-existent product';
+     } catch (e) {
+       return e.message.indexOf('no encontrado') > -1 ? true : 'Wrong error: ' + e.message;
+     }
+   });
+
+   _test('DAO_PRODUCTOS.toggleActivo throws for non-existent', () => {
+     try {
+       DAO_PRODUCTOS.toggleActivo('__NO_EXISTE__');
+       return 'Should have thrown';
+     } catch (e) {
+       return e.message.indexOf('no encontrado') > -1 ? true : 'Wrong error: ' + e.message;
+     }
+   });
+
+   // ===== Frontend API Tests =====
+   _test('getProductos API returns structured response', () => {
+     try {
+       const res = getProductos();
+       if (res.success === true && Array.isArray(res.productos) && res.correlationId) {
+         return true;
+       }
+       return 'Invalid response structure: ' + JSON.stringify(res);
+     } catch (e) {
+       return 'Exception: ' + e.message;
+     }
+   });
+
+   _test('crearProducto validates input', () => {
+     try {
+       const res = crearProducto('', 1000, 2000, '');
+       return res.success === false ? true : 'Should reject empty name';
+     } catch (e) {
+       return 'Exception: ' + e.message;
+     }
+   });
+
+   _test('toggleActivoProducto validates ID', () => {
+     try {
+       const res = toggleActivoProducto('');
+       return res.success === false ? true : 'Should reject empty ID';
+     } catch (e) {
+       return 'Exception: ' + e.message;
+     }
+   });
+
+   _test('registrarCompraAtomic has inline creation support', () => {
+     try {
+       if (typeof DOMAIN.registrarCompraAtomic !== 'function') {
+         return 'registrarCompraAtomic not found';
+       }
+       // Verificar que la función acepta items con 'nombre' (inline creation)
+       const fnStr = DOMAIN.registrarCompraAtomic.toString();
+       if (fnStr.indexOf('item.nombre') > -1 || fnStr.indexOf('item["nombre"]') > -1) {
+         return true;
+       }
+       return 'registrarCompraAtomic may not support inline creation by nombre';
+     } catch (e) {
+       return 'Exception: ' + e.message;
+     }
+   });
+
+   return {
+     passed: TEST_RESULTS.passed,
+     failed: TEST_RESULTS.failed,
+     tests: TEST_RESULTS.tests
+   };
 }

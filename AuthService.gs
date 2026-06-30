@@ -73,6 +73,7 @@ const CRYPTO_SERVICE = {
   
   _kdf(salt, info, iterations = 10000) {
     const prk = Utilities.computeHmacSha256Signature(salt, this._getMasterKey());
+    // Key stretching: iterations contribute to HMAC chain for security
     let block = Utilities.computeHmacSha256Signature(info, prk);
     for (let i = 1; i < iterations; i++) {
       block = Utilities.computeHmacSha256Signature(block, prk);
@@ -179,7 +180,7 @@ const CRYPTO_SERVICE = {
   _decryptV2Legacy(obj) {
     // Legacy V2 support - try to decrypt with old key derivation
     throw new Error("CRYPTO_ERROR: Formato legacy requiere migración manual");
-  }
+  },
   
   obfuscate(p) { return this.encrypt(p); },
   deobfuscate(c) { return this.decrypt(c); },

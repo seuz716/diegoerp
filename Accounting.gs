@@ -37,6 +37,7 @@ const FLUJO_CAJA_TIPOS = {
   SALIDA_PAGO_PROV: "SALIDA_PAGO_PROV",
   ENTRADA_VENTA: "ENTRADA_VENTA",
   SALIDA_COMPRA: "SALIDA_COMPRA",
+  SALIDA_VENTA: "SALIDA_VENTA",
 };
 
 const LIBRO_DIARIO = {
@@ -50,6 +51,10 @@ const LIBRO_DIARIO = {
 
   registrarVentaContado(fecha, id, tercero, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.VENTA_CONTADO, id, tercero, monto, usuario, "Venta contado");
+  },
+
+  registrarVenta(fecha, id, tercero, monto, usuario) {
+    return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.VENTA_CONTADO, id, tercero, monto, usuario, "Venta");
   },
 
   registrarPagoProveedor(fecha, id, proveedor, monto, usuario) {
@@ -168,7 +173,8 @@ const FLUJO_CAJA = {
               t === FLUJO_CAJA_TIPOS.ENTRADA_VENTA) {
             entradas += m;
           } else if (t === FLUJO_CAJA_TIPOS.SALIDA_PAGO_PROV ||
-                     t === FLUJO_CAJA_TIPOS.SALIDA_COMPRA) {
+                     t === FLUJO_CAJA_TIPOS.SALIDA_COMPRA ||
+                     t === FLUJO_CAJA_TIPOS.SALIDA_VENTA) {
             salidas += m;
           }
         }

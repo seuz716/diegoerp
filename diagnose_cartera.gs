@@ -470,6 +470,11 @@ function runIntegrationTests() {
   testRegistrarCompraAtomicLockError();
   testRegistrarCompraAtomicRollbackOnLockFailure();
 
+  testDAOProductosCrearYListar();
+  testDAOProductosActualizarOptimisticLock();
+  testDAOProductosIncrementarStock();
+  testDAOProductosToggleActivo();
+
   var result = _ASSERT.summary();
   Logger.log("[TEST-INT] ===== FIN =====");
   return result;
@@ -1106,5 +1111,220 @@ function testRegistrarCompraAtomicRollbackOnLockFailure() {
     _ASSERT.equal(result.success, false, "rollback en lock failure → success=false");
   } finally {
     LOCK_MANAGER.acquireResourceLock = originalAcquire;
+  }
+}
+
+// ════════════════════════════════════════════
+// TESTS DAO PRODUCTOS (Pareto P1)
+// ════════════════════════════════════════════
+
+function testDAOProductosCrearYListar() {
+  Logger.log("[TEST-INT] ===== testDAOProductosCrearYListar =====");
+  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  var createdIds = [];
+  try {
+    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-CR-" + Date.now(), precio_compra: 5000, precio_venta: 12000, categoria: "HERRAMIENTAS" });
+    _ASSERT.ok(r.success === true, "crear → success=true");
+    _ASSERT.ok(r.id && r.id.indexOf("P") === 0, "crear → id prefijo P");
+    _ASSERT.equal(r.stock, 0, "crear → stock=0");
+    createdIds.push(r.id);
+
+    var lista = DAO_PRODUCTOS.listar({ activo: true });
+    var encontrado = lista.some(function(p) { return p.id === r.id; });
+    _ASSERT.ok(encontrado, "listar({ activo:true }) incluye producto");
+
+    var o = DAO_PRODUCTOS.obtener(r.id);
+    _ASSERT.ok(o !== null, "obtener → objeto");
+    _ASSERT.equal(o.nombre, r.nombre, "obtener.nombre");
+    _ASSERT.equal(o.precio_compra, 5000, "obtener.precio_compra");
+    _ASSERT.equal(o.precio_venta, 12000, "obtener.precio_venta");
+    _ASSERT.equal(o.categoria, "HERRAMIENTAS", "obtener.categoria");
+    _ASSERT.equal(o.activo, "ACTIVO", "obtener.activo");
+    _ASSERT.equal(o.stock, 0, "obtener.stock");
+    _ASSERT.equal(o.version, 1, "obtener.version=1");
+    _ASSERT.ok(o.fecha_creacion instanceof Date, "obtener.fecha_creacion Date");
+
+    var dup = DAO_PRODUCTOS.crear({ nombre: r.nombre, precio_venta: 100 });
+    _ASSERT.equal(dup.success, false, "nombre duplicado → false");
+    _ASSERT.ok((dup.error || "").indexOf("Ya existe") > -1, "dup → msg 'Ya existe'");
+
+    var sinNom = DAO_PRODUCTOS.crear({ nombre: "", precio_venta: 100 });
+    _ASSERT.equal(sinNom.success, false, "nombre vacío → false");
+
+    var precioNeg = DAO_PRODUCTOS.crear({ nombre: "OTRO-TEST-" + Date.now(), precio_venta: -1 });
+    _ASSERT.equal(precioNeg.success, false, "precio negativo → false");
+
+    _ASSERT.equal(DAO_PRODUCTOS.obtener(""), null, "obtener('') → null");
+    _ASSERT.equal(DAO_PRODUCTOS.obtener(null), null, "obtener(null) → null");
+    _ASSERT.equal(DAO_PRODUCTOS.obtener("P_NO_EXISTE_999"), null, "obtener inexistente → null");
+
+    var todos = DAO_PRODUCTOS.listar();
+    _ASSERT.ok(Array.isArray(todos), "listar() → array");
+    for (var j = 1; j < todos.length; j++) {
+      _ASSERT.ok(todos[j-1].nombre <= todos[j].nombre, "listar orden alfabético");
+    }
+
+    Logger.log("[TEST-INT] testDAOProductosCrearYListar OK");
+  } catch (e) {
+    _ASSERT.ok(false, "ERROR: " + e.toString());
+  } finally {
+    var sheet = getSheet(DAO_PRODUCTOS.SHEET);
+    for (var d = sheet.getLastRow(); d >= 2; d--) {
+      var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+      if (createdIds.indexOf(v) !== -1) sheet.deleteRow(d);
+    }
+    if (lock) lock.releaseLock();
+  }
+}
+
+function testDAOProductosActualizarOptimisticLock() {
+  Logger.log("[TEST-INT] ===== testDAOProductosActualizarOptimisticLock =====");
+  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  var prodId = null;
+  try {
+    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-UPD-" + Date.now(), precio_compra: 1000, precio_venta: 2000, categoria: "A" });
+    _ASSERT.ok(r.success === true, "crear producto para actualizar");
+    prodId = r.id;
+
+    var errVer = null;
+    try {
+      DAO_PRODUCTOS.actualizar(prodId, { precio_venta: 9999 }, 999);
+    } catch (e) {
+      errVer = e;
+    }
+    _ASSERT.ok(errVer !== null, "version incorrecta → lanza error");
+    if (errVer) {
+      _ASSERT.equal(errVer.type, 'OPTIMISTIC_LOCK_FAILURE', "error.type = OPTIMISTIC_LOCK_FAILURE");
+      _ASSERT.equal(errVer.expectedVersion, 999, "error.expectedVersion");
+      _ASSERT.equal(errVer.actualVersion, 1, "error.actualVersion=1");
+      _ASSERT.ok(errVer.retryable === true, "error.retryable=true");
+    }
+
+    var ok = DAO_PRODUCTOS.actualizar(prodId, { precio_venta: 9999, categoria: "B" }, 1);
+    _ASSERT.equal(ok, true, "actualizar v1 → true");
+
+    var p = DAO_PRODUCTOS.obtener(prodId);
+    _ASSERT.equal(p.precio_venta, 9999, "precio_venta actualizado");
+    _ASSERT.equal(p.categoria, "B", "categoria actualizada");
+    _ASSERT.equal(p.nombre, r.nombre, "nombre inmutable sin cambios");
+    _ASSERT.equal(p.version, 2, "version=2 tras update");
+
+    var ok2 = DAO_PRODUCTOS.actualizar(prodId, { nombre: "TEST-PROD-UPD-RENAMED" }, 2);
+    _ASSERT.equal(ok2, true, "actualizar nombre v2 → true");
+
+    var p2 = DAO_PRODUCTOS.obtener(prodId);
+    _ASSERT.equal(p2.nombre, "TEST-PROD-UPD-RENAMED", "nombre actualizado");
+    _ASSERT.equal(p2.version, 3, "version=3");
+
+    var okSinVer = DAO_PRODUCTOS.actualizar(prodId, { precio_compra: 7777 });
+    _ASSERT.equal(okSinVer, true, "actualizar sin version → true");
+
+    Logger.log("[TEST-INT] testDAOProductosActualizarOptimisticLock OK");
+  } catch (e) {
+    _ASSERT.ok(false, "ERROR: " + e.toString());
+  } finally {
+    if (prodId) {
+      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (var d = sheet.getLastRow(); d >= 2; d--) {
+        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+        if (v === prodId) sheet.deleteRow(d);
+      }
+    }
+    if (lock) lock.releaseLock();
+  }
+}
+
+function testDAOProductosIncrementarStock() {
+  Logger.log("[TEST-INT] ===== testDAOProductosIncrementarStock =====");
+  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  var prodId = null;
+  try {
+    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-STK-" + Date.now(), precio_compra: 500, precio_venta: 1500 });
+    _ASSERT.ok(r.success === true, "crear producto para stock");
+    prodId = r.id;
+
+    var inc1 = DAO_PRODUCTOS.incrementarStock(prodId, 5);
+    _ASSERT.ok(inc1 !== undefined, "incrementarStock devuelve objeto");
+    _ASSERT.equal(inc1.stockAnterior, 0, "stockAnterior=0");
+    _ASSERT.equal(inc1.stockNuevo, 5, "stockNuevo=5");
+
+    var inc2 = DAO_PRODUCTOS.incrementarStock(prodId, -2);
+    _ASSERT.equal(inc2.stockAnterior, 5, "stockAnterior=5");
+    _ASSERT.equal(inc2.stockNuevo, 3, "stockNuevo=3");
+
+    var errStock = null;
+    try {
+      DAO_PRODUCTOS.incrementarStock(prodId, -10);
+    } catch (e) {
+      errStock = e;
+    }
+    _ASSERT.ok(errStock !== null, "stock insuficiente → lanza error");
+    if (errStock) {
+      _ASSERT.ok(errStock.message.indexOf("insuficiente") > -1, "mensaje contiene 'insuficiente'");
+    }
+
+    var p = DAO_PRODUCTOS.obtener(prodId);
+    _ASSERT.equal(p.stock, 3, "stock final = 3 (no afectado por error)");
+    _ASSERT.ok(p.version > 1, "version incrementada");
+
+    Logger.log("[TEST-INT] testDAOProductosIncrementarStock OK");
+  } catch (e) {
+    _ASSERT.ok(false, "ERROR: " + e.toString());
+  } finally {
+    if (prodId) {
+      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (var d = sheet.getLastRow(); d >= 2; d--) {
+        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+        if (v === prodId) sheet.deleteRow(d);
+      }
+    }
+    if (lock) lock.releaseLock();
+  }
+}
+
+function testDAOProductosToggleActivo() {
+  Logger.log("[TEST-INT] ===== testDAOProductosToggleActivo =====");
+  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  var prodId = null;
+  try {
+    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-TGL-" + Date.now(), precio_venta: 3000 });
+    _ASSERT.ok(r.success === true, "crear producto para toggle");
+    prodId = r.id;
+
+    var t1 = DAO_PRODUCTOS.toggleActivo(prodId);
+    _ASSERT.equal(t1.activo, "INACTIVO", "primer toggle → INACTIVO");
+
+    var listaInactivos = DAO_PRODUCTOS.listar({ activo: false });
+    _ASSERT.ok(listaInactivos.some(function(p) { return p.id === prodId; }), "listar({ activo:false }) lo incluye");
+
+    var listaActivos = DAO_PRODUCTOS.listar({ activo: true });
+    _ASSERT.ok(!listaActivos.some(function(p) { return p.id === prodId; }), "listar({ activo:true }) NO lo incluye");
+
+    var t2 = DAO_PRODUCTOS.toggleActivo(prodId);
+    _ASSERT.equal(t2.activo, "ACTIVO", "segundo toggle → ACTIVO");
+
+    var p = DAO_PRODUCTOS.obtener(prodId);
+    _ASSERT.equal(p.activo, "ACTIVO", "obtener confirma ACTIVO");
+
+    var errNoExiste = null;
+    try {
+      DAO_PRODUCTOS.toggleActivo("P_NO_EXISTE_999");
+    } catch (e) {
+      errNoExiste = e;
+    }
+    _ASSERT.ok(errNoExiste !== null, "toggle ID inexistente → lanza error");
+
+    Logger.log("[TEST-INT] testDAOProductosToggleActivo OK");
+  } catch (e) {
+    _ASSERT.ok(false, "ERROR: " + e.toString());
+  } finally {
+    if (prodId) {
+      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (var d = sheet.getLastRow(); d >= 2; d--) {
+        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+        if (v === prodId) sheet.deleteRow(d);
+      }
+    }
+    if (lock) lock.releaseLock();
   }
 }

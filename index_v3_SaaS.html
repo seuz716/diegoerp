@@ -81,6 +81,9 @@
     <div class="nav-item" data-view="compras">
       <span class="nav-icon">◇</span> Compras
     </div>
+    <div class="nav-item" data-view="productos">
+      <span class="nav-icon">◇</span> Productos
+    </div>
     <div class="nav-item" data-view="vencimientos">
       <span class="nav-icon">◇</span> Vencimientos
     </div>
@@ -499,6 +502,40 @@
     </div>
   </section>
 
+  <!-- PRODUCTOS / INVENTARIO -->
+  <section id="view-productos" class="view" aria-label="Productos e inventario" aria-hidden="true">
+    <div class="page-header">
+      <h2 class="page-title">Productos <em>e inventario</em></h2>
+      <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+        <input type="text" id="productos-search" class="form-field" placeholder="Buscar producto..." style="width:200px;max-width:50vw;font-size:var(--text-sm);" aria-label="Buscar productos por nombre">
+        <select id="productos-filter-categoria" class="form-field" style="width:auto;max-width:180px;" aria-label="Filtrar por categoría">
+          <option value="">Todas las categorías</option>
+        </select>
+        <button class="btn btn-sm btn-accent" id="btn-nuevo-producto">+ Nuevo producto</button>
+      </div>
+    </div>
+
+    <div class="table-section">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Categoría</th>
+            <th>Stock</th>
+            <th>P.Compra</th>
+            <th>P.Venta</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="productos-body">
+          <tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando productos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- MODAL NUEVA COMPRA -->
   <div class="modal-overlay" id="modal-compra" role="dialog" aria-modal="true" aria-labelledby="modal-compra-title" aria-describedby="compra-error">
     <div class="modal-box">
@@ -519,9 +556,40 @@
         <label class="form-label">Total ($)</label>
         <input type="number" class="form-field" id="compra-total" placeholder="0" min="1" step="1">
       </div>
-      <div class="form-row" style="margin-bottom:var(--space-6);">
-        <label class="form-label">Items (línea por línea: producto, cantidad, precio)</label>
-        <textarea class="form-field" id="compra-items" rows="4" placeholder="PROD-001, 2, 50000&#10;PROD-002, 1, 120000" style="font-family:var(--mono);font-size:var(--text-sm);"></textarea>
+      <div class="form-row" style="margin-bottom:var(--space-4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3);">
+          <label class="form-label" style="margin-bottom:0;">Items</label>
+          <div style="display:flex;gap:var(--space-2);">
+            <button class="btn btn-sm btn-outline" id="btn-nuevo-producto-compra" style="font-size:var(--text-micro);">+ Nuevo producto</button>
+            <button class="btn btn-sm btn-accent" id="btn-agregar-item-compra" style="font-size:var(--text-micro);">+ Agregar item</button>
+          </div>
+        </div>
+        <div id="compra-items-list"></div>
+        <template id="compra-item-template">
+          <div class="compra-item-row" style="display:grid;grid-template-columns:1fr 1fr 80px 100px 44px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
+            <div>
+              <label class="form-label">Producto</label>
+              <select class="form-field compra-producto-select" style="font-size:var(--text-sm);">
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Nuevo</label>
+              <input type="text" class="form-field compra-producto-nuevo" placeholder="Nombre si es nuevo" style="font-size:var(--text-sm);display:none;">
+            </div>
+            <div>
+              <label class="form-label">Cant.</label>
+              <input type="number" class="form-field compra-cantidad" value="1" min="1" style="font-size:var(--text-sm);">
+            </div>
+            <div>
+              <label class="form-label">Precio</label>
+              <input type="number" class="form-field compra-precio" value="0" min="0" style="font-size:var(--text-sm);">
+            </div>
+            <div style="display:flex;align-items:end;padding-bottom:4px;">
+              <button class="btn btn-sm btn-remove-item" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">✕</button>
+            </div>
+          </div>
+        </template>
       </div>
       <div id="compra-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
       <div id="compra-success" style="display:none;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);border:1px solid var(--green-border);background:var(--green-dim);color:var(--green);font-size:var(--text-sm);letter-spacing:0.04em;"></div>
@@ -593,6 +661,39 @@
     </div>
   </div>
 
+  <!-- MODAL PRODUCTO -->
+  <div class="modal-overlay" id="modal-producto" role="dialog" aria-modal="true" aria-labelledby="modal-producto-title">
+    <div class="modal-box">
+      <div class="modal-title" id="modal-producto-title">Nuevo producto</div>
+      <input type="hidden" id="producto-id">
+      <div class="form-row">
+        <label class="form-label">Nombre</label>
+        <input type="text" class="form-field" id="producto-nombre" placeholder="Nombre del producto" maxlength="200" required>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Categoría</label>
+        <input type="text" class="form-field" id="producto-categoria" placeholder="Ej: Insumos, Empaques..." maxlength="100">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Stock inicial</label>
+        <input type="number" class="form-field" id="producto-stock" value="0" min="0" step="1">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Precio de compra ($)</label>
+        <input type="number" class="form-field" id="producto-precio-compra" value="0" min="0" step="1">
+      </div>
+      <div class="form-row" style="margin-bottom:var(--space-6);">
+        <label class="form-label">Precio de venta ($)</label>
+        <input type="number" class="form-field" id="producto-precio-venta" value="0" min="0" step="1">
+      </div>
+      <div id="producto-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
+      <div style="display:flex;gap:var(--space-2);">
+        <button class="btn btn-sm" id="btn-producto-cancelar" style="flex:1;justify-content:center;">Cancelar</button>
+        <button class="btn btn-sm btn-accent" id="btn-producto-guardar" style="flex:1;justify-content:center;">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL CONFIRMACIÓN -->
   <div id="modal-confirm" class="modal-overlay" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-msg">
     <div class="modal-box">
@@ -614,6 +715,7 @@
   <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">◇</span><span>Pagos</span></div>
   <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
   <div class="nav-item" data-view="compras" aria-label="Compras"><span class="nav-icon">◇</span><span>Comp.</span></div>
+  <div class="nav-item" data-view="productos" aria-label="Productos"><span class="nav-icon">◇</span><span>Prod.</span></div>
   <div class="nav-item" data-view="vencimientos" aria-label="Vencimientos"><span class="nav-icon">◇</span><span>Venc.</span></div>
 </nav>
 

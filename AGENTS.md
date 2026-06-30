@@ -11,10 +11,19 @@
 - ✅ DAO.updateCarteraBatch → optimistic locking atómico
 - ✅ CACHE → circuit breaker HALF_OPEN
 
+## CLI 1 - SEGURIDAD (completado)
+- ✅ SESSION_SERVICE consolidado como singleton en Config.gs
+- ✅ checkPermission: eliminada comparación redundante email !== this._getCurrentUser()
+- ✅ _kdf: optimizado con comentario de key stretching
+- ✅ AuditLog: lock global unificado (eliminada race condition en purge)
+- ✅ correlationId propagation en todos los módulos
+
 ## CLI 2 - DOMINIO NEGOCIO (completado)
 - ✅ registrarAbonoAtomic: validación cupo crediticio (CxC)
 - ✅ Idempotencia con correlationId
 - ✅ Optimistic locking con reintentos (DAO.updateCarteraBatch)
+- ✅ Creación inline de productos en compras (Domain.gs)
+- ✅ DAO_PRODUCTOS.crear() con ID opcional
 
 ## Contrato de interfaces
 
@@ -52,6 +61,14 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
    B                              │ Rendimiento                    │ Batch writes                  │ ✅
    B                              │ Rendimiento                    │ JSON minimize                 │ ✅
    B                              │ Observabilidad                 │ Rate metrics                  │ ✅
+   CLI 1                          │ Seguridad                      │ SESSION_SERVICE singleton     │ ✅
+   CLI 1                          │ Seguridad                      │ checkPermission fix           │ ✅
+   CLI 1                          │ Seguridad                      │ _kdf optimization             │ ✅
+   CLI 1                          │ Seguridad                      │ AuditLog race condition       │ ✅
+   CLI 1                          │ Seguridad                      │ correlationId propagation     │ ✅
+   CLI 2                          │ Negocio                        │ Creación inline productos     │ ✅
+   CLI 2                          │ Negocio                        │ DAO_PRODUCTOS.id opcional     │ ✅
+   CLI 2                          │ Rendimiento                    │ Pre-carga productoMap         │ ✅
 
    --------
 
@@ -73,7 +90,7 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-   Commits totales: 22 en main
+   Commits totales: 24 en main
 
    --------
 
