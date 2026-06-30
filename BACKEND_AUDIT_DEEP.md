@@ -68,19 +68,18 @@
 
 | IA-CLI | Tareas Completadas | Total | Estado |
 |--------|-------------------|-------|--------|
-| **IA-CLI 1** (Seguridad) | 0 | 5 | ⏳ 0% |
-| **IA-CLI 2** (Infra/Audit) | 2 | 5 | ⚠️ 40% |
+| **IA-CLI 1** (Seguridad) | 5 | 5 | ✅ 100% |
+| **IA-CLI 2** (Infra/Audit) | 5 | 5 | ✅ 100% |
 | **IA-CLI 3** (Negocio/Datos) | 6 | 6 | ✅ 100% |
 
 ---
 
-### 4. Próximos Pasos Críticos
+### 4. Próximos Pasos
 
-1. **IA-CLI 1**: Consolidar SESSION_SERVICE en todos los archivos
-2. **IA-CLI 1**: Corregir checkPermission logic bug
-3. **IA-CLI 1**: Optimizar _kdf criptográfico
-4. **IA-CLI 2**: Arreglar race condition en AuditLog purge
-5. **IA-CLI 2**: Propagar correlationId correctamente
+| CLI | Tareas | Estado |
+|-----|--------|--------|
+| **CLI 4** (Frontend/Tests) | Completar frontend, TestRegression.gs | ⚠️ 60% |
+| **CLI 5** (Optimizaciones avanzadas) | Performance tuning, monitoring | ❌ Pendiente |
 
 ---
 

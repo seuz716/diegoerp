@@ -24,13 +24,20 @@ const COMPRAS_CONFIG = {
     COMPRAS: "Compras",
     DETALLE_COMPRAS: "Detalle_Compras",
     PAGOS_PROVEEDORES: "Pagos_Proveedores",
+    KARDEX: "Kardex_Movilizaciones",
   },
   COLUMNS: {
     COMPRAS: { id: 0, fecha: 1, id_proveedor: 2, id_factura: 3, total: 4, saldo: 5, estado: 6, fecha_vencimiento: 7, vencida_timestamp: 8, version: 9 },
     DETALLE_COMPRAS: { id: 0, id_compra: 1, id_producto: 2, cantidad: 3, precio_unitario: 4, subtotal: 5 },
     PAGOS_PROVEEDORES: { id: 0, fecha: 1, id_compra: 2, id_proveedor: 3, valor: 4, referencia: 5, metodo_pago: 6 },
+    KARDEX: { id: 0, fecha: 1, id_producto: 2, tipo_mov: 3, cantidad: 4, stock_anterior: 5, stock_nuevo: 6, referencia: 7, origen: 8, usuario: 9 },
   },
   ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA" },
+};
+
+const PRODUCTOS_CONFIG = {
+  SHEET: "Productos",
+  ESTADOS_PRODUCTO: { ACTIVO: "ACTIVO", INACTIVO: "INACTIVO" },
 };
 
 const LOCK_CONFIG = {
@@ -51,7 +58,7 @@ const CONFIG = {
     FLUJO_CAJA: "Flujo_Caja",
   },
   COLUMNS: {
-    PRODUCTOS: { id: 0, nombre: 1, stock: 2, precio: 3, version: 4 },
+    PRODUCTOS: { id: 0, nombre: 1, stock: 2, precio_compra: 3, precio_venta: 4, categoria: 5, activo: 6, fecha_creacion: 7, version: 8 },
     LIBRO_DIARIO: { id: 0, fecha: 1, tipo: 2, id_referencia: 3, tercero: 4, monto: 5, usuario: 6, descripcion: 7 },
     FLUJO_CAJA: { id: 0, fecha: 1, tipo: 2, concepto: 3, monto: 4, referencia: 5, usuario: 6 },
   },
@@ -61,10 +68,11 @@ const CONFIG = {
     CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
     AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
-    PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio: "Precio", version: "Version" },
+    PRODUCTOS: { id: "ID", nombre: "Nombre", stock: "Stock", precio_compra: "Precio_Compra", precio_venta: "Precio_Venta", categoria: "Categoria", activo: "Activo", fecha_creacion: "Fecha_Creacion", version: "Version" },
     COMPRAS: { id: "ID", fecha: "Fecha", id_proveedor: "ID_Proveedor", id_factura: "ID_Factura", total: "Total", saldo: "Saldo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     DETALLE_COMPRAS: { id: "ID", id_compra: "ID_Compra", id_producto: "ID_Producto", cantidad: "Cantidad", precio_unitario: "Precio_Unitario", subtotal: "Subtotal" },
     PAGOS_PROVEEDORES: { id: "ID", fecha: "Fecha", id_compra: "ID_Compra", id_proveedor: "ID_Proveedor", valor: "Valor", referencia: "Referencia", metodo_pago: "Metodo_Pago" },
+    KARDEX: { id: "ID", fecha: "Fecha", id_producto: "ID_Producto", tipo_mov: "Tipo_Mov", cantidad: "Cantidad", stock_anterior: "Stock_Anterior", stock_nuevo: "Stock_Nuevo", referencia: "Referencia", origen: "Origen", usuario: "Usuario" },
     LIBRO_DIARIO: { id: "ID", fecha: "Fecha", tipo: "Tipo", id_referencia: "ID_Referencia", tercero: "Tercero", monto: "Monto", usuario: "Usuario", descripcion: "Descripcion" },
     FLUJO_CAJA: { id: "ID", fecha: "Fecha", tipo: "Tipo", concepto: "Concepto", monto: "Monto", referencia: "Referencia", usuario: "Usuario" },
   },
@@ -176,7 +184,7 @@ function getSheet(name) {
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
-   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja'];
+   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja'];
    const sheets = {
      [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
      [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
@@ -186,6 +194,7 @@ CONFIG.reloadSchema = function() {
      [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
      [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
      [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
+     [COMPRAS_CONFIG.SHEETS.KARDEX]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'KARDEX' },
      [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
      [CONFIG.SHEETS.FLUJO_CAJA]: { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
    };
@@ -540,6 +549,25 @@ function setupSistema() {
     const hoja = ss.getSheetByName(nombre);
     if (hoja) {
       mensaje += "✅ " + nombre + ": " + hoja.getLastRow() + " filas\n";
+      if (nombre === "Productos") {
+        var lastCol = hoja.getLastColumn();
+        var expected = CONFIG.SCHEMA_definitions.PRODUCTOS;
+        var expectedNames = Object.values(expected);
+        if (lastCol > 0) {
+          var headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+          for (var key in expected) {
+            if (headers.indexOf(expected[key]) === -1) {
+              hoja.getRange(1, lastCol + 1).setValue(expected[key]);
+              lastCol++;
+              headers.push(expected[key]);
+            }
+          }
+        } else {
+          if (expectedNames.length > 0) {
+            hoja.getRange(1, 1, 1, expectedNames.length).setValues([expectedNames]);
+          }
+        }
+      }
     } else {
       mensaje += "❌ " + nombre + ": NO EXISTE\n";
     }

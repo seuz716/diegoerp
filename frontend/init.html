@@ -54,11 +54,11 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       view.classList.add('active');
       view.removeAttribute('aria-hidden');
     }
-    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', vencimientos: 'Vencimientos' };
+    var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', productos: 'Productos', inventario: 'Inventario', vencimientos: 'Vencimientos' };
     document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
     mostrarHintRefrescar();
 
-    var fnMap = { dashboard: cargarDashboard, cartera: cargarCartera, terceros: cargarTerceros, abonos: cargarAbonoSelect, ventas: cargarVentas, compras: cargarCompras, vencimientos: cargarVencimientos };
+    var fnMap = { dashboard: cargarDashboard, cartera: cargarCartera, terceros: cargarTerceros, abonos: cargarAbonoSelect, ventas: cargarVentas, compras: cargarCompras, productos: cargarProductos, inventario: cargarProductos, vencimientos: cargarVencimientos };
     var loadFn = fnMap[viewId];
     if (loadFn) {
       var result = loadFn();
@@ -154,6 +154,63 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('compras-filter-prov').addEventListener('change', cargarCompras);
   document.getElementById('compras-filter-estado').addEventListener('change', cargarCompras);
 
+  // Productos
+  document.getElementById('btn-nuevo-producto').addEventListener('click', function () { abrirModalProducto(null); });
+  document.getElementById('btn-producto-cancelar').addEventListener('click', cerrarModalProducto);
+  document.getElementById('btn-producto-guardar').addEventListener('click', guardarProducto);
+  document.getElementById('modal-producto').addEventListener('click', function (e) { if (e.target === this) cerrarModalProducto(); });
+  // Delegation for producto actions (editar/toggle)
+  document.getElementById('productos-body').addEventListener('click', function (e) {
+    var btn = e.target.closest('.btn-editar-producto');
+    if (btn) {
+      var id = btn.dataset.id;
+      App.api.getProducto(id).then(function (res) {
+        if (res && res.producto) abrirModalProducto(res.producto);
+      });
+      return;
+    }
+    btn = e.target.closest('.btn-toggle-producto');
+    if (btn) {
+      var id2 = btn.dataset.id;
+      confirmarAccion(['¿Cambiar estado del producto?', 'ID: ' + id2], function () {
+        App.api.toggleActivoProducto(id2).then(function () {
+          cargarProductos();
+          App.api.getProductos().then(function (data) {
+            App.productosCache = (data && data.productos) || data || [];
+          });
+        }).catch(function (err) {
+          showToast(err.message || 'Error al cambiar estado', 'error');
+        });
+      });
+    }
+  });
+  // Live search/filter productos
+  var productosSearch = document.getElementById('productos-search');
+  if (productosSearch) {
+    productosSearch.addEventListener('input', function () {
+      clearTimeout(productosSearch._timer);
+      productosSearch._timer = setTimeout(cargarProductos, 300);
+    });
+  }
+  var productosFilterCat = document.getElementById('productos-filter-categoria');
+  if (productosFilterCat) {
+    productosFilterCat.addEventListener('change', cargarProductos);
+  }
+
+  // Compra items: delegación para botón agregar y nuevo producto
+  document.getElementById('btn-agregar-item-compra').addEventListener('click', agregarFilaItemCompra);
+  document.getElementById('btn-nuevo-producto-compra').addEventListener('click', function () {
+    abrirModalProducto(null);
+    // After save, the product select will be refreshed on next open
+  });
+  // Detectar edición manual del total
+  var compraTotal = document.getElementById('compra-total');
+  if (compraTotal) {
+    compraTotal.addEventListener('input', function () {
+      this.dataset.userEdited = 'true';
+    });
+  }
+
   document.getElementById('btn-actualizar-venc').addEventListener('click', cargarVencimientos);
   document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
 });
@@ -209,13 +266,14 @@ if (btnBackTop) {
 // Escape key
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    var modals = ['modal-pago-compra', 'modal-compra', 'modal-tercero'];
+    var modals = ['modal-pago-compra', 'modal-compra', 'modal-tercero', 'modal-producto'];
     for (var i = 0; i < modals.length; i++) {
       var m = document.getElementById(modals[i]);
       if (m && m.classList.contains('active')) {
         if (modals[i] === 'modal-tercero') cerrarModalTercero();
         else if (modals[i] === 'modal-compra') cerrarModalNuevaCompra();
         else if (modals[i] === 'modal-pago-compra') cerrarModalPagoCompra();
+        else if (modals[i] === 'modal-producto') cerrarModalProducto();
         break;
       }
     }

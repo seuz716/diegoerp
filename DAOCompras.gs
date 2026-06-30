@@ -5,6 +5,85 @@ const DAO_COMPRAS = {
   COMPRAS_COL: COMPRAS_CONFIG.COLUMNS.COMPRAS,
   DETALLE_COL: COMPRAS_CONFIG.COLUMNS.DETALLE_COMPRAS,
   PAGOS_COL: COMPRAS_CONFIG.COLUMNS.PAGOS_PROVEEDORES,
+  KARDEX_COL: COMPRAS_CONFIG.COLUMNS.KARDEX,
+
+  _rowToKardex(row) {
+    var C = DAO_COMPRAS.KARDEX_COL;
+    return {
+      id: String(row[C.id] || "").trim(),
+      fecha: row[C.fecha],
+      id_producto: String(row[C.id_producto] || "").trim(),
+      tipo_mov: String(row[C.tipo_mov] || "").trim(),
+      cantidad: _parseMoneda(row[C.cantidad], 0),
+      stock_anterior: _parseMoneda(row[C.stock_anterior], 0),
+      stock_nuevo: _parseMoneda(row[C.stock_nuevo], 0),
+      referencia: String(row[C.referencia] || "").trim(),
+      origen: String(row[C.origen] || "").trim(),
+      usuario: String(row[C.usuario] || "").trim(),
+    };
+  },
+
+  crearMovimientoKardex(movimiento) {
+    var lock = LOCK_MANAGER.acquireGlobalLock(5000);
+    try {
+      var sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      var C = DAO_COMPRAS.KARDEX_COL;
+      var row = [];
+      row[C.id] = movimiento.id;
+      row[C.fecha] = movimiento.fecha || new Date();
+      row[C.id_producto] = movimiento.id_producto;
+      row[C.tipo_mov] = movimiento.tipo_mov;
+      row[C.cantidad] = movimiento.cantidad;
+      row[C.stock_anterior] = movimiento.stock_anterior;
+      row[C.stock_nuevo] = movimiento.stock_nuevo;
+      row[C.referencia] = movimiento.referencia || "";
+      row[C.origen] = movimiento.origen || "";
+      row[C.usuario] = movimiento.usuario || "";
+      for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+      sheet.appendRow(row);
+    } finally {
+      if (lock) lock.releaseLock();
+    }
+  },
+
+  getMovimientosKardex(idProducto, limit) {
+    var sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    var C = DAO_COMPRAS.KARDEX_COL;
+    var numCols = Math.max.apply(null, Object.values(C)) + 1;
+    var data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    var result = [];
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][C.id_producto] || "").trim() === idProducto) {
+        result.push(DAO_COMPRAS._rowToKardex(data[i]));
+      }
+    }
+    // Ordenar por fecha descendente
+    result.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    if (limit && result.length > limit) result = result.slice(0, limit);
+    return result;
+  },
+
+  getAllMovimientosKardex(dias) {
+    var sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    var C = DAO_COMPRAS.KARDEX_COL;
+    var numCols = Math.max.apply(null, Object.values(C)) + 1;
+    var data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    var result = [];
+    var cutoffDate = new Date();
+    if (dias) cutoffDate.setDate(cutoffDate.getDate() - dias);
+    for (var i = 0; i < data.length; i++) {
+      var mov = DAO_COMPRAS._rowToKardex(data[i]);
+      if (!dias || new Date(mov.fecha) >= cutoffDate) {
+        result.push(mov);
+      }
+    }
+    result.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    return result;
+  },
 
   _rowToCompra(row, rowIndex) {
     var C = DAO_COMPRAS.COMPRAS_COL;
