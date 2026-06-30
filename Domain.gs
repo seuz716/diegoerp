@@ -32,7 +32,7 @@ function _isIdempotent(correlationId, idTercero) {
  */
 var _Transaction = {
   create() {
-    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, active: false };
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], productoPreRows: 0, productoPostRows: 0, compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, active: false };
 
     return {
       begin() {
@@ -42,6 +42,8 @@ var _Transaction = {
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
         ctx.productoSnapshots = [];
+        ctx.productoPreRows = 0;
+        ctx.productoPostRows = 0;
         ctx.compraSnapshots = [];
         ctx.pagoPreRows = 0;
         ctx.pagoPostRows = 0;
@@ -110,6 +112,16 @@ var _Transaction = {
         }
       },
 
+      markProductoPreAppend() {
+        if (!ctx.active) return;
+        ctx.productoPreRows = getSheet(CONFIG.SHEETS.PRODUCTOS).getLastRow();
+      },
+
+      markProductoPostAppend() {
+        if (!ctx.active) return;
+        ctx.productoPostRows = getSheet(CONFIG.SHEETS.PRODUCTOS).getLastRow();
+      },
+
       snapshotCompraRow(rowIndex) {
         if (!ctx.active || !rowIndex) return;
         const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
@@ -146,6 +158,8 @@ var _Transaction = {
         ctx.movPostRows = 0;
         ctx.terceroSnapshots = [];
         ctx.productoSnapshots = [];
+        ctx.productoPreRows = 0;
+        ctx.productoPostRows = 0;
         ctx.compraSnapshots = [];
         ctx.pagoPreRows = 0;
         ctx.pagoPostRows = 0;
@@ -186,6 +200,13 @@ var _Transaction = {
             sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
           }
           console.debug("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
+        }
+        if (ctx.productoPostRows > ctx.productoPreRows) {
+          const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+          const startRow = ctx.productoPreRows + 1;
+          const count = ctx.productoPostRows - ctx.productoPreRows;
+          prodSheet.deleteRows(startRow, count);
+          console.debug("[DOMAIN] Rollback de productos inline: " + count + " fila(s) eliminada(s)");
         }
         // Compras rollback
         if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
@@ -634,14 +655,30 @@ DAO.createCartera(record);
     if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
     if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
 
+    // Pre-cargar productos existentes para validación
+    CACHE.refresh();
+    const consistencyPre = CACHE.verifyConsistency();
+    if (consistencyPre && consistencyPre.mismatched) {
+      CACHE.recoverFromStale();
+    }
+    var todosProductos = DAO_PRODUCTOS.listar();
+    var productoMap = {};
+    for (var _pm = 0; _pm < todosProductos.length; _pm++) {
+      productoMap[todosProductos[_pm].id] = todosProductos[_pm];
+    }
+
     for (var _i = 0; _i < items.length; _i++) {
       var _item = items[_i];
       var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
+      var _nombre = String(_item.nombre || "").trim();
       var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
       var _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
-      if (!_pid) return _error("Producto inválido en el ítem #" + (_i + 1) + ".");
+      if (!_pid && !_nombre) return _error("Ítem #" + (_i + 1) + ": debe especificar ID o nombre del producto.");
       if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
       if (_pUnit <= 0) return _error("Precio unitario inválido en el ítem #" + (_i + 1) + ".");
+      if (_pid && !productoMap[_pid] && !_nombre) {
+        return _error("Producto '" + _pid + "' no existe en inventario. Incluya 'nombre' para crearlo automáticamente.");
+      }
     }
 
     var idFacturaLimpia = String(factura || "").trim();
@@ -676,6 +713,12 @@ DAO.createCartera(record);
           CACHE.recoverFromStale();
         }
 
+        var todosProductos = DAO_PRODUCTOS.listar();
+        var productoMap = {};
+        for (var _pm = 0; _pm < todosProductos.length; _pm++) {
+          productoMap[todosProductos[_pm].id] = todosProductos[_pm];
+        }
+
         const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
         var fv = fechaVencimiento;
         if (!fv) { fv = _today(); fv.setDate(fv.getDate() + 30); }
@@ -707,19 +750,58 @@ DAO.createCartera(record);
             id: detId, id_compra: idCompra, id_producto: prodId,
             cantidad: cant, precio_unitario: pUnit, subtotal: sub,
           });
-          try {
-            var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-            var prodData = prodSheet.getDataRange().getValues();
-            for (var p = 1; p < prodData.length; p++) {
-              var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
-              if (pid === prodId) {
-                var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
-                prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(currentStock + cant);
-                break;
-              }
+          var prodExistente = productoMap[prodId];
+          var email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+
+          if (prodExistente) {
+            tx.snapshotProductoRows([prodExistente.rowIndex]);
+            var stockResult = DAO_PRODUCTOS.incrementarStock(prodId, cant);
+            var kardexId = "KDX" + Date.now() + "_" + prodId + "_" + j;
+            DAO_COMPRAS.crearMovimientoKardex({
+              id: kardexId,
+              fecha: new Date(),
+              id_producto: prodId,
+              tipo_mov: "ENTRADA",
+              cantidad: cant,
+              stock_anterior: stockResult.stockAnterior,
+              stock_nuevo: stockResult.stockNuevo,
+              referencia: idCompra,
+              origen: "COMPRA",
+              usuario: email
+            });
+          } else {
+            var _nombreItem = String(item.nombre || "").trim();
+            if (_nombreItem) {
+              tx.markProductoPreAppend();
+              var pCompra = _parseMoneda(item.precio_compra || item.precio_unitario || item.precio || 0, 0);
+              var creado = DAO_PRODUCTOS.crear({
+                id: prodId || undefined,
+                nombre: _nombreItem,
+                precio_compra: pCompra,
+                precio_venta: pCompra,
+                categoria: String(item.categoria || "").trim(),
+              });
+              tx.markProductoPostAppend();
+              var prodIdCreado = creado.id;
+              productoMap[prodIdCreado] = DAO_PRODUCTOS.obtener(prodIdCreado);
+              var stockResult = DAO_PRODUCTOS.incrementarStock(prodIdCreado, cant);
+              var kardexId = "KDX" + Date.now() + "_" + prodIdCreado + "_" + j;
+              DAO_COMPRAS.crearMovimientoKardex({
+                id: kardexId,
+                fecha: new Date(),
+                id_producto: prodIdCreado,
+                tipo_mov: "ENTRADA",
+                cantidad: cant,
+                stock_anterior: 0,
+                stock_nuevo: cant,
+                referencia: idCompra,
+                origen: "COMPRA",
+                usuario: email
+              });
+              LOG_ENGINE.logEvent("CREATE_PRODUCTO_INLINE", "PRODUCTOS", prodIdCreado,
+                {}, { nombre: _nombreItem, precio_compra: pCompra, origen: "COMPRA", id_compra: idCompra }, "SUCCESS",
+                { correlationId: corrId });
             }
-          } catch (invErr) {
-            Logger.log("[DOMAIN] Error actualizando inventario: " + invErr.toString());
           }
         }
 
@@ -1000,5 +1082,192 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     });
     result.sort(function(a, b) { return b.saldo - a.saldo; });
     return { items: result, total: totalCxP };
+  },
+
+  registrarVentaAtomic(clienteId, items, total, correlationId) {
+    const corrId = correlationId || ('venta_' + Date.now());
+    const idCliente = _sanitizeId(clienteId);
+    if (!idCliente) return _error("ID cliente inválido.");
+    const totalLimpio = _parseMoneda(total, NaN);
+    if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
+    if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
+
+    for (var _i = 0; _i < items.length; _i++) {
+      var _item = items[_i];
+      var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
+      var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
+      var _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
+      if (!_pid) return _error("Producto inválido en el ítem #" + (_i + 1) + ".");
+      if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
+      if (_pUnit <= 0) return _error("Precio unitario inválido en el ítem #" + (_i + 1) + ".");
+    }
+
+    const MAX_RETRIES = 3;
+    const _executeVentaTx = () => {
+      let lockAcquired = null;
+      const tx = _Transaction.create();
+
+      try {
+        lockAcquired = LOCK_MANAGER.acquireResourceLock(idCliente);
+
+        const cliente = DAO.getTerceroById(idCliente);
+        if (!cliente) {
+          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, {}, { error: "CLIENTE_NO_EXISTE" }, "ERROR");
+          return _error("Cliente " + idCliente + " no existe.");
+        }
+
+        CACHE.refresh();
+        const consistency = CACHE.verifyConsistency();
+        if (consistency.mismatched) {
+          CACHE.recoverFromStale();
+        }
+
+        // Verificar stock disponible y crear movimiento
+        var subtotalAcumulado = 0;
+        for (var j = 0; j < items.length; j++) {
+          var item = items[j];
+          var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+          var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+          var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+          if (!prodId || cant <= 0) continue;
+          var sub = cant * pUnit;
+          subtotalAcumulado += sub;
+
+          // Verificar stock y reducir
+          try {
+            var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+            var prodData = prodSheet.getDataRange().getValues();
+            for (var p = 1; p < prodData.length; p++) {
+              var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
+              if (pid === prodId) {
+                var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
+                if (currentStock < cant) {
+                  return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
+                }
+                var nuevoStock = currentStock - cant;
+                prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(nuevoStock);
+
+                // Registrar salida en kardex
+                var kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
+                var email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+                DAO_COMPRAS.crearMovimientoKardex({
+                  id: kardexId,
+                  fecha: new Date(),
+                  id_producto: prodId,
+                  tipo_mov: "SALIDA",
+                  cantidad: cant,
+                  stock_anterior: currentStock,
+                  stock_nuevo: nuevoStock,
+                  referencia: corrId,
+                  origen: "VENTA",
+                  usuario: email
+                });
+                break;
+              }
+            }
+          } catch (invErr) {
+            Logger.log("[DOMAIN] Error actualizando inventario venta: " + invErr.toString());
+          }
+        }
+
+        // Crear registro de venta en cartera
+        var idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+        var carteraRecord = {
+          id: idVenta,
+          fecha: new Date(),
+          id_tercero: idCliente,
+          origen_id: corrId,
+          total: totalLimpio,
+          saldo: 0,
+          tipo: CARTERA_CONFIG.TIPOS.CXC,
+          estado: CARTERA_CONFIG.ESTADOS.CANCELADA,
+          fecha_vencimiento: new Date(),
+          vencida_timestamp: ""
+        };
+
+        tx.begin();
+        DAO.saveCartera(carteraRecord);
+        tx.commit();
+
+        CACHE.invalidateCartera();
+
+        // Registrar en libro diario
+        var usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+        LIBRO_DIARIO.registrarVenta(
+          new Date(),
+          idVenta,
+          idCliente,
+          totalLimpio,
+          usuario
+        );
+
+        // Registrar salida de caja por venta
+        FLUJO_CAJA.registrarMovimiento(
+          new Date(),
+          FLUJO_CAJA.TIPOS.SALIDA_VENTA,
+          "Venta a cliente: " + idCliente,
+          totalLimpio,
+          corrId,
+          usuario
+        );
+
+        LOG_ENGINE.logEvent("CREATE_VENTA", "VENTAS", idVenta,
+          {}, { cliente: idCliente, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: corrId });
+
+        return { success: true, id: idVenta, total: totalLimpio };
+      } catch (e) {
+        try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback venta error: " + rbErr.message); }
+        CACHE.invalidateCartera();
+        throw e;
+      } finally {
+        if (lockAcquired) lockAcquired.releaseLock();
+      }
+    };
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return _executeVentaTx();
+      } catch (e) {
+        const isOptimisticLock =
+          e.type === 'OPTIMISTIC_LOCK_FAILURE' ||
+          (e.message && e.message.includes('OptimisticLockError'));
+
+        if (!isOptimisticLock || attempt >= MAX_RETRIES - 1) {
+          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, {}, { error: e.toString() }, "FAILED");
+          return _error(e.message || "Error al registrar venta.");
+        }
+
+        CACHE.refresh(true);
+        Utilities.sleep(100 * Math.pow(2, attempt) + Math.random() * 50);
+      }
+    }
+
+    return _error("Conflicto de concurrencia persistente al registrar venta.");
+  },
+
+  getKardexProducto(idProducto, limit) {
+    return DAO_COMPRAS.getMovimientosKardex(idProducto, limit);
+  },
+
+  getKardex(limit) {
+    return DAO_COMPRAS.getAllMovimientosKardex(30, limit);
+  },
+
+  getRotacionInventario(dias) {
+    var movimientos = this.getKardex(1000);
+    var rotacion = {};
+    for (var i = 0; i < movimientos.length; i++) {
+      var m = movimientos[i];
+      if (!rotacion[m.id_producto]) {
+        rotacion[m.id_producto] = { entradas: 0, salidas: 0, total: 0 };
+      }
+      if (m.tipo_mov === "ENTRADA") {
+        rotacion[m.id_producto].entradas += m.cantidad;
+      } else if (m.tipo_mov === "SALIDA") {
+        rotacion[m.id_producto].salidas += m.cantidad;
+      }
+      rotacion[m.id_producto].total = rotacion[m.id_producto].entradas - rotacion[m.id_producto].salidas;
+    }
+    return rotacion;
   },
 };
