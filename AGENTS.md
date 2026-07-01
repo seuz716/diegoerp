@@ -25,6 +25,14 @@
 - ✅ Creación inline de productos en compras (Domain.gs)
 - ✅ DAO_PRODUCTOS.crear() con ID opcional
 
+## CLI 3 - INPUT VALIDATION (completado)
+- ✅ INPUT_VALIDATOR.validateTipo: valida CxC, CxP, CLIENTE, PROVEEDOR, AMBOS
+- ✅ INPUT_VALIDATOR.validatePageSize: min 1, max 5000 (protección DoS)
+- ✅ INPUT_VALIDATOR.validatePageToken: asegura >= 0
+- ✅ INPUT_VALIDATOR.validateEstado: valida ABIERTA, PARCIAL, CANCELADA, VENCIDA
+- ✅ getCartera, getTerceros, getCompras, getProductos, actualizarProducto: validación agregada
+- ✅ Tests: 5 nuevos tests para input validation (total 30 tests)
+
 ## Contrato de interfaces
 
 ### Config.gs (SINGLETON) expone:
@@ -111,7 +119,7 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-Test Suite (runAllRegressionTests): 29 tests
+Test Suite (runAllRegressionTests): 30 tests
     - AuthService: 3 tests (auth, whitelist, unknown action)
     - LockManager: 2 tests (cleanup, index)
     - CacheService: 6 tests (circuit, health, consistency, reset)
@@ -121,3 +129,4 @@ Test Suite (runAllRegressionTests): 29 tests
     - SchemaValidator: 2 tests (validation)
     - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
     - Business Validation: 3 tests (credit limit, idempotency)
+    - API Validation: 5 tests (validateTipo, validatePageSize, validateEstado, validatePageToken, getProductos)
