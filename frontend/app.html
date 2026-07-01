@@ -323,9 +323,31 @@ App.data = (function () {
       _store.cartera = null; _timestamps.cartera = 0;
       _store.terceros = null; _timestamps.terceros = 0;
     },
-    refreshDashboard: function () { var self = this; return App.api.getDashboard().then(function (d) { self.dashboard = d; return d; }); },
-    refreshCartera: function (filtroTipo, filtroEstado) { var self = this; return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) { self.cartera = d; return d; }); },
-    refreshTerceros: function (filtroTipo) { var self = this; return App.api.getTerceros(filtroTipo).then(function (d) { self.terceros = d; return d; }); },
+    // #46: refresh methods apply adapters before caching
+    refreshDashboard: function () {
+      var self = this;
+      return App.api.getDashboard().then(function (d) {
+        var adapted = App.adapters.dashboard(d);
+        if (!adapted.error) self.dashboard = adapted;
+        return adapted;
+      });
+    },
+    refreshCartera: function (filtroTipo, filtroEstado) {
+      var self = this;
+      return App.api.getCartera(filtroTipo, filtroEstado).then(function (d) {
+        var adapted = App.adapters.cartera(d);
+        if (!adapted.error) self.cartera = adapted;
+        return adapted;
+      });
+    },
+    refreshTerceros: function (filtroTipo) {
+      var self = this;
+      return App.api.getTerceros(filtroTipo).then(function (d) {
+        var adapted = App.adapters.terceros(d);
+        if (!adapted.error) self.terceros = adapted;
+        return adapted;
+      });
+    },
   };
 })();
 

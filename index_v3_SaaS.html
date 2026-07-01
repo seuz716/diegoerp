@@ -737,19 +737,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-// Fallback: si CDN falla, DOMPurify no estÃ¡ disponible pero el fallback es seguro
-(function() {
-  if (typeof DOMPurify === 'undefined') {
-    console.warn('[DOMPurify] CDN fallback: using textContent for sanitization');
-    window.DOMPurify = {
-      sanitize: function(str, opts) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(String(str)));
-        return div.innerHTML;
-      }
-    };
-  }
-})();
+// No fallback - DOMPurify must load or app will fail fast
 </script>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/app').getContent() ?>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/views').getContent() ?>
