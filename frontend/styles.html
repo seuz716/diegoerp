@@ -366,6 +366,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
 .btn-outline{border-color:var(--border-med);color:var(--muted);}
 .btn-outline:hover{background:var(--bg-2);color:var(--text);}
 
+.btn:active{
+  transform:scale(0.98);
+  background:var(--bg-3);
+  transition:transform 50ms ease,background 50ms ease;
+}
+
+.btn-accent:active{
+  background:var(--accent);
+  color:var(--inverse);
+}
+
 /* â”€â”€ CARTERA TABLE â”€â”€ */
 .table-section{border:1px solid var(--border);background:var(--bg-1);overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative;}
 .table-section::after{content:"â†â†’ Desliza para ver mÃ¡s";position:absolute;bottom:8px;right:8px;font-size:var(--text-micro);color:var(--muted);opacity:0;transition:opacity 150ms;}
@@ -426,6 +437,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-si
   font-family:var(--mono);font-size:var(--text-base);
   transition:border-color 120ms;
   appearance:none;-webkit-appearance:none;
+  background-image:url("image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23605550' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  padding-right:36px;
 }
 .form-field:focus{outline:none;border-color:var(--accent);}
 .form-field::placeholder{color:var(--muted-2);}
