@@ -29,14 +29,20 @@ const DAO = {
    */
   batchInsert(sheetName, rows, startRow = null) {
     if (!rows || rows.length === 0) return;
+    // === INICIO FIX RACE-CONDITION ===
+    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
     try {
+    // === FIN FIX RACE-CONDITION ===
       const sheet = getSheet(sheetName);
       if (!sheet) return;
       const row = startRow || sheet.getLastRow() + 1;
       sheet.getRange(row, 1, rows.length, rows[0].length).setValues(rows);
-      console.debug(`[DAO.batchInsert] Inserted ${rows.length} rows to ${sheetName}`);
     } catch (e) {
-      Logger.log(`[DAO.batchInsert] Error: ${e.toString()}`);
+      Logger.log(`[DAO.batchInsert] Error: Error en operación`);
+    } finally {
+      // === INICIO FIX RACE-CONDITION ===
+      if (lock) lock.releaseLock();
+      // === FIN RACE-CONDITION ===
     }
   },
 

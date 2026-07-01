@@ -63,10 +63,10 @@ const CRYPTO_SERVICE = {
       return this._memoryCache["AES_MASTER_KEY"];
     }
 
-    var key = null;
+    let key = null;
 
     // 1. UserProperties: persistente por usuario, sobrevive reinicios
-    var stored = PropertiesService.getUserProperties().getProperty("CRYPTO_MASTER_KEY");
+    const stored = PropertiesService.getUserProperties().getProperty("CRYPTO_MASTER_KEY");
     if (stored && stored.length >= 32) {
       key = stored;
     }

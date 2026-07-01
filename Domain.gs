@@ -10,7 +10,7 @@
 // Ensure dependencies are available
 // These are global objects defined in their respective modules
 
-var _PROCESSED_CORRELATION_IDS = {};
+const _PROCESSED_CORRELATION_IDS = {};
 
 function _isIdempotent(correlationId, idTercero) {
   if (!correlationId) return false;
@@ -30,7 +30,7 @@ function _isIdempotent(correlationId, idTercero) {
  *   - Restaura filas de cartera a sus valores originales (snapshot)
  *   - Elimina filas de movimientos que se hayan añadido
  */
-var _Transaction = {
+const _Transaction = {
   create() {
     const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], productoPreRows: 0, productoPostRows: 0, compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, active: false };
 
@@ -713,18 +713,18 @@ DAO.createCartera(record);
     if (consistencyPre && consistencyPre.mismatched) {
       CACHE.recoverFromStale();
     }
-    var todosProductos = DAO_PRODUCTOS.listar();
-    var productoMap = {};
-    for (var _pm = 0; _pm < todosProductos.length; _pm++) {
+    const todosProductos = DAO_PRODUCTOS.listar();
+    const productoMap = {};
+    for (let _pm = 0; _pm < todosProductos.length; _pm++) {
       productoMap[todosProductos[_pm].id] = todosProductos[_pm];
     }
 
-    for (var _i = 0; _i < items.length; _i++) {
-      var _item = items[_i];
-      var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
-      var _nombre = String(_item.nombre || "").trim();
-      var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
-      var _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
+    for (let _i = 0; _i < items.length; _i++) {
+      const _item = items[_i];
+      const _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
+      const _nombre = String(_item.nombre || "").trim();
+      const _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
+      const _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
       if (!_pid && !_nombre) return _error("Ítem #" + (_i + 1) + ": debe especificar ID o nombre del producto.");
       if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
       if (_pUnit <= 0) return _error("Precio unitario inválido en el ítem #" + (_i + 1) + ".");
@@ -733,10 +733,10 @@ DAO.createCartera(record);
       }
     }
 
-    var idFacturaLimpia = String(factura || "").trim();
+    const idFacturaLimpia = String(factura || "").trim();
     if (idFacturaLimpia) {
-      var comprasExistentes = DAO_COMPRAS.getCompras(null, null);
-      for (var _ck = 0; _ck < comprasExistentes.length; _ck++) {
+      const comprasExistentes = DAO_COMPRAS.getCompras(null, null);
+      for (let _ck = 0; _ck < comprasExistentes.length; _ck++) {
         if (String(comprasExistentes[_ck].id_factura || "").trim() === idFacturaLimpia) {
           return _error("Ya existe una compra con la factura #" + idFacturaLimpia + ".");
         }
@@ -765,14 +765,14 @@ DAO.createCartera(record);
           CACHE.recoverFromStale();
         }
 
-        var todosProductos = DAO_PRODUCTOS.listar();
-        var productoMap = {};
-        for (var _pm = 0; _pm < todosProductos.length; _pm++) {
+        const todosProductos = DAO_PRODUCTOS.listar();
+        const productoMap = {};
+        for (let _pm = 0; _pm < todosProductos.length; _pm++) {
           productoMap[todosProductos[_pm].id] = todosProductos[_pm];
         }
 
         const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-        var fv = fechaVencimiento;
+        let fv = fechaVencimiento;
         if (!fv) { fv = _today(); fv.setDate(fv.getDate() + 30); }
         fv = _safeDate(fv);
         if (!fv) fv = _today();
@@ -788,27 +788,27 @@ DAO.createCartera(record);
 
         DAO_COMPRAS.crearCompra(compraRecord);
 
-        var subtotalAcumulado = 0;
-        for (var j = 0; j < items.length; j++) {
-          var item = items[j];
-          var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
-          var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
-          var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+        const subtotalAcumulado = 0;
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
+          const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+          const cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+          const pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
           if (!prodId || cant <= 0) continue;
-          var sub = cant * pUnit;
+          const sub = cant * pUnit;
           subtotalAcumulado += sub;
-          var detId = "DET" + Date.now() + j;
+          const detId = "DET" + Date.now() + j;
           DAO_COMPRAS.crearDetalleCompra({
             id: detId, id_compra: idCompra, id_producto: prodId,
             cantidad: cant, precio_unitario: pUnit, subtotal: sub,
           });
-          var prodExistente = productoMap[prodId];
-          var email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+          const prodExistente = productoMap[prodId];
+          const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
 
           if (prodExistente) {
             tx.snapshotProductoRows([prodExistente.rowIndex]);
-            var stockResult = DAO_PRODUCTOS.incrementarStock(prodId, cant);
-            var kardexId = "KDX" + Date.now() + "_" + prodId + "_" + j;
+            const stockResult = DAO_PRODUCTOS.incrementarStock(prodId, cant);
+            const kardexId = "KDX" + Date.now() + "_" + prodId + "_" + j;
             DAO_COMPRAS.crearMovimientoKardex({
               id: kardexId,
               fecha: new Date(),
@@ -822,11 +822,11 @@ DAO.createCartera(record);
               usuario: email
             });
           } else {
-            var _nombreItem = String(item.nombre || "").trim();
+            const _nombreItem = String(item.nombre || "").trim();
             if (_nombreItem) {
               tx.markProductoPreAppend();
-              var pCompra = _parseMoneda(item.precio_compra || item.precio_unitario || item.precio || 0, 0);
-              var creado = DAO_PRODUCTOS.crear({
+              const pCompra = _parseMoneda(item.precio_compra || item.precio_unitario || item.precio || 0, 0);
+              const creado = DAO_PRODUCTOS.crear({
                 id: prodId || undefined,
                 nombre: _nombreItem,
                 precio_compra: pCompra,
@@ -834,10 +834,10 @@ DAO.createCartera(record);
                 categoria: String(item.categoria || "").trim(),
               });
               tx.markProductoPostAppend();
-              var prodIdCreado = creado.id;
+              const prodIdCreado = creado.id;
               productoMap[prodIdCreado] = DAO_PRODUCTOS.obtener(prodIdCreado);
-              var stockResult = DAO_PRODUCTOS.incrementarStock(prodIdCreado, cant);
-              var kardexId = "KDX" + Date.now() + "_" + prodIdCreado + "_" + j;
+              const stockResult = DAO_PRODUCTOS.incrementarStock(prodIdCreado, cant);
+              const kardexId = "KDX" + Date.now() + "_" + prodIdCreado + "_" + j;
               DAO_COMPRAS.crearMovimientoKardex({
                 id: kardexId,
                 fecha: new Date(),
@@ -905,9 +905,9 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
   },
 
   procesarPagoProveedorAtomic(idCompra, monto, referencia) {
-    var idCompraLimpio = String(idCompra || "").trim();
+    const idCompraLimpio = String(idCompra || "").trim();
     if (!idCompraLimpio) return _error("ID de compra inválido.");
-    var montoLimpio = _parseMoneda(monto, NaN);
+    const montoLimpio = _parseMoneda(monto, NaN);
     if (isNaN(montoLimpio) || montoLimpio <= 0) return _error("Monto inválido.");
 
     const MAX_RETRIES = 3;
@@ -917,7 +917,7 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
       const tx = _Transaction.create();
 
       try {
-        var compra = DAO_COMPRAS.getCompraById(idCompraLimpio);
+        const compra = DAO_COMPRAS.getCompraById(idCompraLimpio);
         if (!compra) return _error("Compra no encontrada: " + idCompraLimpio);
         if (compra.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) {
           return _error("La compra ya está pagada.");
@@ -925,10 +925,10 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
 
         lockAcquired = LOCK_MANAGER.acquireResourceLock(compra.id_proveedor);
 
-        var nuevoSaldo = Math.max(0, compra.saldo - montoLimpio);
-        var nuevoEstado = nuevoSaldo <= 0 ? COMPRAS_CONFIG.ESTADOS.PAGADA : COMPRAS_CONFIG.ESTADOS.PARCIAL;
+        const nuevoSaldo = Math.max(0, compra.saldo - montoLimpio);
+        const nuevoEstado = nuevoSaldo <= 0 ? COMPRAS_CONFIG.ESTADOS.PAGADA : COMPRAS_CONFIG.ESTADOS.PARCIAL;
 
-        var pagoId = "PAG" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+        const pagoId = "PAG" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
 
         tx.begin();
         tx.snapshotCompraRow(compra.rowIndex);
@@ -1009,16 +1009,16 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
   },
 
   getVencimientosProximos(dias) {
-    var hoy = _today();
-    var limite = new Date(hoy.getTime() + dias * 86400000);
+    const hoy = _today();
+    const limite = new Date(hoy.getTime() + dias * 86400000);
 
-    var cartera = DOMAIN.getCartera(null, null, 5000, 0).items || [];
-    var vencimientos = [];
+    const cartera = DOMAIN.getCartera(null, null, 5000, 0).items || [];
+    const vencimientos = [];
 
-    for (var i = 0; i < cartera.length; i++) {
-      var c = cartera[i];
+    for (let i = 0; i < cartera.length; i++) {
+      const c = cartera[i];
       if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
-      var fv = _safeDate(c.fecha_vencimiento);
+      const fv = _safeDate(c.fecha_vencimiento);
       if (!fv) continue;
       if (fv.getTime() >= hoy.getTime() && fv.getTime() <= limite.getTime()) {
         vencimientos.push({
@@ -1033,15 +1033,15 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       }
     }
 
-    var compras = DAO_COMPRAS.getCompras(null, null);
-    var tercerosMap = {};
+    const compras = DAO_COMPRAS.getCompras(null, null);
+    const tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
     }
-    for (var j = 0; j < compras.length; j++) {
-      var cp = compras[j];
+    for (let j = 0; j < compras.length; j++) {
+      const cp = compras[j];
       if (cp.estado === COMPRAS_CONFIG.ESTADOS.PAGADA) continue;
-      var cfv = _safeDate(cp.fecha_vencimiento);
+      const cfv = _safeDate(cp.fecha_vencimiento);
       if (!cfv) continue;
       if (cfv.getTime() >= hoy.getTime() && cfv.getTime() <= limite.getTime()) {
         vencimientos.push({
@@ -1064,24 +1064,24 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
   getRankingDeudores(topN) {
     if (topN === undefined) topN = 10;
     CACHE.refresh();
-    var cartera = CACHE.cartera || [];
-    var tercerosMap = {};
+    const cartera = CACHE.cartera || [];
+    const tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t; });
     }
 
-    var hoy = _today();
-    var deudores = {};
+    const hoy = _today();
+    const deudores = {};
 
-    for (var i = 0; i < cartera.length; i++) {
-      var c = cartera[i];
+    for (let i = 0; i < cartera.length; i++) {
+      const c = cartera[i];
       if (c.tipo !== CARTERA_CONFIG.TIPOS.CXC) continue;
       if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
-      var fv = _safeDate(c.fecha_vencimiento);
+      const fv = _safeDate(c.fecha_vencimiento);
       if (!fv || fv.getTime() >= hoy.getTime()) continue;
 
       if (!deudores[c.id_tercero]) {
-        var t = tercerosMap[c.id_tercero] || {};
+        const t = tercerosMap[c.id_tercero] || {};
         deudores[c.id_tercero] = {
           id: c.id_tercero,
           nombre: t.nombre || "DESCONOCIDO",
@@ -1090,36 +1090,36 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           max_dias: 0,
         };
       }
-      var d = deudores[c.id_tercero];
+      const d = deudores[c.id_tercero];
       d.saldo_vencido += c.saldo;
       d.total_facturas++;
-      var dd = Math.floor((hoy.getTime() - fv.getTime()) / 86400000);
+      const dd = Math.floor((hoy.getTime() - fv.getTime()) / 86400000);
       if (dd > d.max_dias) d.max_dias = dd;
     }
 
-    var ranking = Object.values(deudores);
+    const ranking = Object.values(deudores);
     ranking.sort(function(a, b) { return b.saldo_vencido - a.saldo_vencido; });
     return ranking.slice(0, topN);
   },
 
   getConcentracionProveedores() {
     CACHE.refresh();
-    var cartera = CACHE.cartera || [];
-    var tercerosMap = {};
+    const cartera = CACHE.cartera || [];
+    const tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t; });
     }
 
-    var proveedores = {};
-    var totalCxP = 0;
+    const proveedores = {};
+    const totalCxP = 0;
 
-    for (var i = 0; i < cartera.length; i++) {
-      var c = cartera[i];
+    for (let i = 0; i < cartera.length; i++) {
+      const c = cartera[i];
       if (c.tipo !== CARTERA_CONFIG.TIPOS.CXP) continue;
       if (c.estado === CARTERA_CONFIG.ESTADOS.CANCELADA) continue;
 
       if (!proveedores[c.id_tercero]) {
-        var t = tercerosMap[c.id_tercero] || {};
+        const t = tercerosMap[c.id_tercero] || {};
         proveedores[c.id_tercero] = {
           id: c.id_tercero,
           nombre: t.nombre || "DESCONOCIDO",
@@ -1130,7 +1130,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       totalCxP += c.saldo;
     }
 
-    var result = Object.values(proveedores);
+    const result = Object.values(proveedores);
     result.forEach(function(p) {
       p.porcentaje = totalCxP > 0 ? Math.round((p.saldo / totalCxP) * 10000) / 100 : 0;
     });
@@ -1146,11 +1146,11 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
     if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
 
-    for (var _i = 0; _i < items.length; _i++) {
-      var _item = items[_i];
-      var _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
-      var _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
-      var _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
+    for (let _i = 0; _i < items.length; _i++) {
+      const _item = items[_i];
+      const _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
+      const _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
+      const _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
       if (!_pid) return _error("Producto inválido en el ítem #" + (_i + 1) + ".");
       if (_cant <= 0) return _error("Cantidad inválida en el ítem #" + (_i + 1) + ".");
       if (_pUnit <= 0) return _error("Precio unitario inválido en el ítem #" + (_i + 1) + ".");
@@ -1177,33 +1177,33 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         }
 
         // Verificar stock disponible y crear movimiento
-        var subtotalAcumulado = 0;
-        for (var j = 0; j < items.length; j++) {
-          var item = items[j];
-          var prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
-          var cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
-          var pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+        const subtotalAcumulado = 0;
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
+          const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+          const cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+          const pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
           if (!prodId || cant <= 0) continue;
-          var sub = cant * pUnit;
+          const sub = cant * pUnit;
           subtotalAcumulado += sub;
 
           // Verificar stock y reducir
           try {
-            var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-            var prodData = prodSheet.getDataRange().getValues();
-            for (var p = 1; p < prodData.length; p++) {
-              var pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
+            const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+            const prodData = prodSheet.getDataRange().getValues();
+            for (let p = 1; p < prodData.length; p++) {
+              const pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
               if (pid === prodId) {
-                var currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
+                const currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
                 if (currentStock < cant) {
                   return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
                 }
-                var nuevoStock = currentStock - cant;
+                const nuevoStock = currentStock - cant;
                 prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(nuevoStock);
 
                 // Registrar salida en kardex
-                var kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
-                var email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+                const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
+                const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
                 DAO_COMPRAS.crearMovimientoKardex({
                   id: kardexId,
                   fecha: new Date(),
@@ -1225,8 +1225,8 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         }
 
         // Crear registro de venta en cartera
-        var idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
-        var carteraRecord = {
+        const idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+        const carteraRecord = {
           id: idVenta,
           fecha: new Date(),
           id_tercero: idCliente,
@@ -1246,7 +1246,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         CACHE.invalidateCartera();
 
         // Registrar en libro diario
-        var usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+        const usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
         LIBRO_DIARIO.registrarVenta(
           new Date(),
           idVenta,
@@ -1309,10 +1309,10 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
   },
 
   getRotacionInventario(dias) {
-    var movimientos = this.getKardex(1000);
-    var rotacion = {};
-    for (var i = 0; i < movimientos.length; i++) {
-      var m = movimientos[i];
+    const movimientos = this.getKardex(1000);
+    const rotacion = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
       if (!rotacion[m.id_producto]) {
         rotacion[m.id_producto] = { entradas: 0, salidas: 0, total: 0 };
       }

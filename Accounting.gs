@@ -62,7 +62,10 @@ const LIBRO_DIARIO = {
   },
 
   _registrarMovimiento(fecha, tipo, id, tercero, monto, usuario, descripcion) {
+    // === INICIO FIX RACE-CONDITION ===
+    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
     try {
+    // === FIN FIX RACE-CONDITION ===
       const sheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
       const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
       const montoLimpio = _parseMoneda(monto, 0);
@@ -91,8 +94,12 @@ const LIBRO_DIARIO = {
 
       return { success: true, id: idLimpio };
     } catch (e) {
-      Logger.log("ERROR LIBRO_DIARIO: " + e.toString());
+      Logger.log("ERROR LIBRO_DIARIO: Error en operación");
       return { success: false, error: e.message };
+    } finally {
+      // === INICIO FIX RACE-CONDITION ===
+      if (lock) lock.releaseLock();
+      // === FIN RACE-CONDITION ===
     }
   },
 

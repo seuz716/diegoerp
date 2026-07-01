@@ -137,7 +137,7 @@ const SPREADSHEET_ID_FALLBACK = "";
 
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
-    var ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+    const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
     if (ssId) {
       _SPREADSHEET_CACHE = SpreadsheetApp.openById(ssId);
     } else if (SPREADSHEET_ID_FALLBACK) {
@@ -414,7 +414,6 @@ function _safeDate(v) {
     if (typeof v === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v.trim())) {
       const parts = v.trim().split('/');
       d = new Date(parts[2] + '-' + parts[1].padStart(2, '0') + '-' + parts[0].padStart(2, '0'));
-      Logger.log("_safeDate: convirtió formato dd/mm/yyyy '" + v + "' a '" + d.toISOString() + "'");
     }
     
     if (!_isValidDate(d)) {
@@ -429,6 +428,10 @@ function _safeDate(v) {
       return null;
     }
     return normalized;
+  } catch (e) {
+    return null;
+  }
+}
   } catch (e) {
     return null;
   }
@@ -557,12 +560,12 @@ function setupSistema() {
     if (hoja) {
       mensaje += "✅ " + nombre + ": " + hoja.getLastRow() + " filas\n";
       if (nombre === "Productos") {
-        var lastCol = hoja.getLastColumn();
-        var expected = CONFIG.SCHEMA_definitions.PRODUCTOS;
-        var expectedNames = Object.values(expected);
+        let lastCol = hoja.getLastColumn();
+        const expected = CONFIG.SCHEMA_definitions.PRODUCTOS;
+        const expectedNames = Object.values(expected);
         if (lastCol > 0) {
-          var headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
-          for (var key in expected) {
+          const headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+          for (const key in expected) {
             if (headers.indexOf(expected[key]) === -1) {
               hoja.getRange(1, lastCol + 1).setValue(expected[key]);
               lastCol++;
