@@ -77,6 +77,136 @@ App.api = {
   getKardex: function (limit) { return callServer('getKardex', limit); },
 };
 
+// #43: Adapter layer — normalizes backend responses with defaults
+App.adapters = {
+  dashboard: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', porCobrar: 0, porPagar: 0, vencidaCxC: 0, vencidaCxP: 0, alertas: [] };
+    return {
+      porCobrar: Number(raw.porCobrar) || 0,
+      porPagar: Number(raw.porPagar) || 0,
+      vencidaCxC: Number(raw.vencidaCxC) || 0,
+      vencidaCxP: Number(raw.vencidaCxP) || 0,
+      alertas: Array.isArray(raw.alertas) ? raw.alertas.map(function (a) { return { id_tercero: a.id_tercero || '', nombre: a.nombre || '\u2014', saldo: Number(a.saldo) || 0, dias: Number(a.dias) || 0 }; }) : [],
+      proximosVencimientos7: raw.proximosVencimientos7,
+      proximosVencimientos15: raw.proximosVencimientos15,
+      proximosVencimientos30: raw.proximosVencimientos30,
+      topDeudores: Array.isArray(raw.topDeudores) ? raw.topDeudores.map(function (d) { return { nombre: d.nombre || '\u2014', saldo_vencido: Number(d.saldo_vencido) || 0, max_dias: Number(d.max_dias) || 0 }; }) : [],
+      concentracionProveedores: raw.concentracionProveedores ? { items: Array.isArray(raw.concentracionProveedores.items) ? raw.concentracionProveedores.items : [], total: Number(raw.concentracionProveedores.total) || 0 } : null,
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+      generatedAt: raw.generatedAt || '',
+      cacheHit: !!raw.cacheHit,
+    };
+  },
+  cartera: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', items: [], nextPageToken: null };
+    var items = Array.isArray(raw.items) ? raw.items.map(function (item) {
+      return {
+        id: item.id || '',
+        rowIndex: item.rowIndex || 0,
+        fecha: item.fecha || null,
+        id_tercero: item.id_tercero || '',
+        origen_id: item.origen_id || '',
+        total: Number(item.total) || 0,
+        saldo: Number(item.saldo) || 0,
+        tipo: item.tipo || '',
+        estado: item.estado || '',
+        fecha_vencimiento: item.fecha_vencimiento || null,
+        version: Number(item.version) || 0,
+        nombre_tercero: item.nombre_tercero || '\u2014',
+        dias_vencido: Number(item.dias_vencido) || 0,
+      };
+    }) : [];
+    return {
+      items: items,
+      nextPageToken: raw.nextPageToken != null ? raw.nextPageToken : null,
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+      generatedAt: raw.generatedAt || '',
+      cacheHit: !!raw.cacheHit,
+    };
+  },
+  terceros: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', items: [] };
+    var rawItems = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : []);
+    return {
+      items: rawItems.map(function (t) {
+        return {
+          id: t.id || '',
+          nombre: t.nombre || '\u2014',
+          telefono: t.telefono || '',
+          tipo: t.tipo || '',
+          limite_credito: Number(t.limite_credito) || 0,
+          activo: t.activo !== false,
+        };
+      }),
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+      generatedAt: raw.generatedAt || '',
+      cacheHit: !!raw.cacheHit,
+    };
+  },
+  productos: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', productos: [] };
+    var list = Array.isArray(raw.productos) ? raw.productos : (Array.isArray(raw) ? raw : []);
+    return {
+      productos: list.map(function (p) {
+        return {
+          id: p.id || '',
+          nombre: p.nombre || '\u2014',
+          stock: Number(p.stock) || 0,
+          precio_compra: Number(p.precio_compra) || 0,
+          precio_venta: Number(p.precio_venta) || 0,
+          categoria: p.categoria || '',
+          activo: p.activo || 'ACTIVO',
+        };
+      }),
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+      generatedAt: raw.generatedAt || '',
+      cacheHit: !!raw.cacheHit,
+    };
+  },
+  compras: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', items: [] };
+    return {
+      items: Array.isArray(raw.items) ? raw.items.map(function (c) {
+        return {
+          id: c.id || '',
+          fecha: c.fecha || null,
+          id_proveedor: c.id_proveedor || '',
+          id_factura: c.id_factura || '',
+          total: Number(c.total) || 0,
+          saldo: Number(c.saldo) || 0,
+          pagado: Number(c.pagado) || 0,
+          estado: c.estado || 'PENDIENTE',
+          fecha_vencimiento: c.fecha_vencimiento || null,
+          nombre_proveedor: c.nombre_proveedor || '\u2014',
+        };
+      }) : [],
+      total: Number(raw.total) || 0,
+      page: Number(raw.page) || 0,
+      pageSize: Number(raw.pageSize) || 0,
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+      generatedAt: raw.generatedAt || '',
+      cacheHit: !!raw.cacheHit,
+    };
+  },
+  ventaResult: function (raw) {
+    if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error al procesar venta') : 'Sin respuesta', success: false };
+    return {
+      success: true,
+      total: Number(raw.total) || 0,
+      tipo: raw.tipo || 'CONTADO',
+      idTercero: raw.idTercero || null,
+      state: raw.state || { transitions: [], durationMs: 0 },
+      correlationId: raw.correlationId || '',
+      executionTimeMs: raw.executionTimeMs || 0,
+    };
+  },
+};
+
 App.formatearMoneda = function (centavos) {
   if (centavos == null || isNaN(centavos)) return '$0';
   return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
@@ -147,8 +277,25 @@ function mostrarVacio(contenedor, mensaje) {
   contenedor.appendChild(div);
 }
 
+// #47: Client-side validation layer (mirrors backend INPUT_VALIDATOR)
+App.validate = {
+  required: function (value, fieldName) { if (!value || !value.toString().trim()) return 'El campo ' + fieldName + ' es obligatorio.'; return ''; },
+  nit: function (value) { if (!value || !value.toString().trim()) return 'El NIT es obligatorio.'; if (!/^[\d-]+$/.test(value.toString().trim())) return 'El NIT solo puede contener d\u00edgitos y guiones.'; return ''; },
+  moneda: function (value, fieldName) { var n = Number(value); if (isNaN(n) || n < 0) return 'El campo ' + fieldName + ' debe ser un valor v\u00e1lido mayor o igual a 0.'; return ''; },
+  select: function (value, fieldName) { if (!value) return 'Seleccione un ' + fieldName + '.'; return ''; },
+  referencia: function (value) { if (!value || !value.toString().trim()) return 'La referencia es obligatoria.'; return ''; },
+  all: function (rules) {
+    for (var i = 0; i < rules.length; i++) {
+      var err = rules[i].fn(rules[i].value, rules[i].label);
+      if (err) return err;
+    }
+    return '';
+  },
+};
+
+// #46: Frontend cache with ultra-short TTL (backend has longer TTL)
 App.data = (function () {
-  var CACHE_TTL = { dashboard: 60000, cartera: 45000, terceros: 120000 };
+  var CACHE_TTL = { dashboard: 30 * 1000, cartera: 20 * 1000, terceros: 30 * 1000 };
   var _store = { dashboard: null, cartera: null, terceros: null };
   var _timestamps = { dashboard: 0, cartera: 0, terceros: 0 };
   var _deps = { cartera: ['dashboard'], dashboard: [], terceros: [] };
