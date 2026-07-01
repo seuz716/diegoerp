@@ -682,8 +682,8 @@ function crearProducto(nombre, precioCompra, precioVenta, categoria) {
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("crearProducto");
-    AuthService.checkPermission("registrar_compra");
-    const nombreLimpio = INPUT_VALIDATOR.sanitizeString(nombre, 200);
+AuthService.checkPermission("revisar_inventario");
+     const nombreLimpio = INPUT_VALIDATOR.sanitizeString(nombre, 200);
     if (!nombreLimpio) throw new Error("Nombre del producto es requerido");
     const pc = INPUT_VALIDATOR.parseMoneda(precioCompra, 0);
     const pv = INPUT_VALIDATOR.parseMoneda(precioVenta, 0);
@@ -718,8 +718,8 @@ function actualizarProducto(id, cambios) {
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("actualizarProducto");
-    AuthService.checkPermission("registrar_compra");
-    const idValidado = INPUT_VALIDATOR.validateId(id);
+AuthService.checkPermission("revisar_inventario");
+     const idValidado = INPUT_VALIDATOR.validateId(id);
     if (!cambios || typeof cambios !== 'object') throw new Error("Cambios inválidos");
     const cambiosLimpios = {};
     if (cambios.nombre !== undefined) cambiosLimpios.nombre = INPUT_VALIDATOR.sanitizeString(cambios.nombre, 200);
@@ -969,8 +969,8 @@ function toggleActivoProducto(id) {
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("actualizarProducto");
-    AuthService.checkPermission("registrar_compra");
-    const result = DAO_PRODUCTOS.toggleActivo(id);
+AuthService.checkPermission("revisar_inventario");
+     const result = DAO_PRODUCTOS.toggleActivo(id);
     return { success: true, id: result.id, activo: result.activo, correlationId: correlationId };
   } catch (e) {
     return _safeError("toggleActivoProducto", e, correlationId);

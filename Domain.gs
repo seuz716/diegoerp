@@ -441,12 +441,12 @@ if (resultado.isUpdate) {
   withTransaction(correlationId, operation) {
     const txn = TransactionManager.begin(correlationId || ('txn_' + Date.now()));
     txn.startTime = Date.now();
-    const MAX_TIMEOUT = 45000;
+    const MAX_TIMEOUT = 25000;
     
     try {
       const result = operation(txn);
       if (Date.now() - txn.startTime > MAX_TIMEOUT) {
-        Logger.log("[TXN] WARNING: Transaction exceeded 45s timeout");
+        Logger.log("[TXN] WARNING: Transaction exceeded 25s timeout");
       }
       txn.commit();
       return result;
@@ -1188,17 +1188,17 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           CACHE.recoverFromStale();
         }
 
-        // OPTIMIZED: Read product sheet once with exact range
-         const C = CONFIG.COLUMNS.PRODUCTOS;
-         const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-         const lastRow = prodSheet.getLastRow();
-         const numCols = Math.max.apply(null, Object.values(C)) + 1;
-         const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, numCols).getValues() : [];
-         const prodIndex = {};
-         for (let p = 0; p < prodData.length; p++) {
-           const pid = String(prodData[p][C.id] || "").trim();
-           if (pid) prodIndex[pid] = p;
-         }
+        // OPTIMIZED: Read only ID and Stock columns from product sheet
+        const C = CONFIG.COLUMNS.PRODUCTOS;
+        const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const lastRow = prodSheet.getLastRow();
+        const colCount = Math.max(C.id, C.stock) + 1;
+        const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
+        const prodIndex = {};
+        for (let p = 0; p < prodData.length; p++) {
+          const pid = String(prodData[p][C.id] || "").trim();
+          if (pid) prodIndex[pid] = p;
+        }
 
         // Verificar stock disponible y reducir (in-memory)
         let subtotalAcumulado = 0;
