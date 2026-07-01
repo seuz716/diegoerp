@@ -130,3 +130,8 @@ Test Suite (runAllRegressionTests): 30 tests
     - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
     - Business Validation: 3 tests (credit limit, idempotency)
     - API Validation: 5 tests (validateTipo, validatePageSize, validateEstado, validatePageToken, getProductos)
+
+### 🔒 Seguridad - Logging Sanitizado
+- ✅ AuthService logging: removed keyName/secretName from console.log output
+- ✅ API._safeError: removed stack trace from console output
+- ✅ AuditLog error logs: replaced e.toString() with generic messages
