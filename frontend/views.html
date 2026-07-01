@@ -326,9 +326,6 @@ function exportarLibroDiarioCSV() {
   
   App.api.exportarLibroDiario()
     .then(function (resp) {
-      btn.disabled = false;
-      btn.textContent = textoOriginal;
-      
       if (resp && resp.success) {
         var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
@@ -341,11 +338,13 @@ function exportarLibroDiarioCSV() {
       } else {
         showToast(resp.error || 'Error exportando libro diario', 'error');
       }
-    })
+})
     .catch(function (err) {
+      showToast(err.message || 'Error de conexión', 'error');
+    })
+    .finally(function () {
       btn.disabled = false;
       btn.textContent = textoOriginal;
-      showToast(err.message || 'Error de conexiÃ³n', 'error');
     });
 }
 
@@ -358,9 +357,6 @@ function exportarFlujoCajaCSV() {
   
   App.api.exportarFlujoCaja()
     .then(function (resp) {
-      btn.disabled = false;
-      btn.textContent = textoOriginal;
-      
       if (resp && resp.success) {
         var blob = new Blob([resp.csv], { type: 'text/csv;charset=utf-8;' });
         var url = URL.createObjectURL(blob);
@@ -373,11 +369,13 @@ function exportarFlujoCajaCSV() {
       } else {
         showToast(resp.error || 'Error exportando flujo', 'error');
       }
-    })
+})
     .catch(function (err) {
+      showToast(err.message || 'Error de conexión', 'error');
+    })
+    .finally(function () {
       btn.disabled = false;
       btn.textContent = textoOriginal;
-      showToast(err.message || 'Error de conexiÃ³n', 'error');
     });
 }
 
@@ -1196,9 +1194,7 @@ function cargarProductos() {
           '<button class="btn btn-sm btn-outline btn-editar-producto" data-id="' + escapeAttr(p.id) + '" style="font-size:var(--text-micro);min-height:auto;padding:var(--space-1) var(--space-2);">Editar</button>' +
           '<button class="btn btn-sm ' + (activo ? 'btn-outline' : 'btn-accent') + ' btn-toggle-producto" data-id="' + escapeAttr(p.id) + '" data-activo="' + (activo ? 'true' : 'false') + '" style="font-size:var(--text-micro);min-height:auto;padding:var(--space-1) var(--space-2);">' + (activo ? 'Desactivar' : 'Activar') + '</button>' +
         '</td>';
-      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
-        ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo']})
-        : htmlStr;
+      safeInnerHTML(tr, htmlStr);
       body.appendChild(tr);
     });
   }).catch(function (err) {
@@ -1360,9 +1356,6 @@ function cargarCompras(append) {
             ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + escapeAttr(c.id) + '" data-saldo="' + escapeAttr(c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
             : '') +
         '</td>';
-      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
-        ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-saldo', 'id']})
-        : htmlStr; // Safe: valores escapeados con escapeHtml() + validaciÃ³n numÃ©rica
 
       body.appendChild(tr);
     });
@@ -1623,9 +1616,6 @@ function cargarVencimientos() {
         '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
         '<td>' + escapeHtml(String(v.dias_para_vencer || 0)) + ' d' + '</td>' +
         '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : 'â€”') + '</td>';
-      tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
-        ? DOMPurify.sanitize(vencHtml, {ALLOWED_TAGS: ['td', 'tr', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan']})
-        : vencHtml;
       body.appendChild(tr);
     });
   }).catch(function (err) {
