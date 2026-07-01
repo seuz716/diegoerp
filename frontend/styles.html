@@ -1,4 +1,9 @@
 <style>
+@supports not (font-family: var(--font-body)) {
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+}
+.skip-link{position:absolute;left:-9999px;top:auto;width:auto;height:auto;overflow:hidden;word-wrap:normal;}
+.skip-link:focus{left:0;z-index:9999;background:var(--accent);color:var(--bg);padding:var(--space-2)}}
 html{scroll-behavior:smooth;}
 :root {
   --bg: #F7F5F0;
@@ -22,10 +27,6 @@ html{scroll-behavior:smooth;}
   --mono: 'DM Mono', Consolas, 'Liberation Mono', monospace;
   --display: 'Libre Baskerville', Georgia, 'Times New Roman', serif;
   --font-body: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-synthesis: style weight;
-  font-feature-settings: 'kern' 1;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   --radius: 0px;
   --text-xs: clamp(11px, 2.5vw, 12px);
   --text-micro: clamp(11px, 2.5vw, 12px);
@@ -82,7 +83,7 @@ html{scroll-behavior:smooth;}
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{font-size:16px;}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:100dvh;line-height:1.5;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:var(--text-body);display:flex;min-height:100dvh;line-height:1.5;-webkit-text-size-adjust:100%;text-size-adjust:100%;font-synthesis:style weight;}
 
 /* ── SIDEBAR ── */
 #sidebar{
