@@ -395,6 +395,14 @@ function escapeAttr(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function safeInnerHTML(el, html) {
+  if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+    el.innerHTML = DOMPurify.sanitize(html, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo', 'data-saldo', 'id']} );
+  } else {
+    console.error('[SECURITY] DOMPurify no disponible - se omite innerHTML para prevenir XSS');
+  }
+}
+
 // Hierarchy of error types for differentiated feedback
 var ERROR_TYPES = { NETWORK: 'network', VALIDATION: 'validation', SERVER: 'server' };
 
