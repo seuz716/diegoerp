@@ -826,10 +826,14 @@ function confirmarAccion(lineas, onConfirm) {
   function onCancel() { cleanup(); }
   function onEscape(e) { if (e.key === 'Escape') onCancel(); }
   function onOverlayClick(e) { if (e.target === modal) onCancel(); }
+  function onKeydown(e) {
+    if (e.key === 'Enter') onOk();
+    else if (e.key === 'Escape') onCancel();
+  }
   btnOk.addEventListener('click', onOk);
   btnCan.addEventListener('click', onCancel);
   modal.addEventListener('click', onOverlayClick);
-  modal.addEventListener('keydown', onEscape);
+  modal.addEventListener('keydown', onKeydown);
 }
 
 function guardarTercero() {
