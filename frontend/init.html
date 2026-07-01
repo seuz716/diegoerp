@@ -50,6 +50,11 @@ document.body.appendChild(liveRegion);
 // NavegaciÃ³n
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
+    var currentView = document.querySelector('.view.active');
+    if (currentView) {
+      var prevViewId = currentView.id.replace('view-', '');
+      guardarScroll(prevViewId);
+    }
     document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active', 'is-loading'); b.removeAttribute('aria-current'); });
     btn.classList.add('active');
     btn.setAttribute('aria-current', 'page');
@@ -60,10 +65,11 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       v.setAttribute('aria-hidden', 'true');
     });
     document.getElementById('error-banner').classList.remove('show');
-    var view = document.getElementById('view-' + viewId);
+var view = document.getElementById('view-' + viewId);
     if (view) {
       view.classList.add('active');
       view.removeAttribute('aria-hidden');
+      restaurarScroll(viewId);
     }
     var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', productos: 'Productos', inventario: 'Inventario', vencimientos: 'Vencimientos' };
     document.title = 'MicroERP Â· ' + (viewTitles[viewId] || viewId);
@@ -187,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function () {
         App.api.toggleActivoProducto(id2).then(function () {
           cargarProductos();
           App.api.getProductos().then(function (data) {
-            App.productosCache = (data && data.productos) || data || [];
+            App.state.productos.cache = (data && data.productos) || data || [];
           });
         }).catch(function (err) {
           showToast(err.message || 'Error al cambiar estado', 'error');
@@ -223,7 +229,20 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   document.getElementById('btn-actualizar-venc').addEventListener('click', cargarVencimientos);
-  document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
+document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
+  // Numeric validation for cents-only fields
+  document.querySelectorAll('input[type="number"][data-cents-only]').forEach(function(input) {
+    input.addEventListener('input', function() {
+      if (this.value.includes('.') || this.value.includes(',')) {
+        this.value = Math.round(parseFloat(this.value) * 100);
+        showToast('Valor convertido a centavos', 'warning');
+      }
+      if (parseFloat(this.value) < 0) {
+        this.value = '';
+        showToast('El valor no puede ser negativo', 'error');
+      }
+    });
+  });
 });
 
 // Event listeners sueltos

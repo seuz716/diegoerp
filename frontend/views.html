@@ -1,4 +1,4 @@
-﻿<script>
+<script>
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // VIEWS â€” Controladores de vista del frontend MicroERP
 // ExtraÃ­do de index_v3_SaaS.html
@@ -6,114 +6,100 @@
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 1. DASHBOARD
+// Helper: removes loading overlay from a view
+function _cleanupView(view) {
+  view.classList.remove('is-loading');
+  view.removeAttribute('aria-busy');
+}
+
+// Helper: renders alert rows into container
+function _renderAlertas(container, alertas) {
+  container.innerHTML = '';
+  if (alertas.length === 0) {
+    mostrarVacio(container, 'Sin alertas');
+    return;
+  }
+  alertas.forEach(function (a, i) {
+    var row = document.createElement('div');
+    row.className = 'alert-row' + (i === 0 ? ' critical' : '');
+    var rankDiv = document.createElement('div');
+    rankDiv.className = 'rank' + (i === 0 ? ' top' : '');
+    rankDiv.textContent = '#' + (i + 1);
+    row.appendChild(rankDiv);
+    var infoDiv = document.createElement('div');
+    var nameDiv = document.createElement('div');
+    nameDiv.className = 'alert-name';
+    nameDiv.textContent = a.nombre || '\u2014';
+    var idDiv = document.createElement('div');
+    idDiv.className = 'alert-id';
+    idDiv.textContent = a.id_tercero || '';
+    infoDiv.appendChild(nameDiv);
+    infoDiv.appendChild(idDiv);
+    row.appendChild(infoDiv);
+    var rightDiv = document.createElement('div');
+    rightDiv.className = 'alert-right';
+    var amountDiv = document.createElement('div');
+    amountDiv.className = 'alert-amount';
+    amountDiv.textContent = App.formatearMoneda(a.saldo);
+    var diasDiv = document.createElement('div');
+    diasDiv.className = 'alert-dias';
+    diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? '\u00eda' : '\u00edas');
+    rightDiv.appendChild(amountDiv);
+    rightDiv.appendChild(diasDiv);
+    row.appendChild(rightDiv);
+    container.appendChild(row);
+  });
+}
+
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
   view.classList.add('is-loading');
   view.setAttribute('aria-busy', 'true');
-
   var alertsBody = document.getElementById('alerts-body');
   mostrarLoader(alertsBody);
-
-  var promise;
-  if (App.data.dashboard) {
-    promise = Promise.resolve(App.data.dashboard);
-  } else {
-    promise = App.api.getDashboard();
-  }
-
+  var promise = App.data.dashboard ? Promise.resolve(App.data.dashboard) : App.api.getDashboard();
   return promise.then(function (data) {
     if (!App.data.dashboard) App.data.dashboard = data;
-      if (data.success === false || data.error) {
-        mostrarError(alertsBody, data.error || 'Error al cargar dashboard');
-        view.classList.remove('is-loading');
-        return;
+    if (data.success === false || data.error) {
+      mostrarError(alertsBody, data.error || 'Error al cargar dashboard');
+      return;
+    }
+    document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
+    document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
+    document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
+    document.getElementById('stat-vencido-cxp').textContent = App.formatearMoneda(data.vencidaCxP);
+    document.getElementById('stat-exposicion').textContent = App.formatearMoneda(data.porCobrar - data.porPagar);
+    if (data.proximosVencimientos7 !== undefined) {
+      document.getElementById('stat-prox7').textContent = App.formatearMoneda(data.proximosVencimientos7);
+      document.getElementById('stat-prox15').textContent = App.formatearMoneda(data.proximosVencimientos15);
+      document.getElementById('stat-prox30').textContent = App.formatearMoneda(data.proximosVencimientos30);
+    }
+    if (data.topDeudores && data.topDeudores.length > 0) {
+      var top = data.topDeudores[0];
+      document.getElementById('stat-topdeudor').textContent = top.nombre || '\u2014';
+      document.getElementById('stat-topdeudor-meta').textContent = App.formatearMoneda(top.saldo_vencido) + ' (' + (top.max_dias || 0) + 'd)';
+    }
+    if (data.concentracionProveedores) {
+      var c = data.concentracionProveedores;
+      document.getElementById('stat-concprov').textContent = (c.items ? c.items.length : 0) + ' prov.';
+      document.getElementById('stat-concprov-meta').textContent = c.total ? App.formatearMoneda(c.total) : '\u2014';
+    }
+    App.api.getFlujoCajaResumen(30).then(function (flujo) {
+      if (flujo && flujo.success !== false) {
+        document.getElementById('stat-saldo-caja').textContent = App.formatearMoneda(flujo.saldo_actual);
+        document.getElementById('stat-flujo-neto').textContent = "30d: " + (flujo.neto >= 0 ? "+" : "") + App.formatearMoneda(flujo.neto);
       }
-      document.getElementById('stat-cobrar').textContent = App.formatearMoneda(data.porCobrar);
-      document.getElementById('stat-vencido-cxc').textContent = App.formatearMoneda(data.vencidaCxC);
-      document.getElementById('stat-pagar').textContent = App.formatearMoneda(data.porPagar);
-      document.getElementById('stat-vencido-cxp').textContent = App.formatearMoneda(data.vencidaCxP);
-      var expo = data.porCobrar - data.porPagar;
-      document.getElementById('stat-exposicion').textContent = App.formatearMoneda(expo);
-
-      if (data.proximosVencimientos7 !== undefined) {
-        document.getElementById('stat-prox7').textContent = App.formatearMoneda(data.proximosVencimientos7);
-        document.getElementById('stat-prox15').textContent = App.formatearMoneda(data.proximosVencimientos15);
-        document.getElementById('stat-prox30').textContent = App.formatearMoneda(data.proximosVencimientos30);
-      }
-      if (data.topDeudores && data.topDeudores.length > 0) {
-        var top = data.topDeudores[0];
-        document.getElementById('stat-topdeudor').textContent = top.nombre || 'â€”';
-        document.getElementById('stat-topdeudor-meta').textContent = App.formatearMoneda(top.saldo_vencido) + ' (' + (top.max_dias || 0) + 'd)';
-      }
-      if (data.concentracionProveedores) {
-        var c = data.concentracionProveedores;
-        var totalP = c.total || 0;
-        document.getElementById('stat-concprov').textContent = (c.items ? c.items.length : 0) + ' prov.';
-        document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : 'â€”';
-      }
-
-      App.api.getFlujoCajaResumen(30).then(function (flujo) {
-        if (flujo && flujo.success !== false) {
-          document.getElementById('stat-saldo-caja').textContent = App.formatearMoneda(flujo.saldo_actual);
-          document.getElementById('stat-flujo-neto').textContent = "30d: " + (flujo.neto >= 0 ? "+" : "") + App.formatearMoneda(flujo.neto);
-        }
-      }).catch(function () {
-      });
-
-      document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
-
-      var container = document.getElementById('alerts-body');
-      container.innerHTML = '';
-      if (data.alertas.length === 0) {
-        mostrarVacio(container, 'Sin alertas');
-      } else {
-        data.alertas.forEach(function (a, i) {
-          var row = document.createElement('div');
-          row.className = 'alert-row' + (i === 0 ? ' critical' : '');
-
-          var rankDiv = document.createElement('div');
-          rankDiv.className = 'rank' + (i === 0 ? ' top' : '');
-          rankDiv.textContent = '#' + (i + 1);
-          row.appendChild(rankDiv);
-
-          var infoDiv = document.createElement('div');
-          var nameDiv = document.createElement('div');
-          nameDiv.className = 'alert-name';
-          nameDiv.textContent = a.nombre || 'â€”';
-          var idDiv = document.createElement('div');
-          idDiv.className = 'alert-id';
-          idDiv.textContent = a.id_tercero || '';
-          infoDiv.appendChild(nameDiv);
-          infoDiv.appendChild(idDiv);
-          row.appendChild(infoDiv);
-
-          var rightDiv = document.createElement('div');
-          rightDiv.className = 'alert-right';
-          var amountDiv = document.createElement('div');
-          amountDiv.className = 'alert-amount';
-          amountDiv.textContent = App.formatearMoneda(a.saldo);
-          var diasDiv = document.createElement('div');
-          diasDiv.className = 'alert-dias';
-          diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? 'Ã­a' : 'Ã­as');
-          rightDiv.appendChild(amountDiv);
-          rightDiv.appendChild(diasDiv);
-          row.appendChild(rightDiv);
-
-          container.appendChild(row);
-        });
-      }
-
-      view.classList.remove('is-loading');
-      view.removeAttribute('aria-busy');
-    })
-    .catch(function (err) {
-      mostrarError(alertsBody, err.message || err);
-      showError(err.message || err);
-      view.classList.remove('is-loading');
-      view.removeAttribute('aria-busy');
-    });
+    }).catch(function () {});
+    document.getElementById('alert-count').textContent = data.alertas.length + ' cr' + (data.alertas.length === 1 ? 'tico' : 'ticos');
+    _renderAlertas(alertsBody, data.alertas);
+  }).catch(function (err) {
+    mostrarError(alertsBody, err.message || err);
+    showError(err.message || err);
+  }).then(function () {
+    _cleanupView(view);
+  });
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -401,17 +387,47 @@ function exportarFlujoCajaCSV() {
 
 // State now in App.state — see app.html
 
+function _renderLoadMore(nextToken) {
+  var loadMoreRow = document.getElementById('row-cargar-mas');
+  if (loadMoreRow) loadMoreRow.remove();
+  var tr = document.createElement('tr');
+  tr.id = 'row-cargar-mas';
+  var td = document.createElement('td');
+  td.colSpan = 5;
+  td.style.textAlign = 'center';
+  td.style.padding = 'var(--space-3)';
+  var btn = document.createElement('button');
+  btn.className = 'btn btn-outline btn-sm';
+  btn.style.margin = '0 auto';
+  btn.textContent = 'Cargar m\u00e1s';
+  btn.addEventListener('click', function () {
+    App.state.cartera.pageToken = nextToken;
+    cargarCartera(true);
+  });
+  td.appendChild(btn);
+  tr.appendChild(td);
+  return tr;
+}
+
+function _showRetry(container, fn) {
+  var btn = document.createElement('button');
+  btn.className = 'btn btn-sm';
+  btn.textContent = '\u21bb Reintentar';
+  btn.style.marginLeft = 'var(--space-3)';
+  btn.addEventListener('click', fn);
+  container.querySelector('.error-banner').appendChild(btn);
+}
+
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
-  view.setAttribute('aria-busy', 'true');
   view.classList.add('is-loading');
+  view.setAttribute('aria-busy', 'true');
   var tbody = document.querySelector('#view-cartera .data-table tbody');
   var tableSection = view.querySelector('.table-section');
 
   if (append !== true) {
     App.state.cartera.pageToken = 0;
-    tbody.innerHTML = ''; // Remover contenido previo inmediatamente, el overlay CSS se encarga del feedback visual
-    
+    tbody.innerHTML = '';
     tableSection.classList.remove('scroll-hint');
     setTimeout(function() {
       if (tableSection.scrollWidth > tableSection.clientWidth) {
@@ -420,9 +436,7 @@ function cargarCartera(append) {
     }, 500);
   } else {
     var loadMoreRow = document.getElementById('row-cargar-mas');
-    if (loadMoreRow) {
-      loadMoreRow.parentNode.removeChild(loadMoreRow);
-    }
+    if (loadMoreRow) loadMoreRow.remove();
   }
 
   var filterTipoEl = document.getElementById('filter-tipo');
@@ -432,12 +446,10 @@ function cargarCartera(append) {
 
   return App.api.getCartera(filtroTipo, filtroEstado, App.state.cartera.pageSize, App.state.cartera.pageToken)
     .then(function (res) {
-      if (append !== true) {
-        tbody.innerHTML = '';
-      }
+      if (append !== true) tbody.innerHTML = '';
 
       if (!res || (typeof res === 'object' && !res.items)) {
-        var errorMsg = 'Respuesta vacÃ­a del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
+        var errorMsg = 'Respuesta vac\u00eda del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
         App.api.getCarteraDebug(filtroTipo, filtroEstado)
           .then(function (debug) {
             var diagMsg = '';
@@ -464,7 +476,7 @@ function cargarCartera(append) {
             mostrarError(tbody, diagMsg + '</span>');
           })
           .catch(function () {
-            mostrarError(tbody, 'Respuesta vacÃ­a del servidor - diagnÃ³stico fallÃ³');
+            mostrarError(tbody, 'Respuesta vac\u00eda del servidor - diagn\u00f3stico fall\u00f3');
           });
         return;
       }
@@ -488,7 +500,6 @@ function cargarCartera(append) {
         data.forEach(function (item) {
           var estadoInfo = App.mapearEstadoCartera(item.estado);
           var isVencida = item.estado === 'VENCIDA';
-
           var tr = document.createElement('tr');
           if (isVencida) tr.className = 'row-red';
 
@@ -500,7 +511,7 @@ function cargarCartera(append) {
           var tdTercero = document.createElement('td');
           var nombreDiv = document.createElement('div');
           nombreDiv.className = 'td-bold';
-          nombreDiv.textContent = item.nombre_tercero || 'â€”';
+          nombreDiv.textContent = item.nombre_tercero || '\u2014';
           var idTerceroDiv = document.createElement('div');
           idTerceroDiv.className = 'td-muted';
           idTerceroDiv.textContent = item.id_tercero || '';
@@ -531,7 +542,7 @@ function cargarCartera(append) {
               var vencDiasDiv = document.createElement('div');
               vencDiasDiv.className = 'td-muted';
               vencDiasDiv.style.color = 'var(--red)';
-              vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'Ã­a' : 'Ã­as');
+              vencDiasDiv.textContent = item.dias_vencido + ' d\u00ed' + (item.dias_vencido === 1 ? 'a' : 'as');
               tdVenc.appendChild(vencFechaDiv);
               tdVenc.appendChild(vencDiasDiv);
             } else {
@@ -545,7 +556,7 @@ function cargarCartera(append) {
             var vencDashSpan = document.createElement('span');
             vencDashSpan.className = 'td-mono';
             vencDashSpan.style.fontSize = 'var(--text-sm)';
-            vencDashSpan.textContent = 'â€”';
+            vencDashSpan.textContent = '\u2014';
             tdVenc.appendChild(vencDashSpan);
           }
           tr.appendChild(tdVenc);
@@ -553,41 +564,18 @@ function cargarCartera(append) {
           tbody.appendChild(tr);
         });
 
-        if (nextToken !== null && nextToken !== undefined) {
-          var trLoadMore = document.createElement('tr');
-          trLoadMore.id = 'row-cargar-mas';
-          var tdLoadMore = document.createElement('td');
-          tdLoadMore.colSpan = 5;
-          tdLoadMore.style.textAlign = 'center';
-          tdLoadMore.style.padding = 'var(--space-3)';
-
-          var btnLoadMore = document.createElement('button');
-          btnLoadMore.className = 'btn btn-outline btn-sm';
-          btnLoadMore.style.margin = '0 auto';
-          btnLoadMore.textContent = 'Cargar mÃ¡s';
-          btnLoadMore.addEventListener('click', function () {
-            App.state.cartera.pageToken = nextToken;
-            cargarCartera(true);
-          });
-
-          tdLoadMore.appendChild(btnLoadMore);
-          trLoadMore.appendChild(tdLoadMore);
-          tbody.appendChild(trLoadMore);
+        if (nextToken != null) {
+          tbody.appendChild(_renderLoadMore(nextToken));
         }
       }
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
-      var btn = document.createElement('button');
-      btn.className = 'btn btn-sm';
-      btn.textContent = 'â†» Reintentar';
-      btn.style.marginLeft = 'var(--space-3)';
-      btn.addEventListener('click', function () {
-        cargarCartera(append);
-      });
-      tbody.querySelector('.error-banner').appendChild(btn);
+      _showRetry(tbody, function () { cargarCartera(append); });
+    })
+    .then(function () {
+      _cleanupView(view);
     });
-  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -674,6 +662,7 @@ function ejecutarAbono() {
 
 function cargarTerceros() {
   var view = document.getElementById('view-terceros');
+  view.classList.add('is-loading');
   view.setAttribute('aria-busy', 'true');
   var tbody = document.querySelector('#view-terceros .data-table tbody');
   var busquedaInput = document.getElementById('busqueda-terceros');
@@ -712,12 +701,12 @@ function cargarTerceros() {
 
           var tdId = document.createElement('td');
           tdId.className = 'td-mono td-muted';
-          tdId.textContent = item.id || 'â€”';
+          tdId.textContent = item.id || '\u2014';
           tr.appendChild(tdId);
 
           var tdNombre = document.createElement('td');
           tdNombre.style.fontWeight = '500';
-          tdNombre.textContent = item.nombre || 'â€”';
+          tdNombre.textContent = item.nombre || '\u2014';
           tr.appendChild(tdNombre);
 
           var tdTipo = document.createElement('td');
@@ -742,14 +731,11 @@ function cargarTerceros() {
     })
     .catch(function (err) {
       mostrarError(tbody, err.message || err);
-      var btn = document.createElement('button');
-      btn.className = 'btn btn-sm';
-      btn.textContent = 'â†» Reintentar';
-      btn.style.marginLeft = 'var(--space-3)';
-      btn.addEventListener('click', cargarTerceros);
-      tbody.querySelector('.error-banner').appendChild(btn);
+      _showRetry(tbody, cargarTerceros);
+    })
+    .then(function () {
+      _cleanupView(view);
     });
-  setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
 function _announce(msg) {
@@ -910,10 +896,10 @@ function guardarTercero() {
 // 7. VENTAS
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-App.productosCache = [];
+App.state.productos.cache = [];
 
 async function cargarVentas() {
-  App.productosCache = [];
+  App.state.productos.cache = [];
   await cargarVentasProductos();
   cargarVentasTerceros();
   document.getElementById('venta-tipo').value = 'CONTADO';
@@ -929,7 +915,7 @@ async function cargarVentas() {
 
 function cargarVentasProductos() {
   return App.api.getProductos().then(function (data) {
-    App.productosCache = (data && data.productos) || data || [];
+    App.state.productos.cache = (data && data.productos) || data || [];
     var selects = document.querySelectorAll('.venta-producto-select');
     selects.forEach(function (sel) {
       llenarSelectProductos(sel);
@@ -949,7 +935,7 @@ function llenarSelectProductos(sel, includeNuevo) {
     optNuevo.textContent = '+ Nuevo producto...';
     sel.appendChild(optNuevo);
   }
-  App.productosCache.forEach(function (p) {
+  App.state.productos.cache.forEach(function (p) {
     var opt = document.createElement('option');
     opt.value = p.id;
     opt.textContent = p.nombre + ' (' + p.id + ')';
@@ -1152,7 +1138,7 @@ function cargarProductos() {
 
   return App.api.getProductos().then(function (resFull) {
     var allItems = (resFull && resFull.productos) || [];
-    App.productosCache = allItems;
+    App.state.productos.cache = allItems;
     // Poblar combo de categorÃ­as
     var catSelect = document.getElementById('productos-filter-categoria');
     if (catSelect) {
@@ -1294,7 +1280,7 @@ function guardarProducto() {
     cerrarModalProducto();
     cargarProductos();
     App.api.getProductos().then(function (data) {
-      App.productosCache = (data && data.productos) || data || [];
+      App.state.productos.cache = (data && data.productos) || data || [];
       // Refrescar selects de compra si el modal estÃ¡ abierto
       document.querySelectorAll('.compra-producto-select').forEach(function (s) {
         llenarSelectProductos(s, true);
@@ -1331,16 +1317,16 @@ function cargarCompras(append) {
       mostrarError(body, (res && res.error) || 'Error al cargar compras');
       return;
     }
-    _compraList = res.items || [];
+    App.state.compras.list = res.items || [];
 
     if (!append) body.innerHTML = '';
 
-    if (_compraList.length === 0) {
+    if (App.state.compras.list.length === 0) {
       body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin compras registradas</td></tr>';
       return;
     }
 
-    _compraList.forEach(function (c) {
+    App.state.compras.list.forEach(function (c) {
       if (append && body.querySelector('[data-id="' + escapeAttr(c.id) + '"]')) return;
       var tr = document.createElement('tr');
       tr.setAttribute('data-id', escapeAttr(c.id));
@@ -1412,9 +1398,9 @@ function abrirModalNuevaCompra() {
   list.innerHTML = '';
   agregarFilaItemCompra();
   // Cargar cache de productos si es necesario
-  if (!App.productosCache || App.productosCache.length === 0) {
+  if (!App.state.productos.cache || App.state.productos.cache.length === 0) {
     App.api.getProductos().then(function (data) {
-      App.productosCache = (data && data.productos) || data || [];
+      App.state.productos.cache = (data && data.productos) || data || [];
       document.querySelectorAll('.compra-producto-select').forEach(function (s) {
         llenarSelectProductos(s, true);
       });
@@ -1527,7 +1513,7 @@ function guardarCompra() {
     document.getElementById('compra-success').style.display = 'block';
     // Refrescar cache de productos despuÃ©s de compra (posibles creaciones inline)
     App.api.getProductos().then(function (data) {
-      App.productosCache = (data && data.productos) || data || [];
+      App.state.productos.cache = (data && data.productos) || data || [];
     });
     setTimeout(cerrarModalNuevaCompra, 1500);
     cargarCompras();
