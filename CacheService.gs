@@ -1055,9 +1055,9 @@ _putNativeCache(keyPrefix, data) {
          cache.put(baseKey, serialized, 300);
          cache.put(baseKey + "_meta", "1", 300);
        } else {
-         var totalChunks = Math.ceil(serialized.length / chunkSize);
-         for (var c = 0; c < totalChunks; c++) {
-           var chunk = serialized.substring(c * chunkSize, (c + 1) * chunkSize);
+          const totalChunks = Math.ceil(serialized.length / chunkSize);
+          for (let c = 0; c < totalChunks; c++) {
+            const chunk = serialized.substring(c * chunkSize, (c + 1) * chunkSize);
            cache.put(baseKey + "_c" + c, chunk, 300);
          }
          cache.put(baseKey + "_meta", String(totalChunks), 300);
@@ -1072,16 +1072,16 @@ _putNativeCache(keyPrefix, data) {
     try {
       const cache = CacheService.getScriptCache();
       const baseKey = this._getCacheKey(keyPrefix);
-      var meta = cache.get(baseKey + "_meta");
+      const meta = cache.get(baseKey + "_meta");
       if (!meta) return null;
-      var totalChunks = parseInt(meta, 10);
+      const totalChunks = parseInt(meta, 10);
       if (totalChunks <= 1) {
-        var cached = cache.get(baseKey);
+        const cached = cache.get(baseKey);
         return cached ? JSON.parse(cached) : null;
       }
-      var parts = [];
-      for (var c = 0; c < totalChunks; c++) {
-        var chunk = cache.get(baseKey + "_c" + c);
+      const parts = [];
+      for (let c = 0; c < totalChunks; c++) {
+        const chunk = cache.get(baseKey + "_c" + c);
         if (!chunk) return null;
         parts.push(chunk);
       }

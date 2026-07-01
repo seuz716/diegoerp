@@ -20,7 +20,7 @@ function generateCorrelationId() {
 
 function _safeError(context, error, correlationId) {
   _errorCounter++;
-  var tz = 'UTC';
+  let tz = 'UTC';
   try { tz = Session.getScriptTimeZone(); } catch (_) {}
   const corrId = correlationId || 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
@@ -110,7 +110,7 @@ parseMoneda(value, defaultValue) {
   validateDate(value, fieldName) {
     if (!value) throw new Error((fieldName || 'Fecha') + ' es requerida');
     if (value instanceof Date && !isNaN(value.getTime())) return value;
-    var date = new Date(String(value));
+    const date = new Date(String(value));
     if (isNaN(date.getTime())) throw new Error((fieldName || 'Fecha') + ' inválida');
     return date;
   },
@@ -119,7 +119,7 @@ parseMoneda(value, defaultValue) {
    * Validate enum value
    */
   validateEnum(value, allowedValues, fieldName) {
-    var sanitized = this.sanitizeString(value, 20).toUpperCase();
+    const sanitized = this.sanitizeString(value, 20).toUpperCase();
     if (!sanitized || allowedValues.indexOf(sanitized) === -1) {
       throw new Error((fieldName || 'Valor') + ' inválido. Permitidos: ' + allowedValues.join(', '));
     }
@@ -175,13 +175,13 @@ parseMoneda(value, defaultValue) {
    */
   sanitizeTercero(tercero) {
     if (!tercero || typeof tercero !== 'object') throw new Error('Datos de tercero inválidos');
-    var id = this.validateId(tercero.id);
-    var nombre = this.sanitizeString(tercero.nombre, this.MAX_STRING_LENGTH);
-    var tipo = this.validateEnum(tercero.tipo, ['CLIENTE', 'PROVEEDOR', 'AMBOS'], 'Tipo de tercero');
-    var email = this.sanitizeString(tercero.email, 200);
-    var telefono = this.sanitizeString(tercero.telefono, 50);
-    var direccion = this.sanitizeString(tercero.direccion, this.MAX_STRING_LENGTH);
-    var limite_credito = this.parseMoneda(tercero.limite_credito, 0);
+    const id = this.validateId(tercero.id);
+    const nombre = this.sanitizeString(tercero.nombre, this.MAX_STRING_LENGTH);
+    const tipo = this.validateEnum(tercero.tipo, ['CLIENTE', 'PROVEEDOR', 'AMBOS'], 'Tipo de tercero');
+    const email = this.sanitizeString(tercero.email, 200);
+    const telefono = this.sanitizeString(tercero.telefono, 50);
+    const direccion = this.sanitizeString(tercero.direccion, this.MAX_STRING_LENGTH);
+    const limite_credito = this.parseMoneda(tercero.limite_credito, 0);
     return { id: id, nombre: nombre, tipo: tipo, email: email, telefono: telefono, direccion: direccion, limite_credito: limite_credito };
   },
 };
@@ -195,7 +195,9 @@ const RATE_LIMITER = {
     try {
       const email = SESSION_SERVICE.getCurrentUser().getEmail();
       if (email) return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, email).map(b => (b & 0xFF).toString(16)).slice(0, 8).join('');
-    } catch (_) {}
+    } catch (e) {
+      console.debug("RATE_LIMITER._userId: No user session available");
+    }
     return 'anon';
   },
 
@@ -423,14 +425,14 @@ function getDashboardCartera() {
       Logger.log("[FIX-M-05] getDashboardCartera from cache: %s items, %s CxC, %s CxP",
         CACHE.cartera.length, cxc.length, cxp.length);
 
-      var prox7 = DOMAIN.getVencimientosProximos(7);
-      var prox15 = DOMAIN.getVencimientosProximos(15);
-      var prox30 = DOMAIN.getVencimientosProximos(30);
+      const prox7 = DOMAIN.getVencimientosProximos(7);
+      const prox15 = DOMAIN.getVencimientosProximos(15);
+      const prox30 = DOMAIN.getVencimientosProximos(30);
 
-      var suma7 = 0, suma15 = 0, suma30 = 0;
-      for (var i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
-      for (var i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
-      for (var i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
+      let suma7 = 0, suma15 = 0, suma30 = 0;
+      for (let i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
+      for (let i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
+      for (let i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
 
       return {
         porCobrar, porPagar, vencidaCxC, vencidaCxP, alertas, totalObligaciones,
@@ -497,14 +499,14 @@ function getDashboardCartera() {
     allAlertas.sort((a, b) => b.dias - a.dias);
     const alertas = allAlertas.slice(0, 10);
 
-    var prox7 = DOMAIN.getVencimientosProximos(7);
-    var prox15 = DOMAIN.getVencimientosProximos(15);
-    var prox30 = DOMAIN.getVencimientosProximos(30);
+    const prox7 = DOMAIN.getVencimientosProximos(7);
+    const prox15 = DOMAIN.getVencimientosProximos(15);
+    const prox30 = DOMAIN.getVencimientosProximos(30);
 
-    var suma7 = 0, suma15 = 0, suma30 = 0;
-    for (var i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
-    for (var i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
-    for (var i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
+    let suma7 = 0, suma15 = 0, suma30 = 0;
+    for (let i7 = 0; i7 < prox7.length; i7++) suma7 += prox7[i7].saldo;
+    for (let i15 = 0; i15 < prox15.length; i15++) suma15 += prox15[i15].saldo;
+    for (let i30 = 0; i30 < prox30.length; i30++) suma30 += prox30[i30].saldo;
 
     return {
       porCobrar,
@@ -623,7 +625,7 @@ function procesarVenta(carrito, opciones) {
     // Input validation
     INPUT_VALIDATOR.validateItemCount(carrito);
     if (!opciones || typeof opciones !== 'object') throw new Error('Opciones de venta inválidas');
-    var tipo = INPUT_VALIDATOR.validateEnum(opciones.tipo, ['CONTADO', 'CXC', 'CREDITO'], 'Tipo de venta');
+    const tipo = INPUT_VALIDATOR.validateEnum(opciones.tipo, ['CONTADO', 'CXC', 'CREDITO'], 'Tipo de venta');
     if (tipo !== 'CONTADO') {
       INPUT_VALIDATOR.validateId(opciones.idTercero);
       INPUT_VALIDATOR.validatePositiveInt(opciones.dias, 'Días de crédito');
@@ -645,7 +647,7 @@ function getProductos(filtro) {
   try {
     AuthService.checkPermission("revisar_inventario");
     validateAndMapSchemas();
-    var filtroLimpio = null;
+    let filtroLimpio = null;
     if (filtro && typeof filtro === 'object') {
       filtroLimpio = {};
       if (filtro.activo !== undefined) filtroLimpio.activo = !!filtro.activo;
@@ -654,8 +656,8 @@ function getProductos(filtro) {
       }
       if (filtro.busqueda) filtroLimpio.busqueda = INPUT_VALIDATOR.sanitizeString(filtro.busqueda, 100);
     }
-    var lista = DAO_PRODUCTOS.listar(filtroLimpio);
-    var productos = lista.map(function(p) {
+    const lista = DAO_PRODUCTOS.listar(filtroLimpio);
+    const productos = lista.map(function(p) {
       return {
         id: p.id,
         nombre: p.nombre,
@@ -681,12 +683,12 @@ function crearProducto(nombre, precioCompra, precioVenta, categoria) {
   try {
     RATE_LIMITER.check("crearProducto");
     AuthService.checkPermission("registrar_compra");
-    var nombreLimpio = INPUT_VALIDATOR.sanitizeString(nombre, 200);
+    const nombreLimpio = INPUT_VALIDATOR.sanitizeString(nombre, 200);
     if (!nombreLimpio) throw new Error("Nombre del producto es requerido");
-    var pc = INPUT_VALIDATOR.parseMoneda(precioCompra, 0);
-    var pv = INPUT_VALIDATOR.parseMoneda(precioVenta, 0);
-    var cat = INPUT_VALIDATOR.sanitizeString(categoria, 100);
-    var result = DAO_PRODUCTOS.crear({ nombre: nombreLimpio, precio_compra: pc, precio_venta: pv, categoria: cat });
+    const pc = INPUT_VALIDATOR.parseMoneda(precioCompra, 0);
+    const pv = INPUT_VALIDATOR.parseMoneda(precioVenta, 0);
+    const cat = INPUT_VALIDATOR.sanitizeString(categoria, 100);
+    const result = DAO_PRODUCTOS.crear({ nombre: nombreLimpio, precio_compra: pc, precio_venta: pv, categoria: cat });
     return { success: true, id: result.id, nombre: result.nombre, stock: 0, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("crearProducto", e, correlationId);
@@ -700,8 +702,8 @@ function getProducto(id) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
-    var idValidado = INPUT_VALIDATOR.validateId(id);
-    var producto = DAO_PRODUCTOS.obtener(idValidado);
+    const idValidado = INPUT_VALIDATOR.validateId(id);
+    const producto = DAO_PRODUCTOS.obtener(idValidado);
     if (!producto) throw new Error("Producto no encontrado: " + idValidado);
     return { success: true, producto: producto, correlationId: correlationId };
   } catch (e) {
@@ -717,23 +719,23 @@ function actualizarProducto(id, cambios) {
   try {
     RATE_LIMITER.check("actualizarProducto");
     AuthService.checkPermission("registrar_compra");
-    var idValidado = INPUT_VALIDATOR.validateId(id);
+    const idValidado = INPUT_VALIDATOR.validateId(id);
     if (!cambios || typeof cambios !== 'object') throw new Error("Cambios inválidos");
-    var cambiosLimpios = {};
+    const cambiosLimpios = {};
     if (cambios.nombre !== undefined) cambiosLimpios.nombre = INPUT_VALIDATOR.sanitizeString(cambios.nombre, 200);
     if (cambios.precio_compra !== undefined) cambiosLimpios.precio_compra = INPUT_VALIDATOR.parseMoneda(cambios.precio_compra, 0);
     if (cambios.precio_venta !== undefined) cambiosLimpios.precio_venta = INPUT_VALIDATOR.parseMoneda(cambios.precio_venta, 0);
     if (cambios.categoria !== undefined) cambiosLimpios.categoria = INPUT_VALIDATOR.sanitizeString(cambios.categoria, 100);
     if (cambios.activo !== undefined) {
-      var a = String(cambios.activo).trim().toUpperCase();
+      const a = String(cambios.activo).trim().toUpperCase();
       if (a !== PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.ACTIVO && a !== PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.INACTIVO) {
         throw new Error("Estado activo inválido. Use " + PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.ACTIVO + " o " + PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.INACTIVO);
       }
       cambiosLimpios.activo = a;
     }
     if (Object.keys(cambiosLimpios).length === 0) throw new Error("No hay campos válidos para actualizar");
-    var result = DAO_PRODUCTOS.actualizar(idValidado, cambiosLimpios);
-    var producto = DAO_PRODUCTOS.obtener(idValidado);
+    const result = DAO_PRODUCTOS.actualizar(idValidado, cambiosLimpios);
+    const producto = DAO_PRODUCTOS.obtener(idValidado);
     return { success: true, id: idValidado, producto: producto, correlationId: correlationId };
   } catch (e) {
     return _safeError("actualizarProducto", e, correlationId);
@@ -841,8 +843,8 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
     AuthService.checkPermission("registrar_compra");
     INPUT_VALIDATOR.validateId(proveedorId);
     INPUT_VALIDATOR.validateItemCount(items);
-    var totalValidado = INPUT_VALIDATOR.parseMoneda(total, 0);
-    var facturaValidada = INPUT_VALIDATOR.sanitizeString(factura, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
+    const totalValidado = INPUT_VALIDATOR.parseMoneda(total, 0);
+    const facturaValidada = INPUT_VALIDATOR.sanitizeString(factura, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
     const result = DOMAIN.registrarCompraAtomic(proveedorId, items, totalValidado, fechaVencimiento, facturaValidada, correlationId);
     return { ...result, correlationId };
   } catch (e) {
@@ -861,16 +863,16 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
     if (!page && page !== 0) page = 0;
     if (!pageSize) pageSize = 5000;
     pageSize = Math.min(5000, pageSize);
-    var compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null, 10000);
-    var tercerosMap = {};
+    const compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null, 10000);
+    const tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
     }
     compras.forEach(function(c) {
       c.nombre_proveedor = tercerosMap[c.id_proveedor] || "DESCONOCIDO";
     });
-    var start = page * pageSize;
-    var paginated = compras.slice(start, start + pageSize);
+    const start = page * pageSize;
+    const paginated = compras.slice(start, start + pageSize);
     return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize, correlationId };
   } catch (e) {
     return _safeError("getCompras", e, correlationId);
@@ -881,9 +883,9 @@ function getDetalleCompra(idCompra) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
-    var idValidado = INPUT_VALIDATOR.validateId(idCompra);
-    var detalles = DAO_COMPRAS.getDetallesByCompra(idValidado);
-    var pagos = DAO_COMPRAS.getPagosByCompra(idValidado);
+    const idValidado = INPUT_VALIDATOR.validateId(idCompra);
+    const detalles = DAO_COMPRAS.getDetallesByCompra(idValidado);
+    const pagos = DAO_COMPRAS.getPagosByCompra(idValidado);
     return { success: true, detalles: detalles, pagos: pagos, correlationId };
   } catch (e) {
     return _safeError("getDetalleCompra", e, correlationId);
@@ -895,9 +897,9 @@ function registrarPagoProveedor(idCompra, monto, referencia) {
   try {
     RATE_LIMITER.check("registrarPagoProveedor");
     AuthService.checkPermission("registrar_pago_proveedor");
-    var idCompraValidado = INPUT_VALIDATOR.validateId(idCompra);
-    var montoValidado = INPUT_VALIDATOR.parseMoneda(monto, 0);
-    var referenciaValidada = INPUT_VALIDATOR.sanitizeString(referencia, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
+    const idCompraValidado = INPUT_VALIDATOR.validateId(idCompra);
+    const montoValidado = INPUT_VALIDATOR.parseMoneda(monto, 0);
+    const referenciaValidada = INPUT_VALIDATOR.sanitizeString(referencia, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
     const result = DOMAIN.procesarPagoProveedorAtomic(idCompraValidado, montoValidado, referenciaValidada, correlationId);
     return { ...result, correlationId };
   } catch (e) {
@@ -914,9 +916,9 @@ function getProximosVencimientos(dias) {
     AuthService.checkPermission("ver_vencimientos");
     if (dias === null || dias === undefined) dias = 30;
     dias = Math.max(1, Math.min(365, parseInt(dias) || 30));
-    var result = DOMAIN.getVencimientosProximos(dias);
-    var suma = 0;
-    for (var i = 0; i < result.length; i++) { suma += result[i].saldo; }
+    const result = DOMAIN.getVencimientosProximos(dias);
+    let suma = 0;
+    for (let i = 0; i < result.length; i++) { suma += result[i].saldo; }
     return { success: true, items: result, total: suma, dias: dias };
   } catch (e) {
     return _safeError("getProximosVencimientos", e);
@@ -927,7 +929,7 @@ function getRankingDeudores(topN) {
   try {
     AuthService.checkPermission("ver_dashboard");
     if (topN === null || topN === undefined) topN = 10;
-    var result = DOMAIN.getRankingDeudores(topN);
+    const result = DOMAIN.getRankingDeudores(topN);
     return { success: true, items: result };
   } catch (e) {
     return _safeError("getRankingDeudores", e);
@@ -937,7 +939,7 @@ function getRankingDeudores(topN) {
 function getConcentracionProveedores() {
   try {
     AuthService.checkPermission("ver_dashboard");
-    var result = DOMAIN.getConcentracionProveedores();
+    const result = DOMAIN.getConcentracionProveedores();
     return { success: true, totalCompras: result.totalCompras, conteo: result.conteo, proveedores: result.proveedores };
   } catch (e) {
     return _safeError("getConcentracionProveedores", e);
@@ -953,7 +955,7 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
     AuthService.checkPermission("ver_auditoria");
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
     if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
-    var csv = LIBRO_DIARIO.exportarCSV(fechaInicio, fechaFin);
+    const csv = LIBRO_DIARIO.exportarCSV(fechaInicio, fechaFin);
     return { success: true, csv: csv };
   } catch (e) {
     return _safeError("exportarLibroDiario", e);
@@ -961,14 +963,14 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
 }
 
 /**
- * API Pública: Activar/desactivar producto
+ * API Pública: Activar/desacticonst producto
  */
 function toggleActivoProducto(id) {
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("actualizarProducto");
     AuthService.checkPermission("registrar_compra");
-    var result = DAO_PRODUCTOS.toggleActivo(id);
+    const result = DAO_PRODUCTOS.toggleActivo(id);
     return { success: true, id: result.id, activo: result.activo, correlationId: correlationId };
   } catch (e) {
     return _safeError("toggleActivoProducto", e, correlationId);
@@ -982,7 +984,7 @@ function toggleActivoProducto(id) {
 function getFlujoCajaResumen(dias) {
   try {
     AuthService.checkPermission("ver_dashboard");
-    var resumen = FLUJO_CAJA.getResumenDiario(dias || 30);
+    const resumen = FLUJO_CAJA.getResumenDiario(dias || 30);
     return {
       success: true,
       entradas: resumen.entradas,
@@ -1000,7 +1002,7 @@ function exportarFlujoCaja(fechaInicio, fechaFin) {
     AuthService.checkPermission("ver_auditoria");
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
     if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
-    var csv = FLUJO_CAJA.exportarCSV(fechaInicio, fechaFin);
+    const csv = FLUJO_CAJA.exportarCSV(fechaInicio, fechaFin);
     return { success: true, csv: csv };
   } catch (e) {
     return _safeError("exportarFlujoCaja", e);
