@@ -63,6 +63,9 @@ App.api = {
   getCacheHealth: function () { return callServer('getCacheHealth'); },
   getCacheMetrics: function () { return callServer('getCacheMetrics'); },
   verificarConfiguracionIA: function () { return callServer('verificarConfiguracionIA'); },
+  getVentasDelDia: function () { return callServer('getVentasDelDia'); },
+  getKardexProducto: function (idProducto, limit) { return callServer('getKardexProducto', idProducto, limit); },
+  getKardex: function (limit) { return callServer('getKardex', limit); },
 };
 
 App.formatearMoneda = function (centavos) {
