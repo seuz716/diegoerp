@@ -41,9 +41,16 @@ function doGet(e) {
     );
     return html;
   }
-  return HtmlService.createTemplateFromFile('index_v3_SaaS')
-    .evaluate()
-    .setTitle('MicroERP · Cartera Pro');
+  const tpl = HtmlService.createTemplateFromFile('index_v3_SaaS');
+  const defaultDesc = 'Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos.';
+  tpl.pageTitle = 'MicroERP · Cartera Pro';
+  tpl.ogTitle = 'MicroERP · Cartera Pro';
+  tpl.ogDescription = defaultDesc;
+  tpl.ogImage = 'https://placehold.co/1200x630/1A1814/D4A82A/png?text=MicroERP+Cartera';
+  tpl.ogUrl = ScriptApp.getService().getUrl();
+  return tpl.evaluate()
+    .setTitle('MicroERP · Cartera Pro')
+    .setFaviconUrl('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 64 64\'><rect width=\'64\' height=\'64\' rx=\'12\' fill=\'%233A7B6D\'/><text x=\'32\' y=\'44\' text-anchor=\'middle\' font-size=\'36\' fill=\'white\' font-family=\'system-ui\'>μ</text></svg>');
 }
 
 function handleHealthCheck() {
