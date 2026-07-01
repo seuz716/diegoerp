@@ -432,10 +432,6 @@ function _safeDate(v) {
     return null;
   }
 }
-  } catch (e) {
-    return null;
-  }
-}
 
 /**
  * Formatea centavos a moneda COP para display.
