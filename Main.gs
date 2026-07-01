@@ -268,12 +268,10 @@ function checkIAKey() {
     Logger.log("checkIAKey: hasApiKey=%s", hasKey);
     
     if (hasKey) {
-      const key = AuthService.getApiKey("GEMINI_API_KEY");
-      Logger.log("checkIAKey: Key length=%s (masked)", key ? key.length : 0);
+      // Do not log key length - security best practice
       return { 
         success: true, 
         hasKey: true, 
-        keyLength: key ? key.length : 0,
         proxyUrl: PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL") ? "CONFIGURED" : null
       };
     }

@@ -69,13 +69,11 @@ const CRYPTO_SERVICE = {
     var stored = PropertiesService.getUserProperties().getProperty("CRYPTO_MASTER_KEY");
     if (stored && stored.length >= 32) {
       key = stored;
-      console.log("CRYPTO_SERVICE: Clave maestra cargada desde UserProperties.");
     }
 
     // 2. Proxy externo (más seguro)
     if (!key) {
       key = PROXY_SECRET_SERVICE.resolveSecret("AES_MASTER_KEY");
-      if (key) console.log("CRYPTO_SERVICE: Clave maestra obtenida desde proxy externo.");
     }
 
     // 3. Bootstrap local: derivada del ScriptId (determinista por script)
@@ -83,7 +81,6 @@ const CRYPTO_SERVICE = {
       const scriptId = ScriptApp.getScriptId();
       const raw = Utilities.computeHmacSha256Signature(scriptId, "DIECRP_MASTER_KEY_BOOTSTRAP");
       key = raw.map(function(b) { return String.fromCharCode((b & 0xFF) % 26 + 65); }).join('').slice(0, 32);
-      console.warn("CRYPTO_SERVICE: Clave maestra derivada localmente (bootstrap). Usa setMasterKey() o un Secret Proxy para mayor seguridad.");
     }
 
     if (!key || key.length < 32) {
@@ -97,14 +94,12 @@ const CRYPTO_SERVICE = {
     if (!key || key.length < 32) throw new Error("La clave maestra debe tener al menos 32 caracteres.");
     PropertiesService.getUserProperties().setProperty("CRYPTO_MASTER_KEY", key);
     this._memoryCache["AES_MASTER_KEY"] = key;
-    console.log("CRYPTO_SERVICE: Clave maestra almacenada en UserProperties.");
     return true;
   },
 
   clearMasterKey() {
     PropertiesService.getUserProperties().deleteProperty("CRYPTO_MASTER_KEY");
     delete this._memoryCache["AES_MASTER_KEY"];
-    console.log("CRYPTO_SERVICE: Clave maestra eliminada de UserProperties.");
   },
   
   _kdf(salt, info, iterations = 10000) {
@@ -243,7 +238,6 @@ const AuthService = {
   setApiKey(keyName, value) {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
     this._storeKey(keyName, value.trim());
-    console.log("API Key almacenada en PropertiesService.");
     return true;
   },
 
@@ -261,7 +255,6 @@ const secureValue = this._loadKey(keyName);
   removeApiKey(keyName) {
     PropertiesService.getScriptProperties().deleteProperty(this.STORE_PREFIX + keyName);
     PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
-    console.log("API Key eliminada.");
   },
 
   hasApiKey(keyName) {
@@ -375,9 +368,8 @@ const PROXY_SECRET_SERVICE = {
         const data = JSON.parse(response.getContentText());
         return data.value || null;
       }
-      console.warn("Secret proxy respondió HTTP " + response.getResponseCode());
     } catch (e) {
-      console.warn("Secret proxy call failed: " + e.message);
+      // Error silencioso
     }
     return null;
   },
@@ -388,7 +380,6 @@ const PROXY_SECRET_SERVICE = {
       this.DEFAULT_ENDPOINT_CONFIG_KEY,
       url.trim()
     );
-    console.log("Secret Proxy URL configurada.");
     return true;
   },
 
@@ -398,7 +389,6 @@ const PROXY_SECRET_SERVICE = {
       this.HMAC_SECRET_CONFIG_KEY,
       secret.trim()
     );
-    console.log("Proxy HMAC secret configurado.");
     return true;
   },
 
@@ -409,12 +399,6 @@ const PROXY_SECRET_SERVICE = {
   resolveSecret(secretName) {
     const endpointUrl = this._getEndpointUrl();
     if (!endpointUrl) return null;
-    const value = this._callSecretEndpoint(endpointUrl, secretName);
-    if (value) {
-      console.log("Secret resuelto desde proxy externo.");
-      return value;
-    }
-    console.warn("Secret proxy no disponible. Fallback a AuthService local.");
-    return null;
+    return this._callSecretEndpoint(endpointUrl, secretName);
   },
 };
