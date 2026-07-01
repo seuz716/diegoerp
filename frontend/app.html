@@ -2,12 +2,21 @@
 'use strict';
 var App = App || {};
 
+// #38: Timeout constants with readable expressions
 App.TIMEOUTS = {
-  analizarConGeminiFresco: 180000,
-  getDashboardCartera: 60000,
-  getCartera: 45000,
+  analizarConGeminiFresco: 3 * 60 * 1000,  // 3 min
+  getDashboardCartera: 60 * 1000,          // 1 min
+  getCartera: 45 * 1000,                   // 45s
 };
-App.DEFAULT_TIMEOUT = 30000;
+App.DEFAULT_TIMEOUT = 30 * 1000;           // 30s
+
+// #36: Namespaced global state
+App.state = {
+  cartera: { pageToken: 0, pageSize: 100 },
+  pagos: { compraId: null },
+  compras: { list: [] },
+  productos: { cache: [], lastFetch: 0 },
+};
 
 function callServer(funcName) {
   var args = Array.prototype.slice.call(arguments, 1);
@@ -186,24 +195,39 @@ function escapeAttr(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function showError(msg) {
+// Hierarchy of error types for differentiated feedback
+var ERROR_TYPES = { NETWORK: 'network', VALIDATION: 'validation', SERVER: 'server' };
+
+function showError(msg, type) {
+  type = type || ERROR_TYPES.SERVER;
   var banner = document.getElementById('error-banner');
+  var icons = { network: '⚠', validation: '✕', server: '⛔' };
+  var actions = {
+    network: 'Verifique su conexión y reintente',
+    validation: 'Corrija los campos marcados',
+    server: 'Contacte soporte si persiste (Ref: ' + Date.now() + ')'
+  };
   if (banner) {
-    banner.textContent = msg;
-    banner.classList.add('show');
+    banner.innerHTML = '<span class="error-icon">' + icons[type] + '</span>' + msg + '<small>' + actions[type] + '</small>';
+    banner.classList.add('show', 'type-' + type);
   } else {
-    showToast(msg, 'error');
+    showToast(msg, type);
   }
 }
 
 function showToast(msg, type) {
-  type = type || 'error';
+  type = type || ERROR_TYPES.SERVER;
   var container = document.getElementById('toast-container');
   var el = document.createElement('div');
   el.className = 'toast ' + type;
-  el.textContent = msg;
-  if (type === 'error') el.setAttribute('role', 'alert');
+  var icons = { network: '⚠', validation: '✕', server: '⛔' };
+  el.innerHTML = '<span>' + msg + '</span><button class="toast-close" aria-label="Cerrar">×</button>';
+  if (type === 'error' || type === ERROR_TYPES.SERVER) el.setAttribute('role', 'alert');
   container.appendChild(el);
+  el.querySelector('.toast-close').addEventListener('click', function() {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+  });
   setTimeout(function () {
     el.style.animation = 'toast-out .3s ease forwards';
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
