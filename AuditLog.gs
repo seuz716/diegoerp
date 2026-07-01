@@ -100,7 +100,7 @@ const LOG_ENGINE = {
       // Write + purge atómico bajo lock global (evita race condition entre logEvent concurrentes)
       let lock = null;
       try {
-        lock = LOCK_MANAGER.acquireGlobalLock(5000);
+        lock = LOCK_MANAGER.acquireGlobalLock(30000);
       } catch (lockErr) {
         Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para AuditLog: " + lockErr.message);
       }

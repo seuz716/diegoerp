@@ -30,7 +30,7 @@ const DAO = {
   batchInsert(sheetName, rows, startRow = null) {
     if (!rows || rows.length === 0) return;
     // === INICIO FIX RACE-CONDITION ===
-    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
     // === FIN FIX RACE-CONDITION ===
       const sheet = getSheet(sheetName);
@@ -352,7 +352,7 @@ const DAO = {
       throw new Error("Integridad de caché de cartera comprometida.");
     }
 
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
 
     try {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
@@ -454,7 +454,7 @@ const DAO = {
     if (!CACHE.ensureIntegrity('cartera')) {
       throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
     }
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
       const lastRow = sheet.getLastRow() || 0;
@@ -475,7 +475,7 @@ const DAO = {
     if (!CACHE.ensureIntegrity('cartera')) {
       throw new Error("Integridad de caché de cartera comprometida. Se ejecutó recoverFromStale().");
     }
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
       const lastRow = sheet.getLastRow() || 0;

@@ -596,6 +596,18 @@ function analizarConGeminiFresco() {
 }
 
 /**
+ * API Pública: Verificar configuración de IA (Gemini key + proxy)
+ */
+function verificarConfiguracionIA() {
+  try {
+    AuthService.checkPermission("ver_configuracion");
+    return IA_SERVICE.verificarConfiguracion();
+  } catch (e) {
+    return _safeError("verificarConfiguracionIA", e);
+  }
+}
+
+/**
  * API Pública: Obtener información del usuario actual (email y rol)
  */
 function getUserInfo() {
@@ -747,6 +759,7 @@ AuthService.checkPermission("revisar_inventario");
  */
 function getVentasDelDia() {
   try {
+    AuthService.checkPermission("revisar_inventario");
     const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
     if (!sheetAudit) return { success: true, ventas: [], total: 0 };
 
@@ -804,6 +817,7 @@ function registrarVentaAtomic(clienteId, items, total, correlationId) {
  */
 function getKardexProducto(idProducto, limit) {
   try {
+    AuthService.checkPermission("revisar_inventario");
     return DOMAIN.getKardexProducto(idProducto, limit || 100);
   } catch (e) {
     return _safeError("getKardexProducto", e, null);
@@ -815,6 +829,7 @@ function getKardexProducto(idProducto, limit) {
  */
 function getKardex(limit) {
   try {
+    AuthService.checkPermission("revisar_inventario");
     return DOMAIN.getKardex(limit || 500);
   } catch (e) {
     return _safeError("getKardex", e, null);
