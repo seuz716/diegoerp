@@ -748,14 +748,21 @@ function _announce(msg) {
 }
 
 function _trapFocus(modal) {
-  var focusables = modal.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
-  modal._first = focusables[0];
-  modal._last = focusables[focusables.length - 1];
+  var focusables = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  var first = focusables[0];
+  var last = focusables[focusables.length - 1];
+  modal._first = first;
+  modal._last = last;
   setTimeout(function() { if (modal._first) modal._first.focus(); }, 50);
   function trap(e) {
     if (e.key !== 'Tab') return;
-    if (e.shiftKey) { if (document.activeElement === modal._first) { e.preventDefault(); if (modal._last) modal._last.focus(); } }
-    else { if (document.activeElement === modal._last) { e.preventDefault(); if (modal._first) modal._first.focus(); } }
+    if (e.shiftKey && first && document.activeElement === first) {
+      e.preventDefault();
+      if (last) last.focus();
+    } else if (!e.shiftKey && last && document.activeElement === last) {
+      e.preventDefault();
+      if (first) first.focus();
+    }
   }
   modal.addEventListener('keydown', trap);
   modal._trap = trap;
