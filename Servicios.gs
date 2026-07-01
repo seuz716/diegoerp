@@ -112,25 +112,23 @@ function procesarVentaV2(carrito, opciones) {
 
   AuthService.checkPermission("registrar_venta");
 
-  // Pre-condition: fail-fast check for CXC before acquiring global lock
-  if (esCredito && idTercero) {
-    CACHE.refresh();
-    const tercero = CACHE.getTerceroRAW(idTercero);
-    if (!tercero) {
-      return _error(`Tercero ${idTercero} no encontrado.`);
-    }
-    if (tercero.limite_credito > 0) {
-      const saldoActual = CACHE.getSaldoTercero(idTercero);
-      if ((saldoActual + totalVenta) > tercero.limite_credito) {
-        return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
-      }
-    }
-  }
-
   const state = _createStateMachine();
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
   try {
+
+    // Credit check inside lock — no TOCTOU vs DOMAIN.crearCarteraAtomic
+    if (esCredito && idTercero) {
+      CACHE.refresh();
+      const tercero = CACHE.getTerceroRAW(idTercero);
+      if (!tercero) throw new Error(`Tercero ${idTercero} no encontrado.`);
+      if (tercero.limite_credito > 0) {
+        const saldoActual = CACHE.getSaldoTercero(idTercero);
+        if ((saldoActual + totalVenta) > tercero.limite_credito) {
+          throw new Error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+        }
+      }
+    }
 
     state.transition('STOCK_VALIDATED', () => {
       const errorStock = _validarStockCarrito(carritoConsolidado);
@@ -153,8 +151,7 @@ function procesarVentaV2(carrito, opciones) {
 
     // === GENERAR ASIENTO CONTABLE ===
     const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
-    const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
-    
+
     if (esCredito && idTercero) {
       LIBRO_DIARIO.registrarVentaCredito(
         new Date(), 
@@ -494,17 +491,8 @@ function _descontarInventario(carrito) {
       }
 
       const stockActual = Number(data[i][COL.stock]) || 0;
-      const currentVersion = Number(data[i][COL.version]) || 1;
-
-      if (item.expectedVersion !== undefined && currentVersion !== item.expectedVersion) {
-        throw new Error(
-          `OptimisticLockError: producto ${id} modificado concurrentemente ` +
-          `(esperada v${item.expectedVersion}, actual v${currentVersion}). Reintente la venta.`
-        );
-      }
 
       data[i][COL.stock] = Math.max(0, stockActual - cantidad);
-      data[i][COL.version] = currentVersion + 1;
       updates.push(i);
     }
 
@@ -514,9 +502,9 @@ function _descontarInventario(carrito) {
       const maxRow = Math.max(...updates);
       const batchData = [];
       for (let r = minRow; r <= maxRow; r++) {
-        batchData.push([data[r][COL.stock], data[r][COL.version]]);
+        batchData.push([data[r][COL.stock]]);
       }
-      sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 2).setValues(batchData);
+      sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 1).setValues(batchData);
     }
   } finally {
     lock.releaseLock();
