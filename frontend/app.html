@@ -18,6 +18,12 @@ App.state = {
   productos: { cache: [], lastFetch: 0 },
 };
 
+/**
+ * Calls a Google Apps Script function with timeout and error handling.
+ * @param {string} funcName - The name of the GAS function to call
+ * @param {...*} args - Arguments to pass to the function
+ * @returns {Promise<*>} The result from the server
+ */
 function callServer(funcName) {
   var args = Array.prototype.slice.call(arguments, 1);
   var timeoutMs = App.TIMEOUTS[funcName] || App.DEFAULT_TIMEOUT;
@@ -48,6 +54,11 @@ function callServer(funcName) {
   });
 }
 
+/**
+ * @namespace App.api
+ * @description Frontend API wrapper for Google Apps Script endpoints.
+ * Each method wraps callServer() and returns a Promise.
+ */
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
   getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
@@ -83,6 +94,11 @@ App.api = {
 };
 
 // #43: Adapter layer — normalizes backend responses with defaults
+/**
+ * @namespace App.adapters
+ * @description Normalizes inconsistent backend responses into consistent frontend models.
+ * Each adapter handles error cases, type coercion, and provides sensible defaults.
+ */
 App.adapters = {
   dashboard: function (raw) {
     if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', porCobrar: 0, porPagar: 0, vencidaCxC: 0, vencidaCxP: 0, alertas: [] };
@@ -282,7 +298,13 @@ function mostrarVacio(contenedor, mensaje) {
   contenedor.appendChild(div);
 }
 
-// #47: Client-side validation layer (mirrors backend INPUT_VALIDATOR)
+/**
+ * @namespace App.validate
+ * @description Client-side validation layer mirroring backend INPUT_VALIDATOR.
+ * @param {string} value - Value to validate
+ * @param {string} [label] - Field label for error messages
+ * @returns {string} Error message or empty string if valid
+ */
 App.validate = {
   required: function (value, fieldName) { if (!value || !value.toString().trim()) return 'El campo ' + fieldName + ' es obligatorio.'; return ''; },
   nit: function (value) { if (!value || !value.toString().trim()) return 'El NIT es obligatorio.'; if (!/^[\d-]+$/.test(value.toString().trim())) return 'El NIT solo puede contener d\u00edgitos y guiones.'; return ''; },
@@ -298,7 +320,11 @@ App.validate = {
   },
 };
 
-// #46: Frontend cache with ultra-short TTL (backend has longer TTL)
+/**
+ * @namespace App.data
+ * @description Client-side cache with TTL management for API responses.
+ * Provides ultra-short TTL (30s) for immediate UX, while backend has longer TTL.
+ */
 App.data = (function () {
   var CACHE_TTL = { dashboard: 30 * 1000, cartera: 20 * 1000, terceros: 30 * 1000 };
   var _store = { dashboard: null, cartera: null, terceros: null };
