@@ -60,6 +60,8 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
     btn.setAttribute('aria-current', 'page');
     btn.classList.add('is-loading');
     var viewId = btn.dataset.view;
+    // Push state navegacion histórica
+    history.pushState({ view: viewId }, "", "?view=" + viewId);
     document.querySelectorAll('.view').forEach(function (v) {
       v.classList.remove('active');
       v.setAttribute('aria-hidden', 'true');
@@ -96,6 +98,11 @@ var view = document.getElementById('view-' + viewId);
     liveRegion.textContent = 'Vista ' + (viewTitles[viewId] || viewId) + ' cargada';
   });
 });
+
+// Adaptive debounce para mobile
+function getDebounceDelay() {
+  return window.innerWidth < 768 ? 150 : 300;
+}
 
 // InformaciÃ³n de usuario
 function cargarUserInfo() {
@@ -157,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (busquedaTerceros) {
     busquedaTerceros.addEventListener('input', function() {
       clearTimeout(busquedaTerceros._timer);
-      busquedaTerceros._timer = setTimeout(cargarTerceros, 300);
+      busquedaTerceros._timer = setTimeout(cargarTerceros, getDebounceDelay());
     });
   }
 
@@ -206,7 +213,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if (productosSearch) {
     productosSearch.addEventListener('input', function () {
       clearTimeout(productosSearch._timer);
-      productosSearch._timer = setTimeout(cargarProductos, 300);
+      productosSearch._timer = setTimeout(cargarProductos, getDebounceDelay());
     });
   }
   var productosFilterCat = document.getElementById('productos-filter-categoria');
@@ -334,6 +341,14 @@ document.addEventListener('keydown', function(e) {
 });
 
 // Presentation mode toggle
+// Popstate handler for back/forward buttons
+window.addEventListener("popstate", function(e) {
+  if (e.state && e.state.view) {
+    var navItem = document.querySelector(".nav-item[data-view=" + e.state.view + "]");
+    if (navItem) navItem.click();
+  }
+});
+
 var btnPresentation = document.getElementById('btn-presentation');
 if (btnPresentation) {
   btnPresentation.addEventListener('click', function() {
