@@ -1159,10 +1159,22 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     const MAX_RETRIES = 3;
     const _executeVentaTx = () => {
       let lockAcquired = null;
+      const productLocks = [];
       const tx = _Transaction.create();
 
       try {
         lockAcquired = LOCK_MANAGER.acquireResourceLock(idCliente);
+
+        // Collect unique product IDs and acquire locks sorted (deadlock prevention)
+        const prodIds = [];
+        for (let j = 0; j < items.length; j++) {
+          const pid = _sanitizeId(items[j].id || items[j].productoId || items[j].id_producto || "");
+          if (pid && prodIds.indexOf(pid) === -1) prodIds.push(pid);
+        }
+        prodIds.sort();
+        for (let j = 0; j < prodIds.length; j++) {
+          productLocks.push(LOCK_MANAGER.acquireResourceLock(prodIds[j]));
+        }
 
         const cliente = DAO.getTerceroById(idCliente);
         if (!cliente) {
@@ -1176,8 +1188,19 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           CACHE.recoverFromStale();
         }
 
-        // Verificar stock disponible y crear movimiento
+        // Read product sheet once and build index
+        const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const prodData = prodSheet.getDataRange().getValues();
+        const prodIndex = {};
+        for (let p = 1; p < prodData.length; p++) {
+          const pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
+          if (pid) prodIndex[pid] = p;
+        }
+
+        // Verificar stock disponible y reducir (in-memory)
         let subtotalAcumulado = 0;
+        const changedRows = {};
+
         for (let j = 0; j < items.length; j++) {
           const item = items[j];
           const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
@@ -1187,41 +1210,46 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           const sub = cant * pUnit;
           subtotalAcumulado += sub;
 
-          // Verificar stock y reducir
-          try {
-            const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-            const prodData = prodSheet.getDataRange().getValues();
-            for (let p = 1; p < prodData.length; p++) {
-              const pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
-              if (pid === prodId) {
-                const currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
-                if (currentStock < cant) {
-                  return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
-                }
-                const nuevoStock = currentStock - cant;
-                prodSheet.getRange(p + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1).setValue(nuevoStock);
-
-                // Registrar salida en kardex
-                const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
-                const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
-                DAO_COMPRAS.crearMovimientoKardex({
-                  id: kardexId,
-                  fecha: new Date(),
-                  id_producto: prodId,
-                  tipo_mov: "SALIDA",
-                  cantidad: cant,
-                  stock_anterior: currentStock,
-                  stock_nuevo: nuevoStock,
-                  referencia: corrId,
-                  origen: "VENTA",
-                  usuario: email
-                });
-                break;
-              }
-            }
-          } catch (invErr) {
-            Logger.log("[DOMAIN] Error actualizando inventario venta: " + invErr.toString());
+          const p = prodIndex[prodId];
+          if (p === undefined) {
+            return _error("Producto " + prodId + " no encontrado en inventario.");
           }
+
+          const currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
+          if (currentStock < cant) {
+            return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
+          }
+          const nuevoStock = currentStock - cant;
+          prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock] = nuevoStock;
+          changedRows[p] = true;
+
+          // Registrar salida en kardex
+          const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
+          const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+          DAO_COMPRAS.crearMovimientoKardex({
+            id: kardexId,
+            fecha: new Date(),
+            id_producto: prodId,
+            tipo_mov: "SALIDA",
+            cantidad: cant,
+            stock_anterior: currentStock,
+            stock_nuevo: nuevoStock,
+            referencia: corrId,
+            origen: "VENTA",
+            usuario: email
+          });
+        }
+
+        // Batch write all stock changes at once
+        const rowNums = Object.keys(changedRows).map(Number).sort((a, b) => a - b);
+        if (rowNums.length > 0) {
+          const minRow = rowNums[0];
+          const maxRow = rowNums[rowNums.length - 1];
+          const batchData = [];
+          for (let r = minRow; r <= maxRow; r++) {
+            batchData.push([changedRows[r] ? prodData[r][CONFIG.COLUMNS.PRODUCTOS.stock] : null]);
+          }
+          prodSheet.getRange(minRow + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1, batchData.length, 1).setValues(batchData);
         }
 
         // Crear registro de venta en cartera
@@ -1275,6 +1303,10 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         CACHE.invalidateCartera();
         throw e;
       } finally {
+        // Release product locks in reverse order
+        for (let j = productLocks.length - 1; j >= 0; j--) {
+          try { productLocks[j].releaseLock(); } catch (_) {}
+        }
         if (lockAcquired) lockAcquired.releaseLock();
       }
     };
