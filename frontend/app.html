@@ -24,20 +24,25 @@ function callServer(funcName) {
 
   return new Promise(function (resolve, reject) {
     var timer = setTimeout(function () {
-      var errorMsg = 'El servidor tardó demasiado en responder para la operación: ' + funcName + ' (Límite: ' + (timeoutMs / 1000) + 's).';
+      var errorMsg = 'El servidor tard\u00f3 demasiado en responder para la operaci\u00f3n: ' + funcName + ' (L\u00edmite: ' + (timeoutMs / 1000) + 's).';
       App.logError(errorMsg, funcName);
-      reject(new Error(errorMsg));
+      reject({ code: 'TIMEOUT', message: errorMsg, funcName: funcName });
     }, timeoutMs);
 
     google.script.run
       .withSuccessHandler(function (result) {
         clearTimeout(timer);
+        if (result && result.suggestedTimeout && result.suggestedTimeout > App.DEFAULT_TIMEOUT) {
+          App.TIMEOUTS[funcName] = result.suggestedTimeout;
+        }
         resolve(result);
       })
       .withFailureHandler(function (error) {
         clearTimeout(timer);
-        App.logError(error.message || error, funcName);
-        reject(error.message || error);
+        var errMsg = (error && error.message) ? error.message : String(error || 'Error desconocido');
+        var errCode = (error && error.code) ? error.code : 'SERVER_ERROR';
+        App.logError(errMsg, funcName);
+        reject({ code: errCode, message: errMsg, funcName: funcName, raw: error });
       })
       [funcName].apply(null, args);
   });
