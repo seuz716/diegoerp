@@ -2,27 +2,27 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>MicroERP Â· Cartera Pro</title>
-<meta name="description" content="Sistema profesional de gestiÃ³n de cartera con facturaciÃ³n DIAN, contabilidad, inventario y alertas automÃ¡ticas de vencimientos. Integra IA para optimizar tu flujo de caja y mejorar la liquidez.">
-<meta name="author" content="CÃ©sar A. AbadÃ­a">
-<meta name="robots" content="index, follow">`n<link rel="canonical" href="https://script.google.com/macros/s/d/1ANnjrHVIeGQo4UiNi198cr_S3KfdoJpxDk9FJgohUO_9a_OLAItGFSQy/exec">
+<title>MicroERP · Cartera Pro</title>
+<meta name="description" content="Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos. Integra IA para optimizar tu flujo de caja y mejorar la liquidez.">
+<meta name="author" content="César A. Abadía">
+<meta name="robots" content="index, follow">
 <link rel="alternate" hreflang="es-CO" href="?m=1">
-<meta property="og:title" content="MicroERP Â· Cartera Pro">
-<meta property="og:description" content="Sistema profesional de gestiÃ³n de cartera con facturaciÃ³n DIAN, contabilidad, inventario y alertas automÃ¡ticas de vencimientos. Integra IA para optimizar tu flujo de caja.">
+<meta property="og:title" content="MicroERP · Cartera Pro">
+<meta property="og:description" content="Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos. Integra IA para optimizar tu flujo de caja.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="https://placehold.co/1200x630/1A1814/D4A82A/png?text=MicroERP+Cartera">
+<meta property="og:image" content="https://microerp.app/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:site_name" content="MicroERP">
 <meta property="og:locale" content="es_CO">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="MicroERP Â· Cartera Pro">
-<meta name="twitter:description" content="Sistema profesional de gestiÃ³n de cartera con facturaciÃ³n DIAN, contabilidad, inventario y alertas automÃ¡ticas de vencimientos.">
+<meta name="twitter:title" content="MicroERP · Cartera Pro">
+<meta name="twitter:description" content="Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos.">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1A1A1A" media="(prefers-color-scheme: dark)">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180' width='180' height='180' rx='30' fill='%233A7B6D'/><text x='90' y='120' text-anchor='middle' font-size='90' fill='white' font-family='system-ui'>Î¼</text>">
+<link rel="apple-touch-icon" sizes="180x180" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180' width='180' height='180' rx='30' fill='%233A7B6D'/><text x='90' y='120' text-anchor='middle' font-size='90' fill='white' font-family='system-ui'>μ</text>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" crossorigin href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap">
@@ -34,27 +34,27 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "MicroERP Â· Cartera Pro",
-  "description": "Sistema profesional de gestiÃ³n de cartera con facturaciÃ³n DIAN, contabilidad, inventario y alertas automÃ¡ticas de vencimientos. Integra IA para optimizar tu flujo de caja y mejorar la liquidez.",
+  "name": "MicroERP · Cartera Pro",
+  "description": "Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos. Integra IA para optimizar tu flujo de caja y mejorar la liquidez.",
   "url": "https://microerp.app/cartera",
   "applicationCategory": "Financial Management",
-  "applicationSubCategory": "FinancialManagement",
+  "applicationSubCategory": "Financial Management",
   "operatingSystem": "Web",
   "author": {
     "@type": "Person",
-    "name": "CÃ©sar A. AbadÃ­a"
+    "name": "César A. Abadía"
   },
   "offers": {
     "@type": "Offer",
     "price": "0",
     "priceCurrency": "USD",
-    "priceType": "ZeroPrice"
+    "category": "Free Software"
   },
   "featureList": [
-    "GestiÃ³n de cartera",
+    "Gestión de cartera",
     "IA integrada",
-    "Alertas automÃ¡ticas de vencimientos",
-    "FacturaciÃ³n DIAN",
+    "Alertas automáticas de vencimientos",
+    "Facturación DIAN",
     "Contabilidad",
     "Inventario"
   ],
@@ -69,42 +69,42 @@
 <body>
 <a href="#main" class="skip-link">Saltar al contenido</a>
 
-<aside id="sidebar" role="navigation" aria-label="MenÃº principal">
+<aside id="sidebar" role="navigation" aria-label="Menú principal">
   <div class="brand-zone">
     <div class="brand-logotype">Micro<em style="color:var(--accent)">ERP</em></div>
-    <div class="brand-sub">Cartera Pro Â· v2.1</div>
+    <div class="brand-sub">Cartera Pro · v2.1</div>
   </div>
 
   <nav class="sidebar-nav" aria-label="Secciones">
     <div class="nav-item active" data-view="dashboard" aria-current="page">
-      <span class="nav-icon">â—†</span> Dashboard
+      <span class="nav-icon">◆</span> Dashboard
     </div>
     <div class="nav-item" data-view="terceros">
-      <span class="nav-icon">â—‡</span> Terceros
+      <span class="nav-icon">◇</span> Terceros
     </div>
     <div class="nav-item" data-view="cartera">
-      <span class="nav-icon">â—‡</span> Cartera
+      <span class="nav-icon">◇</span> Cartera
     </div>
     <div class="nav-item" data-view="abonos">
-      <span class="nav-icon">â—‡</span> Pagos
+      <span class="nav-icon">◇</span> Pagos
     </div>
     <div class="nav-item" data-view="ventas">
-      <span class="nav-icon">â—‡</span> Ventas
+      <span class="nav-icon">◇</span> Ventas
     </div>
     <div class="nav-item" data-view="compras">
-      <span class="nav-icon">â—‡</span> Compras
+      <span class="nav-icon">◇</span> Compras
     </div>
     <div class="nav-item" data-view="productos">
-      <span class="nav-icon">â—‡</span> Productos
+      <span class="nav-icon">◇</span> Productos
     </div>
     <div class="nav-item" data-view="vencimientos">
-      <span class="nav-icon">â—‡</span> Vencimientos
+      <span class="nav-icon">◇</span> Vencimientos
     </div>
   </nav>
 
   <div class="sidebar-footer">
     <div class="sidebar-user" id="sidebar-user">
-      <div class="user-email">Cargando sesiÃ³n...</div>
+      <div class="user-email">Cargando sesión...</div>
     </div>
     <div class="theme-toggle" id="theme-toggle" role="button" tabindex="0" aria-label="Cambiar tema claro/oscuro">
       <span class="theme-toggle-track">
@@ -112,8 +112,8 @@
       </span>
       <span class="theme-toggle-label" id="theme-toggle-label">Oscuro</span>
     </div>
-    Gemini 2.5 Flash Â· IA activa<br>
-    Â© 2026 CÃ©sar A. AbadÃ­a
+    Gemini 2.5 Flash · IA activa<br>
+    © 2026 César A. Abadía
   </div>
 </aside>
 
@@ -124,26 +124,26 @@
   <section id="view-dashboard" class="view active" aria-label="Panel de control">
     <div class="page-header">
       <h1 class="page-title" role="heading" aria-level="1">Resumen <em>financiero</em></h1>
-      <button class="btn btn-accent btn-sm" id="btn-analizar-ia">â—ˆ Analizar con IA</button>
+      <button class="btn btn-accent btn-sm" id="btn-analizar-ia">◈ Analizar con IA</button>
     </div>
     <div class="error-banner" id="error-banner"></div>
 
-    <!-- Stats: hÃ©roe izquierda, dos columnas derecha -->
+    <!-- Stats: héroe izquierda, dos columnas derecha -->
     <div class="stats-asymmetric">
       <div class="stat-hero">
-        <div class="stat-label">Por Cobrar Â· CxC</div>
+        <div class="stat-label">Por Cobrar · CxC</div>
         <div class="stat-value" id="stat-cobrar">$4.280.000</div>
         <div class="stat-meta">Vencido: <span class="venc" id="stat-vencido-cxc">$1.240.000</span></div>
       </div>
       <div class="stat-normal">
-        <div class="stat-label">Por Pagar Â· CxP</div>
+        <div class="stat-label">Por Pagar · CxP</div>
         <div class="stat-value" id="stat-pagar">$890.000</div>
         <div class="stat-meta">Vencido: <span class="verde" id="stat-vencido-cxp">$0</span></div>
       </div>
       <div class="stat-normal">
-        <div class="stat-label">ExposiciÃ³n neta</div>
+        <div class="stat-label">Exposición neta</div>
         <div class="stat-value" id="stat-exposicion">$3.390.000</div>
-        <div class="stat-meta">Al dÃ­a de hoy</div>
+        <div class="stat-meta">Al día de hoy</div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Saldo de caja</div>
@@ -152,22 +152,22 @@
       </div>
     </div>
 
-    <!-- Vencimientos prÃ³ximos + ranking -->
+    <!-- Vencimientos próximos + ranking -->
     <div class="stats-asymmetric" style="margin-top:var(--space-5)">
       <div class="stat-hero">
-        <div class="stat-label">Vencimientos prÃ³ximos (7d)</div>
+        <div class="stat-label">Vencimientos próximos (7d)</div>
         <div class="stat-value" id="stat-prox7">$0</div>
-        <div class="stat-meta">15d: <span id="stat-prox15">$0</span> Â· 30d: <span id="stat-prox30">$0</span></div>
+        <div class="stat-meta">15d: <span id="stat-prox15">$0</span> · 30d: <span id="stat-prox30">$0</span></div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Top deudor</div>
-        <div class="stat-value" id="stat-topdeudor">â€”</div>
-        <div class="stat-meta" id="stat-topdeudor-meta">â€”</div>
+        <div class="stat-value" id="stat-topdeudor">—</div>
+        <div class="stat-meta" id="stat-topdeudor-meta">—</div>
       </div>
       <div class="stat-normal">
         <div class="stat-label">Conc. proveedores</div>
-        <div class="stat-value" id="stat-concprov">â€”</div>
-        <div class="stat-meta" id="stat-concprov-meta">â€”</div>
+        <div class="stat-value" id="stat-concprov">—</div>
+        <div class="stat-meta" id="stat-concprov-meta">—</div>
       </div>
     </div>
 
@@ -175,31 +175,31 @@
     <div class="alerts-section" aria-label="Alertas de cartera">
       <div class="section-header">
         <span>Deudores con mayor vencimiento</span>
-        <span class="section-count" id="alert-count">3 crÃ­ticos</span>
+        <span class="section-count" id="alert-count">3 críticos</span>
       </div>
 
       <div id="alerts-body" role="list" aria-live="polite">
         <div class="alert-row critical" role="listitem">
           <div class="rank top">#1</div>
           <div>
-            <div class="alert-name">Distribuciones LÃ³pez</div>
+            <div class="alert-name">Distribuciones López</div>
             <div class="alert-id">900.123.456-7</div>
           </div>
           <div class="alert-right">
             <div class="alert-amount">$640.000</div>
-            <div class="alert-dias">87 dÃ­as</div>
+            <div class="alert-dias">87 días</div>
           </div>
         </div>
 
         <div class="alert-row" role="listitem">
           <div class="rank">#2</div>
           <div>
-            <div class="alert-name">FerreterÃ­a del Norte</div>
+            <div class="alert-name">Ferretería del Norte</div>
             <div class="alert-id">800.456.789-1</div>
           </div>
           <div class="alert-right">
             <div class="alert-amount">$380.000</div>
-            <div class="alert-dias">43 dÃ­as</div>
+            <div class="alert-dias">43 días</div>
           </div>
         </div>
 
@@ -211,7 +211,7 @@
           </div>
           <div class="alert-right">
             <div class="alert-amount">$220.000</div>
-            <div class="alert-dias">31 dÃ­as</div>
+            <div class="alert-dias">31 días</div>
           </div>
         </div>
       </div>
@@ -220,24 +220,24 @@
     <!-- Exportar Libro Diario -->
     <div class="ia-panel" style="margin-top:var(--space-5)">
       <div class="ia-title">Libro Diario Contable</div>
-      <button class="btn btn-outline" id="btn-exportar-libro">â†“ Exportar CSV</button>
+      <button class="btn btn-outline" id="btn-exportar-libro">↓ Exportar CSV</button>
       <div style="margin-top:var(--space-4);font-size:var(--text-sm);color:var(--muted);line-height:1.6;">
-        Exporta todos los asientos contables (ventas, abonos, compras, pagos) en formato CSV para auditorÃ­a o entrega al contador.
+        Exporta todos los asientos contables (ventas, abonos, compras, pagos) en formato CSV para auditoría o entrega al contador.
       </div>
     </div>
 
     <!-- IA Panel -->
     <div class="ia-panel">
-      <div class="ia-title">AnÃ¡lisis de inteligencia artificial</div>
-      <button class="btn btn-accent" id="btn-analizar-completo">â—ˆ Ejecutar anÃ¡lisis completo</button>
+      <div class="ia-title">Análisis de inteligencia artificial</div>
+      <button class="btn btn-accent" id="btn-analizar-completo">◈ Ejecutar análisis completo</button>
       <div style="margin-top:var(--space-4);font-size:var(--text-sm);color:var(--muted);line-height:1.6;">
-        El anÃ¡lisis detecta patrones de mora, proyecta flujos a 90 dÃ­as e identifica clientes en riesgo de impago. Usa el modelo Gemini 2.5 Flash con datos en tiempo real.
+        El análisis detecta patrones de mora, proyecta flujos a 90 días e identifica clientes en riesgo de impago. Usa el modelo Gemini 2.5 Flash con datos en tiempo real.
       </div>
       <div id="ia-progress" style="display:none;margin-top:var(--space-3);">
         <div style="height:2px;background:var(--border);overflow:hidden;">
           <div id="ia-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width .3s ease;"></div>
         </div>
-        <div id="ia-progress-text" style="font-size:var(--text-micro);color:var(--muted);margin-top:var(--space-1-5);letter-spacing:0.1em;text-transform:uppercase;">Iniciando anÃ¡lisis...</div>
+        <div id="ia-progress-text" style="font-size:var(--text-micro);color:var(--muted);margin-top:var(--space-1-5);letter-spacing:0.1em;text-transform:uppercase;">Iniciando análisis...</div>
       </div>
     </div>
 
@@ -245,7 +245,7 @@
 
     <!-- Exportar Flujo de Caja -->
     <div class="ia-panel" style="margin-top:var(--space-3)">
-      <button class="btn btn-outline btn-sm" id="btn-exportar-flujo">â†“ Exportar flujo caja</button>
+      <button class="btn btn-outline btn-sm" id="btn-exportar-flujo">↓ Exportar flujo caja</button>
       <span style="font-size:var(--text-sm);color:var(--muted);margin-left:var(--space-2)">Registra entradas y salidas diarias</span>
     </div>
   </section>
@@ -298,9 +298,9 @@
 
     <div class="form-panel">
       <div class="abono-form">
-        <div class="form-panel-title">LiquidaciÃ³n FIFO</div>
+        <div class="form-panel-title">Liquidación FIFO</div>
         <div class="form-panel-desc">
-          El sistema aplica el pago a la deuda mÃ¡s antigua primero.
+          El sistema aplica el pago a la deuda más antigua primero.
         </div>
 
         <div class="form-row">
@@ -332,7 +332,7 @@
         <div id="abono-success" style="display:none;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);border:1px solid var(--green-border);background:var(--green-dim);color:var(--green);font-size:var(--text-sm);letter-spacing:0.04em;"></div>
 
         <button class="btn btn-accent" id="btn-ejecutar-abono" style="width:100%;justify-content:center;">
-          â†’ Ejecutar movimiento
+          → Ejecutar movimiento
         </button>
       </div>
     </div>
@@ -350,7 +350,7 @@
     <div class="table-section">
       <table class="data-table">
         <thead>
-          <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>LÃ­mite crÃ©dito</th><th></th></tr>
+          <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite crédito</th><th></th></tr>
         </thead>
         <tbody>
           <tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>
@@ -369,26 +369,26 @@
       <div class="abono-form">
         <div class="form-panel-title">Nueva venta</div>
         <div class="form-panel-desc">
-          Registra ventas al contado o a crÃ©dito. Los productos se cargan desde la hoja "Productos".
+          Registra ventas al contado o a crédito. Los productos se cargan desde la hoja "Productos".
         </div>
 
         <div class="form-row">
           <label class="form-label">Tipo de venta</label>
           <select class="form-field" id="venta-tipo">
             <option value="CONTADO">Contado</option>
-            <option value="CxC">CrÃ©dito</option>
+            <option value="CxC">Crédito</option>
           </select>
         </div>
 
         <div class="form-row" id="venta-tercero-row" style="display:none;">
-          <label class="form-label">Cliente (para crÃ©dito)</label>
+          <label class="form-label">Cliente (para crédito)</label>
           <select class="form-field" id="venta-cliente">
             <option value="">Seleccione un cliente...</option>
           </select>
         </div>
 
         <div class="form-row" id="venta-dias-row" style="display:none;">
-          <label class="form-label">DÃ­as de crÃ©dito</label>
+          <label class="form-label">Días de crédito</label>
           <input type="number" class="form-field" id="venta-dias" value="30" min="1" max="365">
         </div>
 
@@ -416,7 +416,7 @@
                 <input type="number" class="form-field venta-precio" value="0" min="0" style="font-size:var(--text-sm);">
               </div>
               <div style="display:flex;align-items:end;padding-bottom:4px;">
-                <button class="btn btn-sm btn-remove-producto" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">âœ•</button>
+                <button class="btn btn-sm btn-remove-producto" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">✕</button>
               </div>
             </div>
           </template>
@@ -431,7 +431,7 @@
         <div id="venta-success" style="display:none;padding:var(--space-3) var(--space-4);margin-bottom:var(--space-3);border:1px solid var(--green-border);background:var(--green-dim);color:var(--green);font-size:var(--text-sm);letter-spacing:0.04em;"></div>
 
         <button class="btn btn-accent" id="btn-registrar-venta" style="width:100%;justify-content:center;">
-          â†’ Registrar venta
+          → Registrar venta
         </button>
       </div>
     </div>
@@ -477,16 +477,16 @@
   </section>
 
   <!-- VENCIMIENTOS -->
-  <section id="view-vencimientos" class="view" aria-label="PrÃ³ximos vencimientos" aria-hidden="true">
+  <section id="view-vencimientos" class="view" aria-label="Próximos vencimientos" aria-hidden="true">
     <div class="page-header">
-      <h2 class="page-title">PrÃ³ximos <em>vencimientos</em></h2>
+      <h2 class="page-title">Próximos <em>vencimientos</em></h2>
       <div style="display:flex;gap:var(--space-2);">
         <select id="venc-dias" class="form-field" style="width:auto;">
-          <option value="7">7 dÃ­as</option>
-          <option value="15">15 dÃ­as</option>
-          <option value="30" selected>30 dÃ­as</option>
-          <option value="60">60 dÃ­as</option>
-          <option value="90">90 dÃ­as</option>
+          <option value="7">7 días</option>
+          <option value="15">15 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="60">60 días</option>
+          <option value="90">90 días</option>
         </select>
         <button class="btn btn-sm btn-accent" id="btn-actualizar-venc">Actualizar</button>
       </div>
@@ -502,9 +502,9 @@
         <thead>
           <tr>
             <th>Concepto</th>
-            <th>DescripciÃ³n</th>
+            <th>Descripción</th>
             <th>Saldo</th>
-            <th>DÃ­as</th>
+            <th>Días</th>
             <th>Vence</th>
           </tr>
         </thead>
@@ -521,8 +521,8 @@
       <h2 class="page-title">Productos <em>e inventario</em></h2>
       <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
         <input type="text" id="productos-search" class="form-field" placeholder="Buscar producto..." style="width:200px;max-width:50vw;font-size:var(--text-sm);" aria-label="Buscar productos por nombre">
-        <select id="productos-filter-categoria" class="form-field" style="width:auto;max-width:180px;" aria-label="Filtrar por categorÃ­a">
-          <option value="">Todas las categorÃ­as</option>
+        <select id="productos-filter-categoria" class="form-field" style="width:auto;max-width:180px;" aria-label="Filtrar por categoría">
+          <option value="">Todas las categorías</option>
         </select>
         <button class="btn btn-sm btn-accent" id="btn-nuevo-producto">+ Nuevo producto</button>
       </div>
@@ -534,7 +534,7 @@
           <tr>
             <th>ID</th>
             <th>Nombre</th>
-            <th>CategorÃ­a</th>
+            <th>Categoría</th>
             <th>Stock</th>
             <th>P.Compra</th>
             <th>P.Venta</th>
@@ -599,7 +599,7 @@
               <input type="number" class="form-field compra-precio" value="0" min="0" style="font-size:var(--text-sm);">
             </div>
             <div style="display:flex;align-items:end;padding-bottom:4px;">
-              <button class="btn btn-sm btn-remove-item" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">âœ•</button>
+              <button class="btn btn-sm btn-remove-item" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">✕</button>
             </div>
           </div>
         </template>
@@ -638,8 +638,8 @@
     <div class="modal-box">
       <div class="modal-title" id="modal-tercero-title">Nuevo tercero</div>
       <div class="form-row">
-        <label class="form-label">NIT / IdentificaciÃ³n</label>
-        <input type="text" class="form-field" id="tercero-nit" placeholder="NIT o cÃ©dula" maxlength="30" autocomplete="off">
+        <label class="form-label">NIT / Identificación</label>
+        <input type="text" class="form-field" id="tercero-nit" placeholder="NIT o cédula" maxlength="30" autocomplete="off">
       </div>
       <div class="form-row">
         <label class="form-label">Nombre</label>
@@ -654,12 +654,12 @@
         </select>
       </div>
       <div class="form-row">
-        <label class="form-label">LÃ­mite de crÃ©dito</label>
+        <label class="form-label">Límite de crédito</label>
         <input type="number" class="form-field" id="tercero-limite" placeholder="0" min="0">
       </div>
       <div class="form-row">
-        <label class="form-label">TelÃ©fono</label>
-        <input type="text" class="form-field" id="tercero-telefono" placeholder="TelÃ©fono" maxlength="30">
+        <label class="form-label">Teléfono</label>
+        <input type="text" class="form-field" id="tercero-telefono" placeholder="Teléfono" maxlength="30">
       </div>
       <div class="form-row" style="margin-bottom:var(--space-6)">
         <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--muted);cursor:pointer;">
@@ -684,7 +684,7 @@
         <input type="text" class="form-field" id="producto-nombre" placeholder="Nombre del producto" maxlength="200" required>
       </div>
       <div class="form-row">
-        <label class="form-label">CategorÃ­a</label>
+        <label class="form-label">Categoría</label>
         <input type="text" class="form-field" id="producto-categoria" placeholder="Ej: Insumos, Empaques..." maxlength="100">
       </div>
       <div class="form-row">
@@ -707,7 +707,7 @@
     </div>
   </div>
 
-  <!-- MODAL CONFIRMACIÃ“N -->
+  <!-- MODAL CONFIRMACIÓN -->
   <div id="modal-confirm" class="modal-overlay" role="alertdialog" aria-modal="true" aria-labelledby="modal-confirm-msg">
     <div class="modal-box">
       <div id="modal-confirm-msg" class="modal-title"></div>
@@ -721,25 +721,25 @@
 </div>
 </main>
 
-<nav id="bottom-nav" role="navigation" aria-label="NavegaciÃ³n principal">
-  <div class="nav-item" data-view="dashboard" aria-label="Dashboard"><span class="nav-icon">â—†</span><span>Panel</span></div>
-  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">â—‡</span><span>Terceros</span></div>
-  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">â—‡</span><span>Cartera</span></div>
-  <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">â—‡</span><span>Pagos</span></div>
-  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">â—‡</span><span>Venta</span></div>
-  <div class="nav-item" data-view="compras" aria-label="Compras"><span class="nav-icon">â—‡</span><span>Comp.</span></div>
-  <div class="nav-item" data-view="productos" aria-label="Productos"><span class="nav-icon">â—‡</span><span>Prod.</span></div>
-  <div class="nav-item" data-view="vencimientos" aria-label="Vencimientos"><span class="nav-icon">â—‡</span><span>Venc.</span></div>
+<nav id="bottom-nav" role="navigation" aria-label="Navegación principal">
+  <div class="nav-item" data-view="dashboard" aria-label="Dashboard"><span class="nav-icon">◆</span><span>Panel</span></div>
+  <div class="nav-item" data-view="terceros" aria-label="Terceros"><span class="nav-icon">◇</span><span>Terceros</span></div>
+  <div class="nav-item" data-view="cartera" aria-label="Cartera"><span class="nav-icon">◇</span><span>Cartera</span></div>
+  <div class="nav-item" data-view="abonos" aria-label="Pagos"><span class="nav-icon">◇</span><span>Pagos</span></div>
+  <div class="nav-item" data-view="ventas" aria-label="Ventas"><span class="nav-icon">◇</span><span>Venta</span></div>
+  <div class="nav-item" data-view="compras" aria-label="Compras"><span class="nav-icon">◇</span><span>Comp.</span></div>
+  <div class="nav-item" data-view="productos" aria-label="Productos"><span class="nav-icon">◇</span><span>Prod.</span></div>
+  <div class="nav-item" data-view="vencimientos" aria-label="Vencimientos"><span class="nav-icon">◇</span><span>Venc.</span></div>
 </nav>
 
-<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--red);color:#fff;text-align:center;padding:8px 16px;font-size:var(--text-sm);letter-spacing:0.04em;">Sin conexiÃ³n Â· Los datos pueden estar desactualizados</div>
-<div id="refresh-hint" aria-hidden="true">â†“ Tira hacia abajo para refrescar</div>
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--red);color:#fff;text-align:center;padding:8px 16px;font-size:var(--text-sm);letter-spacing:0.04em;">Sin conexión · Los datos pueden estar desactualizados</div>
+<div id="refresh-hint" aria-hidden="true">↓ Tira hacia abajo para refrescar</div>
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
-<button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">â†‘</button>
+<button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">↑</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-// Fallback: si CDN falla, DOMPurify no estÃ¡ disponible pero el fallback es seguro
+// Fallback: si CDN falla, DOMPurify no está disponible pero el fallback es seguro
 (function() {
   if (typeof DOMPurify === 'undefined') {
     console.warn('[DOMPurify] CDN fallback: using textContent for sanitization');
@@ -758,7 +758,3 @@
 <?!= HtmlService.createHtmlOutputFromFile('frontend/init').getContent() ?>
 </body>
 </html>
-
-
-
-

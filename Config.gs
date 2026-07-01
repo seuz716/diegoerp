@@ -377,6 +377,13 @@ function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }
 
 function _error(msg) { return { success: false, message: String(msg || "Error desconocido"), code: "ERROR" }; }
 
+function _captureError(context, error) {
+  const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
+  const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
+  Logger.log(`[${context}][${corrId}] ${stack}`);
+  console.error(`[${context}][${corrId}]`, error);
+}
+
 function _getTimeZone() {
   try {
     return Session.getScriptTimeZone() || SpreadsheetApp.getActive().getSpreadsheetTimeZone();

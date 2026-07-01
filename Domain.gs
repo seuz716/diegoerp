@@ -168,39 +168,79 @@ var _Transaction = {
       },
 
       rollback() {
-        if (!ctx.active) return;
-        // === INICIO FIX M-02 ===
-        // Rollback de Terceros (nuevo)
-        if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
-          const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-          for (const snap of ctx.terceroSnapshots) {
-            const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
-            sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
-          }
-          console.debug("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
-        }
-        // === FIN FIX M-02 ===
-        const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-        for (const snap of ctx.carteraSnapshots) {
-          const restoredRow = snap.values.slice();
-          const numCols = restoredRow.length;
-          sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
-        }
-        if (ctx.movPostRows > ctx.movPreRows) {
+  if (!ctx.active) return;
+  // === INICIO FIX M-02 ===
+  // Rollback de Terceros (nuevo)
+  if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+    const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
+    for (const snap of ctx.terceroSnapshots) {
+      const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
+      sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+    }
+    console.debug("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
+  }
+  // === FIN FIX M-02 ===
+  
+  // === INICIO FIX-VERSION-CHECK ===
+  // Helper: incrementar contador de rollbacks saltados
+  function _incRollbackSkip() {
+    const props = PropertiesService.getScriptProperties();
+    const failCount = Number(props.getProperty('ROLLBACK_SKIP_COUNT') || 0);
+    props.setProperty('ROLLBACK_SKIP_COUNT', String(failCount + 1));
+  }
+  
+  // Rollback de Cartera con verificación de versión optimista
+  const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+  const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+  for (const snap of ctx.carteraSnapshots) {
+    // Leer versión actual de la hoja
+    const currentRow = carteraSheet.getRange(snap.rowIndex, COL.version + 1, 1, 1).getValues()[0];
+    const currentVersion = Number(currentRow[0]) || 1;
+    const snapshotVersionIdx = COL.version - snap.startCol;
+    const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
+    
+    if (currentVersion !== snapshotVersion) {
+      Logger.log("[TXN-ROLLBACK-WARN] Cartera fila " + snap.rowIndex + 
+        ": versión actual " + currentVersion + 
+        " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
+      _incRollbackSkip();
+      continue;
+    }
+    const restoredRow = snap.values.slice();
+    const numCols = restoredRow.length;
+    carteraSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
+  }
+  // === FIN FIX-VERSION-CHECK ===
+  
+  if (ctx.movPostRows > ctx.movPreRows) {
           const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
           const startRow = ctx.movPreRows + 1;
           const count = ctx.movPostRows - ctx.movPreRows;
           movSheet.deleteRows(startRow, count);
         }
         // Producto stock rollback
-        if (ctx.productoSnapshots && ctx.productoSnapshots.length > 0) {
-          const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-          for (const snap of ctx.productoSnapshots) {
-            const numCols = snap.values.length;
-            sheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
-          }
-          console.debug("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
-        }
+  if (ctx.productoSnapshots && ctx.productoSnapshots.length > 0) {
+    const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+    const prodCOL = CONFIG.COLUMNS.PRODUCTOS;
+    for (const snap of ctx.productoSnapshots) {
+      const snapshotVersionIdx = prodCOL.version - snap.startCol;
+      const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
+      const currentRow = prodSheet.getRange(snap.rowIndex, prodCOL.version + 1, 1, 1).getValues()[0];
+      const currentVersion = Number(currentRow[0]) || 1;
+      
+      if (currentVersion !== snapshotVersion) {
+        Logger.log("[TXN-ROLLBACK-WARN] Producto fila " + snap.rowIndex + 
+          ": versión actual " + currentVersion + 
+          " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
+        _incRollbackSkip();
+        continue;
+      }
+      const numCols = snap.values.length;
+      prodSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
+    }
+    console.debug("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
+  }
         if (ctx.productoPostRows > ctx.productoPreRows) {
           const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
           const startRow = ctx.productoPreRows + 1;
@@ -815,6 +855,7 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
 
         return { success: true, id: idCompra, total: totalLimpio };
       } catch (e) {
+        _captureError("registrarCompraAtomic", e);
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en compra: " + rbErr.message); }
         CACHE.invalidateCartera();
         throw e;
@@ -918,6 +959,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
         return { success: true, id: pagoId, saldo_restante: nuevoSaldo, estado: nuevoEstado };
       } catch (e) {
+        _captureError("registrarPagoProveedor", e);
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en pago: " + rbErr.message); }
         CACHE.invalidateCartera();
         throw e;
@@ -1216,6 +1258,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
         return { success: true, id: idVenta, total: totalLimpio };
       } catch (e) {
+        _captureError("procesarVenta", e);
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback venta error: " + rbErr.message); }
         CACHE.invalidateCartera();
         throw e;

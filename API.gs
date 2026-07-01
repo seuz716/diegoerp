@@ -127,6 +127,50 @@ parseMoneda(value, defaultValue) {
   },
 
   /**
+   * Validate tipo (CxC, CxP, CLIENTE, PROVEEDOR, AMBOS)
+   */
+  validateTipo(value, allowed) {
+    if (!value) return null;
+    const upper = String(value).toUpperCase().trim();
+    const validos = allowed || ['CXC', 'CXP', 'CLIENTE', 'PROVEEDOR', 'AMBOS'];
+    if (validos.indexOf(upper) === -1) {
+      throw new Error('Tipo inválido: ' + value + '. Permitidos: ' + validos.join(', '));
+    }
+    return upper;
+  },
+
+  /**
+   * Validate page size (min 1, max 5000)
+   */
+  validatePageSize(size, defaultConfig) {
+    const parsed = parseInt(size, 10);
+    if (isNaN(parsed) || parsed < 1) return defaultConfig || 5000;
+    return Math.min(parsed, 5000);
+  },
+
+  /**
+   * Validate page token (must be >= 0)
+   */
+  validatePageToken(token) {
+    const parsed = parseInt(token, 10);
+    if (isNaN(parsed) || parsed < 0) return 0;
+    return parsed;
+  },
+
+  /**
+   * Validate estado (only valid states)
+   */
+  validateEstado(estado) {
+    if (!estado) return null;
+    const upper = String(estado).toUpperCase().trim();
+    const validos = ['ABIERTA', 'PARCIAL', 'CANCELADA', 'VENCIDA', 'PENDIENTE', 'PAGADA'];
+    if (validos.indexOf(upper) === -1) {
+      throw new Error('Estado inválido: ' + estado);
+    }
+    return upper;
+  },
+
+  /**
    * Sanitize tercero object fields
    */
   sanitizeTercero(tercero) {
@@ -240,9 +284,10 @@ function getTerceros(filtroTipo = null) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_terceros");
+    filtroTipo = INPUT_VALIDATOR.validateTipo(filtroTipo, ['CLIENTE', 'PROVEEDOR', 'AMBOS']);
     const resultado = CACHE.getTerceros();
     if (filtroTipo) {
-      return { items: resultado.filter(t => t.tipo === filtroTipo.toUpperCase()), correlationId, executionTimeMs: Date.now() - startTime };
+      return { items: resultado.filter(t => t.tipo === filtroTipo), correlationId, executionTimeMs: Date.now() - startTime };
     }
     return { items: resultado, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
@@ -258,6 +303,10 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cartera");
+    filtroTipo = INPUT_VALIDATOR.validateTipo(filtroTipo, ['CXC', 'CXp']);
+    filtroEstado = INPUT_VALIDATOR.validateEstado(filtroEstado);
+    pageSize = INPUT_VALIDATOR.validatePageSize(pageSize);
+    pageToken = INPUT_VALIDATOR.validatePageToken(pageToken);
     
     const result = DOMAIN.getCartera(filtroTipo, filtroEstado, pageSize, pageToken);
     
@@ -600,8 +649,10 @@ function getProductos(filtro) {
     if (filtro && typeof filtro === 'object') {
       filtroLimpio = {};
       if (filtro.activo !== undefined) filtroLimpio.activo = !!filtro.activo;
-      if (filtro.categoria) filtroLimpio.categoria = String(filtro.categoria).trim();
-      if (filtro.busqueda) filtroLimpio.busqueda = String(filtro.busqueda).trim();
+      if (filtro.categoria) {
+        filtroLimpio.categoria = INPUT_VALIDATOR.sanitizeString(filtro.categoria, 100);
+      }
+      if (filtro.busqueda) filtroLimpio.busqueda = INPUT_VALIDATOR.sanitizeString(filtro.busqueda, 100);
     }
     var lista = DAO_PRODUCTOS.listar(filtroLimpio);
     var productos = lista.map(function(p) {
@@ -803,6 +854,9 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
+    filtroEstado = INPUT_VALIDATOR.validateEstado(filtroEstado);
+    page = INPUT_VALIDATOR.validatePageToken(page);
+    pageSize = INPUT_VALIDATOR.validatePageSize(pageSize);
     CACHE.refresh();
     if (!page && page !== 0) page = 0;
     if (!pageSize) pageSize = 5000;
