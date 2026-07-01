@@ -394,12 +394,13 @@ var carteraPageSize = 100;
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
   view.setAttribute('aria-busy', 'true');
+  view.classList.add('is-loading');
   var tbody = document.querySelector('#view-cartera .data-table tbody');
   var tableSection = view.querySelector('.table-section');
 
   if (append !== true) {
     currentCarteraPageToken = 0;
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8);color:var(--muted);">Cargando cartera...</td></tr>';
+    tbody.innerHTML = ''; // Remover contenido previo inmediatamente, el overlay CSS se encarga del feedback visual
     
     tableSection.classList.remove('scroll-hint');
     setTimeout(function() {
