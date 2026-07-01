@@ -1,5 +1,5 @@
-/**
- * LAYER 4: DAO — PRODUCTOS (Maestro de productos e inventario)
+﻿/**
+ * LAYER 4: DAO â€” PRODUCTOS (Maestro de productos e inventario)
  */
 
 const DAO_PRODUCTOS = {
@@ -94,7 +94,7 @@ const DAO_PRODUCTOS = {
         return { success: false, error: "El nombre del producto es requerido" };
       }
       const id = datos.id ? _sanitizeId(datos.id) : ("P" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 4));
-      if (!id) return { success: false, error: "ID de producto inválido." };
+      if (!id) return { success: false, error: "ID de producto invÃ¡lido." };
       
       // Verificar si el ID ya existe
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
@@ -137,7 +137,7 @@ const DAO_PRODUCTOS = {
     const lock = LOCK_MANAGER.acquireGlobalLock(10000);
     try {
       const idLimpio = _sanitizeId(id);
-      if (!idLimpio) throw new Error("ID de producto inválido: " + id);
+      if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) throw new Error("Producto no encontrado: " + idLimpio);
@@ -181,7 +181,7 @@ const DAO_PRODUCTOS = {
     const lock = LOCK_MANAGER.acquireResourceLock(id);
     try {
       const idLimpio = _sanitizeId(id);
-      if (!idLimpio) throw new Error("ID de producto inválido: " + id);
+      if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) throw new Error("Producto no encontrado: " + idLimpio);
@@ -192,9 +192,11 @@ const DAO_PRODUCTOS = {
         if (String(data[i][C.id] || "").trim() === idLimpio) {
           const rowIdx = i + 2;
           const stockActual = _parseMoneda(data[i][C.stock], 0);
-          const nuevoStock = stockActual + cantidad;
+          const cant = _parseMoneda(cantidad, NaN);
+          if (isNaN(cant)) throw new Error("Cantidad inválida: debe ser un número");
+          const nuevoStock = stockActual + cant;
           if (nuevoStock < 0) {
-            throw new Error("Stock insuficiente: disponible " + stockActual + ", solicitado " + (-cantidad));
+            throw new Error("Stock insuficiente: disponible " + stockActual + ", solicitado " + (-cant));
           }
           const currentVersion = _parseMoneda(data[i][C.version], 1);
           const rowRange = sheet.getRange(rowIdx, 1, 1, numCols);
@@ -213,7 +215,7 @@ const DAO_PRODUCTOS = {
 
   toggleActivo(id) {
     const idLimpio = _sanitizeId(id);
-    if (!idLimpio) throw new Error("ID de producto inválido: " + id);
+    if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
     const producto = DAO_PRODUCTOS.obtener(idLimpio);
     if (!producto) throw new Error("Producto no encontrado: " + idLimpio);
     const lock = LOCK_MANAGER.acquireGlobalLock(10000);
@@ -237,3 +239,4 @@ const DAO_PRODUCTOS = {
 };
 
 DAO_PRODUCTOS._ensureSchema();
+

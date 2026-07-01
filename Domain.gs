@@ -1188,44 +1188,47 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           CACHE.recoverFromStale();
         }
 
-        // Read product sheet once and build index
-        const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-        const prodData = prodSheet.getDataRange().getValues();
-        const prodIndex = {};
-        for (let p = 1; p < prodData.length; p++) {
-          const pid = String(prodData[p][CONFIG.COLUMNS.PRODUCTOS.id] || "").trim();
-          if (pid) prodIndex[pid] = p;
-        }
+        // OPTIMIZED: Read product sheet once with exact range
+         const C = CONFIG.COLUMNS.PRODUCTOS;
+         const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+         const lastRow = prodSheet.getLastRow();
+         const numCols = Math.max.apply(null, Object.values(C)) + 1;
+         const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, numCols).getValues() : [];
+         const prodIndex = {};
+         for (let p = 0; p < prodData.length; p++) {
+           const pid = String(prodData[p][C.id] || "").trim();
+           if (pid) prodIndex[pid] = p;
+         }
 
         // Verificar stock disponible y reducir (in-memory)
         let subtotalAcumulado = 0;
         const changedRows = {};
 
         for (let j = 0; j < items.length; j++) {
-          const item = items[j];
-          const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
-          const cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
-          const pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
-          if (!prodId || cant <= 0) continue;
-          const sub = cant * pUnit;
+            const item = items[j];
+            const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
+            const cant = _parseMoneda(item.cantidad || item.cant || 0, 0);
+            const pUnit = _parseMoneda(item.precio_unitario || item.precio || 0, 0);
+            if (!prodId || cant <= 0) continue;
+            const sub = cant * pUnit;
           subtotalAcumulado += sub;
 
-          const p = prodIndex[prodId];
-          if (p === undefined) {
+            const p = prodIndex[prodId];
+            if (p === undefined) {
             return _error("Producto " + prodId + " no encontrado en inventario.");
           }
 
-          const currentStock = parseInt(prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock]) || 0;
-          if (currentStock < cant) {
+            const currentStock = parseInt(prodData[p][C.stock]) || 0;
+            if (currentStock < cant) {
             return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
           }
-          const nuevoStock = currentStock - cant;
-          prodData[p][CONFIG.COLUMNS.PRODUCTOS.stock] = nuevoStock;
-          changedRows[p] = true;
+            const nuevoStock = currentStock - cant;
+            prodData[p][C.stock] = nuevoStock;
+           changedRows[p + 2] = true;
 
           // Registrar salida en kardex
-          const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
-          const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+            const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
+            const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
           DAO_COMPRAS.crearMovimientoKardex({
             id: kardexId,
             fecha: new Date(),
@@ -1241,16 +1244,15 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         }
 
         // Batch write all stock changes at once
-        const rowNums = Object.keys(changedRows).map(Number).sort((a, b) => a - b);
-        if (rowNums.length > 0) {
-          const minRow = rowNums[0];
-          const maxRow = rowNums[rowNums.length - 1];
-          const batchData = [];
-          for (let r = minRow; r <= maxRow; r++) {
-            batchData.push([changedRows[r] ? prodData[r][CONFIG.COLUMNS.PRODUCTOS.stock] : null]);
-          }
-          prodSheet.getRange(minRow + 1, CONFIG.COLUMNS.PRODUCTOS.stock + 1, batchData.length, 1).setValues(batchData);
-        }
+         const rowNums = Object.keys(changedRows).map(Number).sort((a, b) => a - b);
+         if (rowNums.length > 0) {
+           const batchData = [];
+           for (const r of rowNums) {
+             const idx = r - 2; // Convert row index to prodData index
+             batchData.push([prodData[idx][C.stock]]);
+           }
+           prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(batchData);
+         }
 
         // Crear registro de venta en cartera
         const idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
