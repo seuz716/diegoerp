@@ -317,6 +317,36 @@ function runAllRegressionTests() {
     }
   });
   
+  // ===== P2 — API Input Validation Tests (CLI 3) =====
+  
+  _test('INPUT_VALIDATOR.validateTipo rejects invalid tipo', () => {
+    try {
+      INPUT_VALIDATOR.validateTipo('INVALIDO', ['CXC', 'CXP']);
+      return 'Should have thrown for invalid tipo';
+    } catch (e) {
+      return e.message.includes('Tipo inválido') ? true : 'Wrong error: ' + e.message;
+    }
+  });
+  
+  _test('INPUT_VALIDATOR.validatePageSize clamps to max 5000', () => {
+    const result = INPUT_VALIDATOR.validatePageSize(999999, 100);
+    return result === 5000 ? true : 'Expected 5000, got ' + result;
+  });
+  
+  _test('INPUT_VALIDATOR.validateEstado rejects invalid estado', () => {
+    try {
+      INPUT_VALIDATOR.validateEstado('ESTADO_INVALIDO');
+      return 'Should have thrown for invalid estado';
+    } catch (e) {
+      return e.message.includes('Estado inválido') ? true : 'Wrong error: ' + e.message;
+    }
+  });
+  
+  _test('INPUT_VALIDATOR.validatePageToken returns 0 for invalid', () => {
+    const result = INPUT_VALIDATOR.validatePageToken(-5);
+    return result === 0 ? true : 'Expected 0, got ' + result;
+  });
+  
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

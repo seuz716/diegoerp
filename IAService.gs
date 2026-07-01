@@ -321,6 +321,7 @@ const IA_SERVICE = {
 
       throw err;
     } catch (e) {
+      _captureError("_retryablePost", e);
       if (e.name === "IAError") throw e;
       if (attempt < this.MAX_RETRIES) {
         const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
