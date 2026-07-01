@@ -11,16 +11,16 @@ function _test(name, fn) {
     if (result === true) {
       TEST_RESULTS.passed++;
       TEST_RESULTS.tests.push({ name, status: 'PASS', error: null });
-      console.log('[PASS] ' + name);
+      Logger.log('[PASS] ' + name);
     } else {
       TEST_RESULTS.failed++;
       TEST_RESULTS.tests.push({ name, status: 'FAIL', error: result });
-      console.error('[FAIL] ' + name + ': ' + result);
+      Logger.log('[FAIL] ' + name + ': ' + result);
     }
   } catch (e) {
     TEST_RESULTS.failed++;
     TEST_RESULTS.tests.push({ name, status: 'ERROR', error: e.message });
-    console.error('[ERROR] ' + name + ': ' + e.message);
+    Logger.log('[ERROR] ' + name + ': ' + e.message);
   }
 }
 

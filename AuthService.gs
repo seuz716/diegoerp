@@ -162,7 +162,7 @@ const CRYPTO_SERVICE = {
       
       return JSON.stringify({ c: encoded, i: iv, s: salt, h: hmac, v: this.TAG });
     } catch (e) {
-      console.error("CRYPTO_SERVICE.encrypt error:", e.message);
+      Logger.log("CRYPTO_SERVICE.encrypt error:", e.message);
       throw new Error("CRYPTO_ERROR: Fallo en cifrado");
     }
   },
@@ -172,7 +172,7 @@ const CRYPTO_SERVICE = {
     try {
       const obj = JSON.parse(ciphertext);
       if (obj.v !== this.TAG) {
-        console.warn("CRYPTO_SERVICE: Formato legacy detectado, intentando migración...");
+        Logger.log("CRYPTO_SERVICE: Formato legacy detectado, intentando migración...");
         // Legacy support
         if (obj.v === "v2" && obj.c && obj.i && obj.h) {
           return this._decryptV2Legacy(obj);
@@ -203,7 +203,7 @@ const CRYPTO_SERVICE = {
       
       return Utilities.newBlob(plaintext).getDataAsString();
     } catch (e) {
-      console.error("CRYPTO_SERVICE.decrypt error:", e.message);
+      Logger.log("CRYPTO_SERVICE.decrypt error:", e.message);
       throw new Error("CRYPTO_ERROR: Fallo en descifrado");
     }
   },
@@ -284,7 +284,7 @@ const secureValue = this._loadKey(keyName);
     
     const validation = SCHEMA_VALIDATOR.validateRoleMap(raw);
     if (!validation.valid) {
-      console.error("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
+      Logger.log("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
       throw new Error("Configuración de usuarios corrupta: " + validation.error);
     }
     

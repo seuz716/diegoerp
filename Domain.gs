@@ -178,7 +178,7 @@ const _Transaction = {
       const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
       sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
     }
-    console.debug("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
+    Logger.log("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
   }
   // === FIN FIX M-02 ===
   
@@ -239,14 +239,14 @@ const _Transaction = {
       const numCols = snap.values.length;
       prodSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
     }
-    console.debug("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
+    Logger.log("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
   }
         if (ctx.productoPostRows > ctx.productoPreRows) {
           const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
           const startRow = ctx.productoPreRows + 1;
           const count = ctx.productoPostRows - ctx.productoPreRows;
           prodSheet.deleteRows(startRow, count);
-          console.debug("[DOMAIN] Rollback de productos inline: " + count + " fila(s) eliminada(s)");
+          Logger.log("[DOMAIN] Rollback de productos inline: " + count + " fila(s) eliminada(s)");
         }
         // Compras rollback
   if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
@@ -350,7 +350,7 @@ const DOMAIN = {
       const cachedRow = CACHE.terceroIndex ? CACHE.terceroIndex[id] : null;
       if (cachedRow) {
         tx.snapshotTerceroRow(cachedRow);
-        console.debug("[FIX-M-02] Snapshot tomado para fila existente: " + cachedRow);
+        Logger.log("[FIX-M-02] Snapshot tomado para fila existente: " + cachedRow);
       }
       // === FIN FIX M-02 ===
 
@@ -516,7 +516,7 @@ if (resultado.isUpdate) {
         CACHE.refresh();
         const consistency = CACHE.verifyConsistency();
         if (consistency.mismatched) {
-          console.debug("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
+          Logger.log("DOMAIN: Inconsistencia en caché antes de registrarAbonoAtomic. Recuperando.");
           CACHE.recoverFromStale();
         }
 
@@ -587,7 +587,7 @@ if (resultado.isUpdate) {
         // === INICIO FIX C-04 ===
         try {
           tx.rollback();
-          console.debug("[FIX-C-04] Rollback completado exitosamente");
+          Logger.log("[FIX-C-04] Rollback completado exitosamente");
         } catch (rbErr) {
           Logger.log("[FIX-C-04] ERROR: Rollback falló - " + rbErr.message);
         }
@@ -665,7 +665,7 @@ if (resultado.isUpdate) {
 
       const consistency = CACHE.verifyConsistency();
       if (consistency.mismatched) {
-        console.debug("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
+        Logger.log("DOMAIN: Inconsistencia en caché antes de crearCarteraAtomic. Recuperando.");
         CACHE.recoverFromStale();
       }
 
@@ -788,7 +788,7 @@ DAO.createCartera(record);
 
         DAO_COMPRAS.crearCompra(compraRecord);
 
-        const subtotalAcumulado = 0;
+        let subtotalAcumulado = 0;
         for (let j = 0; j < items.length; j++) {
           const item = items[j];
           const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");
@@ -1111,7 +1111,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     }
 
     const proveedores = {};
-    const totalCxP = 0;
+    let totalCxP = 0;
 
     for (let i = 0; i < cartera.length; i++) {
       const c = cartera[i];
@@ -1177,7 +1177,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         }
 
         // Verificar stock disponible y crear movimiento
-        const subtotalAcumulado = 0;
+        let subtotalAcumulado = 0;
         for (let j = 0; j < items.length; j++) {
           const item = items[j];
           const prodId = _sanitizeId(item.id || item.productoId || item.id_producto || "");

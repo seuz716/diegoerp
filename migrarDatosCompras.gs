@@ -3,9 +3,9 @@
  * Idempotente — se puede ejecutar múltiples veces sin dañar datos.
  */
 function migrarDatosCompras() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var resultados = [];
-  var hojas = [
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const resultados = [];
+  const hojas = [
     {
       nombre: "Compras",
       columnas: ["ID", "Fecha", "ID_Proveedor", "ID_Factura", "Total", "Saldo", "Estado", "Fecha_Vencimiento", "Vencida_Timestamp", "Version"]
@@ -19,15 +19,15 @@ function migrarDatosCompras() {
       columnas: ["ID", "Fecha", "ID_Compra", "ID_Proveedor", "Valor", "Referencia", "Metodo_Pago"]
     }
   ];
-  for (var i = 0; i < hojas.length; i++) {
-    var h = hojas[i];
-    var sheet = ss.getSheetByName(h.nombre);
+  for (let i = 0; i < hojas.length; i++) {
+    const h = hojas[i];
+    let sheet = ss.getSheetByName(h.nombre);
     if (sheet) {
       resultados.push(h.nombre + ": ya existe");
       continue;
     }
     sheet = ss.insertSheet(h.nombre);
-    var headerRange = sheet.getRange(1, 1, 1, h.columnas.length);
+    const headerRange = sheet.getRange(1, 1, 1, h.columnas.length);
     headerRange.setValues([h.columnas]);
     headerRange.setFontWeight("bold");
     sheet.setFrozenRows(1);

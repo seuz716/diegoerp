@@ -17,7 +17,7 @@
   if (typeof CARTERA_CONFIG === 'undefined') {
     throw new Error("LOAD ERROR: CacheService.gs requires Config.gs to be loaded first (CARTERA_CONFIG not defined)");
   }
-  console.debug("[CACHE-SERVICE] Dependencies verified - Config.gs loaded correctly");
+  Logger.log("[CACHE-SERVICE] Dependencies verified - Config.gs loaded correctly");
 })();
 
 class CacheIntegrityError extends Error {
@@ -89,7 +89,7 @@ let CACHE = {
       this.circuitCloses = Math.min(Number(props.getProperty('CACHE_CIRCUIT_CLOSES') || 0), 999999);
       this._metricsLoaded = true;
     } catch (e) {
-      console.debug("CACHE: Error loading metrics: " + e.toString());
+      Logger.log("CACHE: Error loading metrics: " + e.toString());
     }
   },
 
@@ -104,7 +104,7 @@ _persistMetric(name) {
       this[name] = cappedValue;
       props.setProperty(key, String(cappedValue));
     } catch (e) {
-      console.debug("CACHE: Error persisting metric " + name + ": " + e.toString());
+      Logger.log("CACHE: Error persisting metric " + name + ": " + e.toString());
     }
   },
 
@@ -138,7 +138,7 @@ invalidateTerceros() {
        const key = "terceros_v" + currentVer;
        CacheService.getScriptCache().remove(key);
      } catch (e) {
-       console.debug("CACHE: Error invalidating native terceros cache: " + e.toString());
+       Logger.log("CACHE: Error invalidating native terceros cache: " + e.toString());
      }
    },
 
@@ -161,7 +161,7 @@ invalidateCartera() {
        const key = "cartera_v" + currentVer;
        CacheService.getScriptCache().remove(key);
      } catch (e) {
-       console.debug("CACHE: Error invalidating native cartera cache: " + e.toString());
+       Logger.log("CACHE: Error invalidating native cartera cache: " + e.toString());
      }
    },
 
@@ -237,7 +237,7 @@ invalidateCartera() {
         return result;
       } catch (e) {
         lastError = e;
-        console.debug(`[FIX-C-02] Attempt ${attempt + 1}/${maxRetries} failed: ${e.message}`);
+        Logger.log(`[FIX-C-02] Attempt ${attempt + 1}/${maxRetries} failed: ${e.message}`);
         if (attempt < maxRetries - 1) {
           Utilities.sleep(1000 * (attempt + 1)); // Exponential backoff
         }
@@ -264,7 +264,7 @@ invalidateCartera() {
         this._circuitOpenCarteraTimestamp = newOpenTs;
         props.setProperty('CIRCUIT_OPEN_CARTERA_TS', String(newOpenTs));
       }
-      console.debug(`[FIX-C-02] HALF_OPEN test failed. Circuit ${kind} back to OPEN with ${backoffMs}ms backoff`);
+      Logger.log(`[FIX-C-02] HALF_OPEN test failed. Circuit ${kind} back to OPEN with ${backoffMs}ms backoff`);
       return false;
     }
 
@@ -272,7 +272,7 @@ invalidateCartera() {
     const staleStartProp = kind === 'terceros' ? 'tercerosStaleStart' : 'carteraStaleStart';
     const isStale = this[staleProp] && (Date.now() - this[staleStartProp]) > this.MAX_STALE_MS / 2;
     if (isStale) {
-      console.debug(`[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.`);
+      Logger.log(`[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.`);
       const props = PropertiesService.getScriptProperties();
       const currentFailures = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
       const backoffMs = Math.min(60000, 5000 * Math.pow(2, currentFailures));
@@ -298,7 +298,7 @@ invalidateCartera() {
       PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
     }
     this._incrementMetric('circuitCloses');
-    console.debug(`[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ${kind} CLOSED - service recovered`);
+    Logger.log(`[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ${kind} CLOSED - service recovered`);
     return true;
   },
   
@@ -323,7 +323,7 @@ invalidateCartera() {
       this._circuitOpenCarteraTimestamp = 0;
       PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
     }
-    console.debug(`[FIX-C-02] Circuit breaker reset: ${kind}`);
+    Logger.log(`[FIX-C-02] Circuit breaker reset: ${kind}`);
   },
 
   /**
@@ -363,7 +363,7 @@ invalidateCartera() {
     // storedTs is a future timestamp (circuit opened at Date.now() + backoffMs)
     // Circuit can transition to half_open when current time >= storedTs (backoff elapsed)
     if (state === 'open' && validTs && Date.now() >= storedTs) {
-      console.debug(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after backoff elapsed`);
+      Logger.log(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after backoff elapsed`);
       this._setCircuitState(kind, 'half_open');
       if (kind === 'terceros') {
         this.tercerosCircuitOpen = true;
@@ -380,7 +380,7 @@ invalidateCartera() {
    * @private
    */
   _transitionToHalfOpen(kind) {
-    console.debug(`[FIX-C-02] _transitionToHalfOpen: ${kind} entering half_open state`);
+    Logger.log(`[FIX-C-02] _transitionToHalfOpen: ${kind} entering half_open state`);
     // The actual state change is already done by _setCircuitState
     // This method allows for any additional half-open initialization
   },
@@ -481,9 +481,9 @@ return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CA
   },
 
 recoverFromStale() {
-     console.debug("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
+     Logger.log("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
      if (!LOCK_MANAGER._safeTryLock(5000)) {
-       console.debug("CACHE: No se pudo adquirir lock global para recoverFromStale, abortando");
+       Logger.log("CACHE: No se pudo adquirir lock global para recoverFromStale, abortando");
        return false;
      }
      try {
@@ -501,15 +501,15 @@ recoverFromStale() {
            this._refreshCartera();
            restored = !this.tercerosStale && !this.carteraStale;
          } catch (e) {
-           console.debug("CACHE: recoverFromStale intento " + attempt + " falló: " + e);
+           Logger.log("CACHE: recoverFromStale intento " + attempt + " falló: " + e);
            if (attempt < maxAttempts) {
              const backoff = 500 * Math.pow(2, attempt - 1);
-             console.debug("CACHE: Esperando " + backoff + "ms antes del próximo intento");
+             Logger.log("CACHE: Esperando " + backoff + "ms antes del próximo intento");
              Utilities.sleep(backoff);
            }
          }
        }
-       console.debug("CACHE: Protocolo de recuperación completado. restaurado=" + restored + " tras " + attempt + " intento(s)");
+       Logger.log("CACHE: Protocolo de recuperación completado. restaurado=" + restored + " tras " + attempt + " intento(s)");
        return restored;
      } finally {
        LOCK_MANAGER._safeReleaseLock();
@@ -546,7 +546,7 @@ recoverFromStale() {
     const durationMs = Date.now() - start;
     const mismatch = currentChecksum !== storedChecksum;
     const valid = !mismatch;
-    console.debug(`CACHE._verifyChecksum(${kind}): ${durationMs}ms, valid=${valid}`);
+    Logger.log(`CACHE._verifyChecksum(${kind}): ${durationMs}ms, valid=${valid}`);
     return { valid, currentChecksum, mismatch };
   },
 
@@ -557,7 +557,7 @@ recoverFromStale() {
    * @returns {boolean} false
    */
 _handleIntegrityFailure(kind) {
-     console.debug("CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
+     Logger.log("CACHE: Checksum de " + kind + " no coincide — datos stale detectados. Ejecutando recoverFromStale().");
      
      // Track checksum mismatch for auto-circuit-breaker
      this.checksumMismatches++;
@@ -566,7 +566,7 @@ _handleIntegrityFailure(kind) {
      
      // Check if we should auto-open circuit breaker
      if (this._shouldAutoOpenCircuitForChecksum()) {
-       console.debug("CACHE: Checksum mismatches threshold exceeded, opening circuit breaker");
+       Logger.log("CACHE: Checksum mismatches threshold exceeded, opening circuit breaker");
        if (kind === 'terceros') {
          this.tercerosCircuitOpen = true;
          this._incrementMetric('circuitOpens');
@@ -675,7 +675,7 @@ ttl: this.CACHE_TTL
     if (totalRows <= 50000) {
       return sheet.getRange(startRow, 1, totalRows, numCols).getValues();
     }
-    console.debug("[FIX-M-06] Large sheet: %s rows, reading in blocks of %s", totalRows, ITEMS_PER_BLOCK);
+    Logger.log("[FIX-M-06] Large sheet: %s rows, reading in blocks of %s", totalRows, ITEMS_PER_BLOCK);
     let result = [];
     for (let offset = 0; offset < totalRows; offset += ITEMS_PER_BLOCK) {
       const blockSize = Math.min(ITEMS_PER_BLOCK, totalRows - offset);
@@ -736,7 +736,7 @@ ttl: this.CACHE_TTL
 
   _refreshTerceros() {
     if (this._refreshingTerceros) {
-      console.debug("CACHE: _refreshTerceros ya en progreso, saltando");
+      Logger.log("CACHE: _refreshTerceros ya en progreso, saltando");
       return;
     }
     this._refreshingTerceros = true;
@@ -784,7 +784,7 @@ ttl: this.CACHE_TTL
       });
 } catch (e) {
        this.tercerosFailCount++;
-       console.debug("ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
+       Logger.log("ERROR CACHE._refreshTerceros (fail #" + this.tercerosFailCount + "):" + e.toString());
        if (this.terceros === null) {
          this.tercerosStale = false;
          return;
@@ -800,9 +800,9 @@ ttl: this.CACHE_TTL
          try {
            PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
          } catch (e) {
-           console.debug("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+           Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
          }
-         console.debug("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
+         Logger.log("CACHE: Circuito de terceros abierto tras " + this.tercerosFailCount + " fallos consecutivos");
        }
      } finally {
        this._refreshingTerceros = false;
@@ -811,7 +811,7 @@ ttl: this.CACHE_TTL
 
   _refreshCartera() {
     if (this._refreshingCartera) {
-      console.debug("CACHE: _refreshCartera ya en progreso, saltando");
+      Logger.log("CACHE: _refreshCartera ya en progreso, saltando");
       return;
     }
     this._refreshingCartera = true;
@@ -863,7 +863,7 @@ ttl: this.CACHE_TTL
       });
 } catch (e) {
        this.carteraFailCount++;
-       console.debug("ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
+       Logger.log("ERROR CACHE._refreshCartera (fail #" + this.carteraFailCount + "):" + e.toString());
        if (this.cartera === null) {
          this.carteraStale = false;
          return;
@@ -880,9 +880,9 @@ ttl: this.CACHE_TTL
          try {
            PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
          } catch (e) {
-           console.debug("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
+           Logger.log("[FIX-C-02] Could not persist circuit timestamp: " + e.toString());
          }
-         console.debug("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
+         Logger.log("CACHE: Circuito de cartera abierto tras " + this.carteraFailCount + " fallos consecutivos");
        }
      } finally {
        this._refreshingCartera = false;
@@ -984,12 +984,12 @@ ttl: this.CACHE_TTL
       // Build saldo map from index (carteraIndex has id_tercero -> row indexes)
       const saldoMap = this._buildSaldoMap();
       const saldo = saldoMap[idClean] || 0;
-      console.debug("[FIX-M-03] getSaldoTercero(%s) from pre-built map: %s", idClean, saldo);
+      Logger.log("[FIX-M-03] getSaldoTercero(%s) from pre-built map: %s", idClean, saldo);
       return saldo;
     }
 
     // Fallback: single batch read instead of N+1
-    console.debug("[FIX-M-03] getSaldoTercero(%s) cache miss, sheet fallback", idClean);
+    Logger.log("[FIX-M-03] getSaldoTercero(%s) cache miss, sheet fallback", idClean);
     return this._getSaldoFromSheet(idClean);
     // === FIN FIX M-03 ===
   },
@@ -1061,10 +1061,10 @@ _putNativeCache(keyPrefix, data) {
            cache.put(baseKey + "_c" + c, chunk, 300);
          }
          cache.put(baseKey + "_meta", String(totalChunks), 300);
-         console.debug("CACHE: Fragmentado en " + totalChunks + " chunks");
+         Logger.log("CACHE: Fragmentado en " + totalChunks + " chunks");
        }
      } catch (e) {
-       console.debug("CACHE: Error in _putNativeCache: " + e.toString());
+       Logger.log("CACHE: Error in _putNativeCache: " + e.toString());
      }
    },
 
@@ -1087,7 +1087,7 @@ _putNativeCache(keyPrefix, data) {
       }
       return JSON.parse(parts.join(""));
 } catch (e) {
-       console.debug("CACHE: Error in _getNativeCache: " + e.toString());
+       Logger.log("CACHE: Error in _getNativeCache: " + e.toString());
      }
  return null;
      },
