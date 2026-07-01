@@ -1,9 +1,9 @@
-<script>
-/* ── GAS IFRAME FIX ──
+﻿<script>
+/* â”€â”€ GAS IFRAME FIX â”€â”€
    En GAS, el HTML se sirve dentro de un iframe. El <meta viewport>
    del HTML interno NO controla el zoom del navegador porque el viewport
-   solo aplica al documento raíz. Este script:
-   1. Fuerza font-size base en móvil (JS tiene más especificidad que CSS heredado)
+   solo aplica al documento raÃ­z. Este script:
+   1. Fuerza font-size base en mÃ³vil (JS tiene mÃ¡s especificidad que CSS heredado)
    2. Notifica al host de GAS cambios de altura via ResizeObserver
 */
 (function(){
@@ -29,6 +29,17 @@ function mostrarHintRefrescar() {
   hint._timer = setTimeout(function() { hint.classList.remove('show'); }, 2000);
 }
 
+// Scroll restoration
+var scrollPositions = {};
+function guardarScroll(viewId) {
+  var main = document.getElementById('main');
+  if (main) scrollPositions[viewId] = main.scrollTop;
+}
+function restaurarScroll(viewId) {
+  var main = document.getElementById('main');
+  if (main) main.scrollTop = scrollPositions[viewId] || 0;
+}
+
 // Live region for screen reader announcements
 var liveRegion = document.createElement('div');
 liveRegion.setAttribute('aria-live', 'polite');
@@ -36,7 +47,7 @@ liveRegion.setAttribute('aria-atomic', 'true');
 liveRegion.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
 document.body.appendChild(liveRegion);
 
-// Navegación
+// NavegaciÃ³n
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
     document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active', 'is-loading'); b.removeAttribute('aria-current'); });
@@ -55,7 +66,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
       view.removeAttribute('aria-hidden');
     }
     var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', productos: 'Productos', inventario: 'Inventario', vencimientos: 'Vencimientos' };
-    document.title = 'MicroERP · ' + (viewTitles[viewId] || viewId);
+    document.title = 'MicroERP Â· ' + (viewTitles[viewId] || viewId);
     mostrarHintRefrescar();
 
     var fnMap = { dashboard: cargarDashboard, cartera: cargarCartera, terceros: cargarTerceros, abonos: cargarAbonoSelect, ventas: cargarVentas, compras: cargarCompras, productos: cargarProductos, inventario: cargarProductos, vencimientos: cargarVencimientos };
@@ -80,7 +91,7 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
   });
 });
 
-// Información de usuario
+// InformaciÃ³n de usuario
 function cargarUserInfo() {
   var userEl = document.getElementById('sidebar-user');
   App.api.getUserInfo()
@@ -96,7 +107,7 @@ function cargarUserInfo() {
         userEl.appendChild(emailDiv);
         userEl.appendChild(roleDiv);
       } else {
-        userEl.innerHTML = '<div class="user-error">Sesión no disponible</div>';
+        userEl.innerHTML = '<div class="user-error">SesiÃ³n no disponible</div>';
       }
     })
     .catch(function (err) {
@@ -105,7 +116,7 @@ function cargarUserInfo() {
     });
 }
 
-// Delegación venta-tipo
+// DelegaciÃ³n venta-tipo
 document.addEventListener('change', function (e) {
   if (e.target.id === 'venta-tipo') {
     var isCredito = e.target.value === 'CxC';
@@ -172,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function () {
     btn = e.target.closest('.btn-toggle-producto');
     if (btn) {
       var id2 = btn.dataset.id;
-      confirmarAccion(['¿Cambiar estado del producto?', 'ID: ' + id2], function () {
+      confirmarAccion(['Â¿Cambiar estado del producto?', 'ID: ' + id2], function () {
         App.api.toggleActivoProducto(id2).then(function () {
           cargarProductos();
           App.api.getProductos().then(function (data) {
@@ -197,13 +208,13 @@ document.addEventListener('DOMContentLoaded', function () {
     productosFilterCat.addEventListener('change', cargarProductos);
   }
 
-  // Compra items: delegación para botón agregar y nuevo producto
+  // Compra items: delegaciÃ³n para botÃ³n agregar y nuevo producto
   document.getElementById('btn-agregar-item-compra').addEventListener('click', agregarFilaItemCompra);
   document.getElementById('btn-nuevo-producto-compra').addEventListener('click', function () {
     abrirModalProducto(null);
     // After save, the product select will be refreshed on next open
   });
-  // Detectar edición manual del total
+  // Detectar ediciÃ³n manual del total
   var compraTotal = document.getElementById('compra-total');
   if (compraTotal) {
     compraTotal.addEventListener('input', function () {
@@ -263,8 +274,31 @@ if (btnBackTop) {
   scrollTargets.forEach(function(t) { t.addEventListener('scroll', onScroll, { passive: true }); });
 }
 
-// Escape key
+// Keyboard shortcuts for power users
 document.addEventListener('keydown', function(e) {
+  // Ignore if typing in input
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+    return;
+  }
+
+  var shortcuts = {
+    'd': 'dashboard',
+    'c': 'cartera',
+    't': 'terceros',
+    'p': 'abonos',
+    'v': 'ventas',
+    'o': 'compras',
+    'i': 'productos',
+    'e': 'vencimientos'
+  };
+
+  if (e.ctrlKey && shortcuts[e.key.toLowerCase()]) {
+    e.preventDefault();
+    var navItem = document.querySelector('.nav-item[data-view="' + shortcuts[e.key.toLowerCase()] + '"]');
+    if (navItem) navItem.click();
+  }
+
+  // Escape key
   if (e.key === 'Escape') {
     var modals = ['modal-pago-compra', 'modal-compra', 'modal-tercero', 'modal-producto'];
     for (var i = 0; i < modals.length; i++) {
@@ -279,4 +313,14 @@ document.addEventListener('keydown', function(e) {
     }
   }
 });
+
+// Presentation mode toggle
+var btnPresentation = document.getElementById('btn-presentation');
+if (btnPresentation) {
+  btnPresentation.addEventListener('click', function() {
+    document.body.classList.toggle('presentation-mode');
+    this.classList.toggle('active');
+  });
+}
 </script>
+

@@ -1,12 +1,12 @@
-<script>
-// ════════════════════════════════════════════════════════════════
-// VIEWS — Controladores de vista del frontend MicroERP
-// Extraído de index_v3_SaaS.html
-// ════════════════════════════════════════════════════════════════
+﻿<script>
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// VIEWS â€” Controladores de vista del frontend MicroERP
+// ExtraÃ­do de index_v3_SaaS.html
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 1. DASHBOARD
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
@@ -44,14 +44,14 @@ function cargarDashboard() {
       }
       if (data.topDeudores && data.topDeudores.length > 0) {
         var top = data.topDeudores[0];
-        document.getElementById('stat-topdeudor').textContent = top.nombre || '—';
+        document.getElementById('stat-topdeudor').textContent = top.nombre || 'â€”';
         document.getElementById('stat-topdeudor-meta').textContent = App.formatearMoneda(top.saldo_vencido) + ' (' + (top.max_dias || 0) + 'd)';
       }
       if (data.concentracionProveedores) {
         var c = data.concentracionProveedores;
         var totalP = c.total || 0;
         document.getElementById('stat-concprov').textContent = (c.items ? c.items.length : 0) + ' prov.';
-        document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : '—';
+        document.getElementById('stat-concprov-meta').textContent = totalP ? App.formatearMoneda(totalP) : 'â€”';
       }
 
       App.api.getFlujoCajaResumen(30).then(function (flujo) {
@@ -81,7 +81,7 @@ function cargarDashboard() {
           var infoDiv = document.createElement('div');
           var nameDiv = document.createElement('div');
           nameDiv.className = 'alert-name';
-          nameDiv.textContent = a.nombre || '—';
+          nameDiv.textContent = a.nombre || 'â€”';
           var idDiv = document.createElement('div');
           idDiv.className = 'alert-id';
           idDiv.textContent = a.id_tercero || '';
@@ -96,7 +96,7 @@ function cargarDashboard() {
           amountDiv.textContent = App.formatearMoneda(a.saldo);
           var diasDiv = document.createElement('div');
           diasDiv.className = 'alert-dias';
-          diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? 'ía' : 'ías');
+          diasDiv.textContent = (a.dias || 0) + ' d' + (a.dias === 1 ? 'Ã­a' : 'Ã­as');
           rightDiv.appendChild(amountDiv);
           rightDiv.appendChild(diasDiv);
           row.appendChild(rightDiv);
@@ -116,9 +116,9 @@ function cargarDashboard() {
     });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 2. IA
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function crearSeccionIA(labelText) {
   var sec = document.createElement('div');
@@ -151,7 +151,7 @@ function renderizarAnalisis(analisis) {
   c.appendChild(secConfianza);
 
   if (analisis.alertas_criticas && analisis.alertas_criticas.length) {
-    var secAlertas = crearSeccionIA('Alertas críticas');
+    var secAlertas = crearSeccionIA('Alertas crÃ­ticas');
     analisis.alertas_criticas.forEach(function (a) {
       var item = document.createElement('div');
       item.className = 'ir-alert-item';
@@ -163,7 +163,7 @@ function renderizarAnalisis(analisis) {
 
   if (analisis.analisis_riesgo_cartera) {
     var r = analisis.analisis_riesgo_cartera;
-    var secRiesgo = crearSeccionIA('Análisis de riesgo');
+    var secRiesgo = crearSeccionIA('AnÃ¡lisis de riesgo');
     var grid = document.createElement('div');
     grid.className = 'ir-grid';
     Object.keys(r).forEach(function (k) {
@@ -197,7 +197,7 @@ function renderizarAnalisis(analisis) {
 
   if (analisis.segmentacion_terceros) {
     var s = analisis.segmentacion_terceros;
-    var secSeg = crearSeccionIA('Segmentación');
+    var secSeg = crearSeccionIA('SegmentaciÃ³n');
     var gridSeg = document.createElement('div');
     gridSeg.className = 'ir-grid';
     Object.keys(s).forEach(function (k) {
@@ -230,7 +230,7 @@ function renderizarAnalisis(analisis) {
   }
 
   if (analisis.anomalias_detectadas && analisis.anomalias_detectadas.length) {
-    var secAno = crearSeccionIA('Anomalías detectadas');
+    var secAno = crearSeccionIA('AnomalÃ­as detectadas');
     analisis.anomalias_detectadas.forEach(function (a) {
       var item = document.createElement('div');
       item.className = 'ir-ano-item';
@@ -245,7 +245,18 @@ function renderizarAnalisis(analisis) {
     analisis.recomendaciones_accionables.forEach(function (r) {
       var item = document.createElement('div');
       item.className = 'ir-rec-item';
-      item.textContent = typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || JSON.stringify(r));
+            if (r.explicacion) {
+        var expDiv = document.createElement('small');
+        expDiv.className = 'ir-explanation';
+        expDiv.innerHTML = '<em>Por qué:</em> ' + r.explicacion;
+        item.appendChild(expDiv);
+      }
+      item.innerHTML = typeof r === 'string' ? r : '<strong>' + (r.titulo || r.mensaje || r.accion || r.descripcion || '') + '</strong>';
+      if (r.descripcion && !r.explicacion) {
+        var descP = document.createElement('p');
+        descP.textContent = r.descripcion;
+        item.appendChild(descP);
+      }
       secRec.appendChild(item);
     });
     c.appendChild(secRec);
@@ -262,9 +273,9 @@ function analizarConGeminiFresco() {
   var textoOriginalP = btnPanel.textContent;
 
   btnHeader.disabled = true;
-  btnHeader.textContent = '◈ Analizando...';
+  btnHeader.textContent = 'â—ˆ Analizando...';
   btnPanel.disabled = true;
-  btnPanel.textContent = '◈ Analizando...';
+  btnPanel.textContent = 'â—ˆ Analizando...';
   results.style.display = 'none';
 
   var progressBar = document.getElementById('ia-progress');
@@ -282,7 +293,7 @@ function analizarConGeminiFresco() {
       if (resp && resp.success && resp.analisis) {
         renderizarAnalisis(resp.analisis);
       } else {
-        var errorMsg = (resp && resp.error) ? resp.error : 'El análisis no devolvió datos válidos.';
+        var errorMsg = (resp && resp.error) ? resp.error : 'El anÃ¡lisis no devolviÃ³ datos vÃ¡lidos.';
         if (resp && resp.correlationId) {
           errorMsg += ' (Ref: ' + resp.correlationId + ')';
         }
@@ -293,10 +304,10 @@ function analizarConGeminiFresco() {
       progressBarInner.className = '';
       progressBar.style.display = 'none';
       var msg = err.message || err || 'Error al conectar con el servicio de IA.';
-      if (msg.indexOf('rate') > -1 || msg.indexOf('límite') > -1) {
-        msg = 'Límite de uso alcanzado. Intenta de nuevo en unos minutos.';
+      if (msg.indexOf('rate') > -1 || msg.indexOf('lÃ­mite') > -1) {
+        msg = 'LÃ­mite de uso alcanzado. Intenta de nuevo en unos minutos.';
       } else if (msg.indexOf('timeout') > -1 || msg.indexOf('tiempo') > -1) {
-        msg = 'La solicitud tardó demasiado. Intenta de nuevo.';
+        msg = 'La solicitud tardÃ³ demasiado. Intenta de nuevo.';
       }
       var iaEl = document.getElementById('ia-results');
       iaEl.textContent = '';
@@ -316,9 +327,9 @@ function analizarConGeminiFresco() {
     });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 3. EXPORTACIONES CSV
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function exportarLibroDiarioCSV() {
   var btn = document.getElementById('btn-exportar-libro');
@@ -348,7 +359,7 @@ function exportarLibroDiarioCSV() {
     .catch(function (err) {
       btn.disabled = false;
       btn.textContent = textoOriginal;
-      showToast(err.message || 'Error de conexión', 'error');
+      showToast(err.message || 'Error de conexiÃ³n', 'error');
     });
 }
 
@@ -380,16 +391,15 @@ function exportarFlujoCajaCSV() {
     .catch(function (err) {
       btn.disabled = false;
       btn.textContent = textoOriginal;
-      showToast(err.message || 'Error de conexión', 'error');
+      showToast(err.message || 'Error de conexiÃ³n', 'error');
     });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 4. CARTERA
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-var currentCarteraPageToken = 0;
-var carteraPageSize = 100;
+// State now in App.state — see app.html
 
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
@@ -399,7 +409,7 @@ function cargarCartera(append) {
   var tableSection = view.querySelector('.table-section');
 
   if (append !== true) {
-    currentCarteraPageToken = 0;
+    App.state.cartera.pageToken = 0;
     tbody.innerHTML = ''; // Remover contenido previo inmediatamente, el overlay CSS se encarga del feedback visual
     
     tableSection.classList.remove('scroll-hint');
@@ -420,14 +430,14 @@ function cargarCartera(append) {
   var filtroTipo = filterTipoEl.value || null;
   var filtroEstado = filterEstadoEl.value || null;
 
-  return App.api.getCartera(filtroTipo, filtroEstado, carteraPageSize, currentCarteraPageToken)
+  return App.api.getCartera(filtroTipo, filtroEstado, App.state.cartera.pageSize, App.state.cartera.pageToken)
     .then(function (res) {
       if (append !== true) {
         tbody.innerHTML = '';
       }
 
       if (!res || (typeof res === 'object' && !res.items)) {
-        var errorMsg = 'Respuesta vacía del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
+        var errorMsg = 'Respuesta vacÃ­a del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
         App.api.getCarteraDebug(filtroTipo, filtroEstado)
           .then(function (debug) {
             var diagMsg = '';
@@ -454,7 +464,7 @@ function cargarCartera(append) {
             mostrarError(tbody, diagMsg + '</span>');
           })
           .catch(function () {
-            mostrarError(tbody, 'Respuesta vacía del servidor - diagnóstico falló');
+            mostrarError(tbody, 'Respuesta vacÃ­a del servidor - diagnÃ³stico fallÃ³');
           });
         return;
       }
@@ -490,7 +500,7 @@ function cargarCartera(append) {
           var tdTercero = document.createElement('td');
           var nombreDiv = document.createElement('div');
           nombreDiv.className = 'td-bold';
-          nombreDiv.textContent = item.nombre_tercero || '—';
+          nombreDiv.textContent = item.nombre_tercero || 'â€”';
           var idTerceroDiv = document.createElement('div');
           idTerceroDiv.className = 'td-muted';
           idTerceroDiv.textContent = item.id_tercero || '';
@@ -521,7 +531,7 @@ function cargarCartera(append) {
               var vencDiasDiv = document.createElement('div');
               vencDiasDiv.className = 'td-muted';
               vencDiasDiv.style.color = 'var(--red)';
-              vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'ía' : 'ías');
+              vencDiasDiv.textContent = item.dias_vencido + ' d' + (item.dias_vencido === 1 ? 'Ã­a' : 'Ã­as');
               tdVenc.appendChild(vencFechaDiv);
               tdVenc.appendChild(vencDiasDiv);
             } else {
@@ -535,7 +545,7 @@ function cargarCartera(append) {
             var vencDashSpan = document.createElement('span');
             vencDashSpan.className = 'td-mono';
             vencDashSpan.style.fontSize = 'var(--text-sm)';
-            vencDashSpan.textContent = '—';
+            vencDashSpan.textContent = 'â€”';
             tdVenc.appendChild(vencDashSpan);
           }
           tr.appendChild(tdVenc);
@@ -554,9 +564,9 @@ function cargarCartera(append) {
           var btnLoadMore = document.createElement('button');
           btnLoadMore.className = 'btn btn-outline btn-sm';
           btnLoadMore.style.margin = '0 auto';
-          btnLoadMore.textContent = 'Cargar más';
+          btnLoadMore.textContent = 'Cargar mÃ¡s';
           btnLoadMore.addEventListener('click', function () {
-            currentCarteraPageToken = nextToken;
+            App.state.cartera.pageToken = nextToken;
             cargarCartera(true);
           });
 
@@ -570,7 +580,7 @@ function cargarCartera(append) {
       mostrarError(tbody, err.message || err);
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm';
-      btn.textContent = '↻ Reintentar';
+      btn.textContent = 'â†» Reintentar';
       btn.style.marginLeft = 'var(--space-3)';
       btn.addEventListener('click', function () {
         cargarCartera(append);
@@ -580,9 +590,9 @@ function cargarCartera(append) {
   setTimeout(function() { view.removeAttribute('aria-busy'); }, 100);
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 5. ABONOS / PAGOS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarAbonoSelect() {
   var select = document.getElementById('abono-cliente');
@@ -595,7 +605,7 @@ function cargarAbonoSelect() {
         items.forEach(function (t) {
           var opt = document.createElement('option');
           opt.value = t.id;
-          opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+          opt.textContent = t.nombre + ' (' + (t.tipo || 'â€”') + ')';
           select.appendChild(opt);
         });
       }
@@ -619,19 +629,19 @@ function ejecutarAbono() {
   var referencia = document.getElementById('abono-referencia').value.trim();
 
   if (!idTercero) { errorEl.textContent = 'Seleccione un tercero.'; errorEl.classList.add('show'); return; }
-  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto válido (mínimo $1, sin decimales).'; errorEl.classList.add('show'); return; }
+  if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto vÃ¡lido (mÃ­nimo $1, sin decimales).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
 
-  confirmarAccion(['¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
+  confirmarAccion(['Â¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.classList.add('is-processing');
-  btn.textContent = '→ Procesando...';
+  btn.textContent = 'â†’ Procesando...';
 
   App.api.registrarAbono(idTercero, centavos, referencia, tipo)
     .then(function (r) {
       btn.disabled = false;
       btn.classList.remove('is-processing');
-      btn.textContent = '→ Ejecutar movimiento';
+      btn.textContent = 'â†’ Ejecutar movimiento';
       if (r && r.success === false) {
         errorEl.textContent = r.message || 'Error al registrar el abono.';
         errorEl.classList.add('show');
@@ -651,16 +661,16 @@ function ejecutarAbono() {
     .catch(function (err) {
       btn.disabled = false;
       btn.classList.remove('is-processing');
-      btn.textContent = '→ Ejecutar movimiento';
+      btn.textContent = 'â†’ Ejecutar movimiento';
       errorEl.textContent = err.message || err || 'Error al registrar el abono.';
       errorEl.classList.add('show');
     });
   });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 6. TERCEROS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarTerceros() {
   var view = document.getElementById('view-terceros');
@@ -702,12 +712,12 @@ function cargarTerceros() {
 
           var tdId = document.createElement('td');
           tdId.className = 'td-mono td-muted';
-          tdId.textContent = item.id || '—';
+          tdId.textContent = item.id || 'â€”';
           tr.appendChild(tdId);
 
           var tdNombre = document.createElement('td');
           tdNombre.style.fontWeight = '500';
-          tdNombre.textContent = item.nombre || '—';
+          tdNombre.textContent = item.nombre || 'â€”';
           tr.appendChild(tdNombre);
 
           var tdTipo = document.createElement('td');
@@ -734,7 +744,7 @@ function cargarTerceros() {
       mostrarError(tbody, err.message || err);
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm';
-      btn.textContent = '↻ Reintentar';
+      btn.textContent = 'â†» Reintentar';
       btn.style.marginLeft = 'var(--space-3)';
       btn.addEventListener('click', cargarTerceros);
       tbody.querySelector('.error-banner').appendChild(btn);
@@ -812,7 +822,7 @@ function confirmarAccion(lineas, onConfirm) {
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
   _trapFocus(modal);
-  _announce('Confirmación requerida');
+  _announce('ConfirmaciÃ³n requerida');
   var btnOk = document.getElementById('modal-confirm-ok');
   var btnCan = document.getElementById('modal-confirm-cancel');
   function cleanup() {
@@ -824,7 +834,7 @@ function confirmarAccion(lineas, onConfirm) {
     btnCan.removeEventListener('click', onCancel);
     modal.removeEventListener('click', onOverlayClick);
     modal.removeEventListener('keydown', onEscape);
-    _announce('Confirmación cerrada');
+    _announce('ConfirmaciÃ³n cerrada');
   }
   function onOk() { cleanup(); onConfirm(); }
   function onCancel() { cleanup(); }
@@ -847,12 +857,12 @@ function guardarTercero() {
   var activo = document.getElementById('tercero-activo').checked;
 
   if (!nit) {
-    errorEl.textContent = 'El NIT / identificación es obligatorio.';
+    errorEl.textContent = 'El NIT / identificaciÃ³n es obligatorio.';
     errorEl.style.display = 'block';
     return;
   }
   if (nit.replace(/[^A-Z0-9]/g, '').length < 3) {
-    errorEl.textContent = 'NIT inválido. Debe contener al menos 3 caracteres alfanuméricos (sin puntos ni guiones).';
+    errorEl.textContent = 'NIT invÃ¡lido. Debe contener al menos 3 caracteres alfanumÃ©ricos (sin puntos ni guiones).';
     errorEl.style.display = 'block';
     return;
   }
@@ -862,7 +872,7 @@ function guardarTercero() {
     return;
   }
   if (limiteRaw && limiteRaw.indexOf('.') !== -1) {
-    errorEl.textContent = 'El límite de crédito no debe contener decimales. Use valores enteros.';
+    errorEl.textContent = 'El lÃ­mite de crÃ©dito no debe contener decimales. Use valores enteros.';
     errorEl.style.display = 'block';
     return;
   }
@@ -896,9 +906,9 @@ function guardarTercero() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 7. VENTAS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 App.productosCache = [];
 
@@ -958,7 +968,7 @@ function cargarVentasTerceros() {
       items.forEach(function (t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.nombre + ' (' + (t.tipo || '—') + ')';
+        opt.textContent = t.nombre + ' (' + (t.tipo || 'â€”') + ')';
         select.appendChild(opt);
       });
     }
@@ -1051,7 +1061,7 @@ function registrarVenta() {
   }
 
   if (tipo === 'CxC' && !idTercero) {
-    errorEl.textContent = 'Seleccione un cliente para ventas a crédito.';
+    errorEl.textContent = 'Seleccione un cliente para ventas a crÃ©dito.';
     errorEl.classList.add('show');
     return;
   }
@@ -1066,7 +1076,7 @@ function registrarVenta() {
     for (var iT = 0; iT < itemsT.length; iT++) {
       if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
     }
-    // === FIX: Validar crédito disponible (límite - saldo actual) ===
+    // === FIX: Validar crÃ©dito disponible (lÃ­mite - saldo actual) ===
     if (cliente && cliente.limite_credito > 0) {
       var saldoActual = 0;
       var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
@@ -1078,7 +1088,7 @@ function registrarVenta() {
       }
       var creditoDisponible = cliente.limite_credito - saldoActual;
       if (totalVentaCentavos > creditoDisponible) {
-        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crédito disponible del cliente (' + App.formatearMoneda(creditoDisponible) + '). Saldo actual: ' + App.formatearMoneda(saldoActual) + ', Límite: ' + App.formatearMoneda(cliente.limite_credito) + '.';
+        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crÃ©dito disponible del cliente (' + App.formatearMoneda(creditoDisponible) + '). Saldo actual: ' + App.formatearMoneda(saldoActual) + ', LÃ­mite: ' + App.formatearMoneda(cliente.limite_credito) + '.';
         errorEl.classList.add('show');
         return;
       }
@@ -1087,21 +1097,21 @@ function registrarVenta() {
   }
 
   var totalStr = document.getElementById('venta-total').textContent;
-  confirmarAccion(['¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
+  confirmarAccion(['Â¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.classList.add('is-processing');
-  btn.textContent = '→ Procesando...';
+  btn.textContent = 'â†’ Procesando...';
 
   App.api.procesarVenta(carrito, { tipo: tipo, idTercero: idTercero || null, diasCredito: diasCredito })
     .then(function (r) {
       btn.disabled = false;
       btn.classList.remove('is-processing');
-      btn.textContent = '→ Registrar venta';
+      btn.textContent = 'â†’ Registrar venta';
       if (r && r.success === false) {
         errorEl.textContent = r.message || 'Error al registrar venta.';
         errorEl.classList.add('show');
       } else {
-        successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'Crédito' : 'Contado');
+        successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'CrÃ©dito' : 'Contado');
         successEl.style.display = 'block';
         setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
         var container = document.getElementById('venta-productos');
@@ -1117,16 +1127,16 @@ function registrarVenta() {
     .catch(function (err) {
       btn.disabled = false;
       btn.classList.remove('is-processing');
-      btn.textContent = '→ Registrar venta';
+      btn.textContent = 'â†’ Registrar venta';
       errorEl.textContent = err.message || err || 'Error al registrar venta.';
       errorEl.classList.add('show');
     });
   });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 7b. PRODUCTOS / INVENTARIO
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarProductos() {
   var body = document.getElementById('productos-body');
@@ -1143,7 +1153,7 @@ function cargarProductos() {
   return App.api.getProductos().then(function (resFull) {
     var allItems = (resFull && resFull.productos) || [];
     App.productosCache = allItems;
-    // Poblar combo de categorías
+    // Poblar combo de categorÃ­as
     var catSelect = document.getElementById('productos-filter-categoria');
     if (catSelect) {
       var cats = {};
@@ -1151,7 +1161,7 @@ function cargarProductos() {
         if (p.categoria) cats[p.categoria] = true;
       });
       var sortedCats = Object.keys(cats).sort();
-      catSelect.innerHTML = '<option value="">Todas las categorías</option>';
+      catSelect.innerHTML = '<option value="">Todas las categorÃ­as</option>';
       sortedCats.forEach(function (c) {
         var opt = document.createElement('option');
         opt.value = c;
@@ -1187,7 +1197,7 @@ function cargarProductos() {
       var htmlStr =
         '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(p.id) + '</td>' +
         '<td>' + escapeHtml(p.nombre) + '</td>' +
-        '<td>' + escapeHtml(p.categoria || '—') + '</td>' +
+        '<td>' + escapeHtml(p.categoria || 'â€”') + '</td>' +
         '<td class="cell-mono">' + (p.stock || 0) + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(p.precio_compra) + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(p.precio_venta) + '</td>' +
@@ -1285,7 +1295,7 @@ function guardarProducto() {
     cargarProductos();
     App.api.getProductos().then(function (data) {
       App.productosCache = (data && data.productos) || data || [];
-      // Refrescar selects de compra si el modal está abierto
+      // Refrescar selects de compra si el modal estÃ¡ abierto
       document.querySelectorAll('.compra-producto-select').forEach(function (s) {
         llenarSelectProductos(s, true);
       });
@@ -1299,11 +1309,11 @@ function guardarProducto() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 8. COMPRAS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-var _compraList = [];
+// State now in App.state — see app.html
 
 function cargarCompras(append) {
   var body = document.getElementById('compras-body');
@@ -1348,13 +1358,13 @@ function cargarCompras(append) {
       if (rowClass) tr.className = rowClass;
 
       var htmlStr =
-        '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || '—') + '</td>' +
-        '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || '—') + '</td>' +
+        '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || 'â€”') + '</td>' +
+        '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || 'â€”') + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(c.total) + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(c.pagado || 0) + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(c.saldo) + '</td>' +
         '<td>' + escapeHtml(estado) + '</td>' +
-        '<td style="font-size:var(--text-sm);">' + (venc ? venc.toLocaleDateString('es-CO') : '—') + '</td>' +
+        '<td style="font-size:var(--text-sm);">' + (venc ? venc.toLocaleDateString('es-CO') : 'â€”') + '</td>' +
         '<td>' +
           (estado !== 'PAGADA'
             ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + escapeAttr(c.id) + '" data-saldo="' + escapeAttr(c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
@@ -1362,7 +1372,7 @@ function cargarCompras(append) {
         '</td>';
       tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
         ? DOMPurify.sanitize(htmlStr, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-saldo', 'id']})
-        : htmlStr; // Safe: valores escapeados con escapeHtml() + validación numérica
+        : htmlStr; // Safe: valores escapeados con escapeHtml() + validaciÃ³n numÃ©rica
 
       body.appendChild(tr);
     });
@@ -1393,7 +1403,7 @@ function abrirModalNuevaCompra() {
       res.items.forEach(function (t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.id + ' — ' + (t.nombre || '—');
+        opt.textContent = t.id + ' â€” ' + (t.nombre || 'â€”');
         sel.appendChild(opt);
       });
     }
@@ -1495,7 +1505,7 @@ function guardarCompra() {
     totalDesdeItems += cant * prec;
   });
 
-  if (items.length === 0) { errEl.textContent = 'Agregue al menos un item válido (producto + cantidad + precio).'; errEl.style.display = 'block'; return; }
+  if (items.length === 0) { errEl.textContent = 'Agregue al menos un item vÃ¡lido (producto + cantidad + precio).'; errEl.style.display = 'block'; return; }
 
   var total = parseInt(document.getElementById('compra-total').value, 10) || totalDesdeItems;
   if (total < 1) { errEl.textContent = 'El total debe ser mayor a 0.'; errEl.style.display = 'block'; return; }
@@ -1515,7 +1525,7 @@ function guardarCompra() {
     }
     document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
     document.getElementById('compra-success').style.display = 'block';
-    // Refrescar cache de productos después de compra (posibles creaciones inline)
+    // Refrescar cache de productos despuÃ©s de compra (posibles creaciones inline)
     App.api.getProductos().then(function (data) {
       App.productosCache = (data && data.productos) || data || [];
     });
@@ -1529,11 +1539,11 @@ function guardarCompra() {
   });
 }
 
-var _pagoCompraId = null;
+// State now in App.state — see app.html
 
 function abrirModalPagoCompra(idCompra, saldo) {
   var modal = document.getElementById('modal-pago-compra');
-  _pagoCompraId = idCompra;
+  App.state.pagos.compraId = idCompra;
   document.getElementById('pago-compra-title').textContent = 'Pagar compra #' + idCompra;
   document.getElementById('pago-compra-monto').value = Math.round(parseInt(saldo) / 100) || '';
   document.getElementById('pago-compra-ref').value = '';
@@ -1551,7 +1561,7 @@ function cerrarModalPagoCompra() {
   _untrapFocus(modal);
   document.getElementById('sidebar').removeAttribute('aria-hidden');
   document.getElementById('main').removeAttribute('aria-hidden');
-  _pagoCompraId = null;
+  App.state.pagos.compraId = null;
   _announce('Modal pago cerrado');
 }
 
@@ -1561,14 +1571,14 @@ function ejecutarPagoCompra() {
   var ref = document.getElementById('pago-compra-ref').value.trim();
   var errEl = document.getElementById('pago-compra-error');
 
-  if (!montoCentavos || montoCentavos < 100) { errEl.textContent = 'Ingrese un monto válido (mínimo $1).'; errEl.style.display = 'block'; return; }
+  if (!montoCentavos || montoCentavos < 100) { errEl.textContent = 'Ingrese un monto vÃ¡lido (mÃ­nimo $1).'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
 
   var btn = document.getElementById('btn-pago-compra-ejecutar');
   btn.disabled = true;
   btn.textContent = 'Procesando...';
 
-  App.api.registrarPagoProveedor(_pagoCompraId, montoCentavos, ref || 'Pago manual').then(function (res) {
+  App.api.registrarPagoProveedor(App.state.pagos.compraId, montoCentavos, ref || 'Pago manual').then(function (res) {
     btn.disabled = false;
     btn.textContent = 'Pagar';
     if (res && res.success === false) {
@@ -1587,9 +1597,9 @@ function ejecutarPagoCompra() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // 9. VENCIMIENTOS
-// ────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function cargarVencimientos() {
   var body = document.getElementById('venc-body');
@@ -1609,7 +1619,7 @@ function cargarVencimientos() {
 
     body.innerHTML = '';
     if (items.length === 0) {
-      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin vencimientos próximos</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin vencimientos prÃ³ximos</td></tr>';
       return;
     }
 
@@ -1619,10 +1629,10 @@ function cargarVencimientos() {
       var labelTipo = tipo === 'CxP' ? 'Cuenta por pagar' : tipo === 'compra' ? 'Compra' : 'Cuenta por cobrar';
       var vencHtml =
         '<td><span class="badge badge-' + (tipo === 'CxP' || tipo === 'compra' ? 'yellow' : 'red') + '" style="font-size:var(--text-micro);">' + escapeHtml(labelTipo) + '</span></td>' +
-        '<td>' + escapeHtml(v.nombre_tercero || v.nombre || '—') + '</td>' +
+        '<td>' + escapeHtml(v.nombre_tercero || v.nombre || 'â€”') + '</td>' +
         '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
         '<td>' + escapeHtml(String(v.dias_para_vencer || 0)) + ' d' + '</td>' +
-        '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : '—') + '</td>';
+        '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : 'â€”') + '</td>';
       tr.innerHTML = typeof DOMPurify !== 'undefined' && DOMPurify.sanitize
         ? DOMPurify.sanitize(vencHtml, {ALLOWED_TAGS: ['td', 'tr', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan']})
         : vencHtml;
@@ -1634,3 +1644,4 @@ function cargarVencimientos() {
 }
 
 </script>
+
