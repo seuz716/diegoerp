@@ -335,12 +335,12 @@ invalidateCartera() {
     const state = this._getCircuitState(kind);
     const timestamp = kind === 'terceros' ? this._circuitOpenTercerosTimestamp : this._circuitOpenCarteraTimestamp;
     const failCount = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
-    const timeInState = Date.now() - timestamp;
+    // timestamp is either 0 or a future timestamp when circuit is open
+    const nextRetryMs = state === 'open' && timestamp > Date.now() ? Math.max(0, timestamp - Date.now()) : 0;
     return {
       state: state,
       failCount: failCount,
-      timeInStateMs: timeInState,
-      nextRetryMs: state === 'open' ? Math.max(0, this.CIRCUIT_AUTO_CLOSE_MS - timeInState) : 0
+      nextRetryMs: nextRetryMs
     };
   },
 
@@ -356,8 +356,10 @@ invalidateCartera() {
     const timestampKey = kind === 'terceros' ? 'CIRCUIT_OPEN_TERCEROS_TS' : 'CIRCUIT_OPEN_CARTERA_TS';
     const storedTs = Number(props.getProperty(timestampKey) || '0');
     
-    if (state === 'open' && storedTs > 0 && (Date.now() - storedTs) > this.CIRCUIT_AUTO_CLOSE_MS) {
-      console.debug(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after 5 minutes`);
+    // storedTs is a future timestamp (circuit opened at Date.now() + backoffMs)
+    // Circuit can transition to half_open when current time >= storedTs (backoff elapsed)
+    if (state === 'open' && storedTs > 0 && Date.now() >= storedTs) {
+      console.debug(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after backoff elapsed`);
       this._setCircuitState(kind, 'half_open');
       if (kind === 'terceros') {
         this.tercerosCircuitOpen = true;

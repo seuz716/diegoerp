@@ -26,8 +26,8 @@ function _safeError(context, error, correlationId) {
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;
   const executionTime = startTime > 0 ? Date.now() - parseInt(startTime) : 0;
-  console.error('[' + corrId + '] ' + context + ': ' + message + (error && error.stack ? ' | stack: ' + error.stack : ''));
-  Logger.log('[' + corrId + '] ' + context + ': ' + message + ' (execution: ' + executionTime + 'ms)');
+  console.error('[' + corrId + '] ' + context + ': ' + message);
+  Logger.log('[' + corrId + '] ' + context + ' (execution: ' + executionTime + 'ms)');
   return { success: false, error: message, correlationId: corrId, executionTimeMs: executionTime };
 }
 

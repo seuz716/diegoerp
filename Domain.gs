@@ -249,13 +249,25 @@ var _Transaction = {
           console.debug("[DOMAIN] Rollback de productos inline: " + count + " fila(s) eliminada(s)");
         }
         // Compras rollback
-        if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
-          const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-          for (const snap of ctx.compraSnapshots) {
-            const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
-            compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
-          }
-        }
+  if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
+    const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+    const compraCOL = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+    for (const snap of ctx.compraSnapshots) {
+      const snapshotVersion = Number(snap.values[compraCOL.version]) || 1;
+      const currentRow = compraSheet.getRange(snap.rowIndex, compraCOL.version + 1, 1, 1).getValues()[0];
+      const currentVersion = Number(currentRow[0]) || 1;
+      
+      if (currentVersion !== snapshotVersion) {
+        Logger.log("[TXN-ROLLBACK-WARN] Compra fila " + snap.rowIndex + 
+          ": versión actual " + currentVersion + 
+          " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
+        _incRollbackSkip();
+        continue;
+      }
+      const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
+      compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+    }
+  }
         if (ctx.pagoPostRows > ctx.pagoPreRows) {
           const pagoSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
           const startRow = ctx.pagoPreRows + 1;
