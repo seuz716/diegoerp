@@ -127,7 +127,7 @@ const LOG_ENGINE = {
 
       return true;
     } catch (e) {
-      Logger.log("ERROR LOG_ENGINE:" + e.toString());
+      Logger.log("ERROR LOG_ENGINE: Error en operación");
       return false;
     }
   },
@@ -157,7 +157,7 @@ const LOG_ENGINE = {
         .slice(-limit)
         .reverse();
     } catch (e) {
-      Logger.log("ERROR LOG_ENGINE.getHistory:" + e.toString());
+      Logger.log("ERROR LOG_ENGINE.getHistory: Error en operación");
       return [];
     }
   },
@@ -188,8 +188,8 @@ const LOG_ENGINE = {
 
       return { success: true, ventas: ventas };
     } catch (e) {
-      Logger.log("ERROR LOG_ENGINE.getVentasHistory:" + e.toString());
-      return { success: false, ventas: [], error: e.message };
+      Logger.log("ERROR LOG_ENGINE.getVentasHistory: Error en operación");
+      return { success: false, ventas: [], error: "Error interno" };
     }
   },
 
@@ -248,7 +248,7 @@ function getVentasHistory(limit = 100) {
   try {
     return LOG_ENGINE.getVentasHistory(limit);
   } catch (e) {
-    Logger.log("ERROR getVentasHistory:" + e.toString());
-    return { success: false, ventas: [], error: e.message };
+    Logger.log("ERROR getVentasHistory: Error en operación");
+    return { success: false, ventas: [], error: "Error interno" };
   }
 }
