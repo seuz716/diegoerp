@@ -6,7 +6,7 @@
 // TEST RUNNER
 // ════════════════════════════════════════════
 
-var _ASSERT = {
+const _ASSERT = {
   _passed: 0,
   _failed: 0,
   _errors: [],
@@ -27,7 +27,7 @@ var _ASSERT = {
   equal(a, b, msg) {
     if (a === b) { this._passed++; return; }
     this._failed++;
-    var err = "FAIL: " + msg + " — esperado " + JSON.stringify(b) + ", obtenido " + JSON.stringify(a);
+    const err = "FAIL: " + msg + " — esperado " + JSON.stringify(b) + ", obtenido " + JSON.stringify(a);
     this._errors.push(err);
     Logger.log(err);
   },
@@ -36,13 +36,13 @@ var _ASSERT = {
     try {
       fn();
       this._failed++;
-      var err = "FAIL: " + msg + " — debió lanzar excepción";
+      const err = "FAIL: " + msg + " — debió lanzar excepción";
       this._errors.push(err);
       Logger.log(err);
     } catch (e) {
       if (expectedMsg && e.message.indexOf(expectedMsg) === -1) {
         this._failed++;
-        var err2 = "FAIL: " + msg + " — esperaba '" + expectedMsg + "', obtuve '" + e.message + "'";
+        const err2 = "FAIL: " + msg + " — esperaba '" + expectedMsg + "', obtuve '" + e.message + "'";
         this._errors.push(err2);
         Logger.log(err2);
         return;
@@ -52,11 +52,11 @@ var _ASSERT = {
   },
 
   summary() {
-    var total = this._passed + this._failed;
+    const total = this._passed + this._failed;
     Logger.log("[TEST-RUNNER] " + total + " tests: " + this._passed + " pass, " + this._failed + " fail");
     if (this._failed > 0) {
       Logger.log("[TEST-RUNNER] Errores:");
-      for (var i = 0; i < this._errors.length; i++) {
+      for (let i = 0; i < this._errors.length; i++) {
         Logger.log("  " + this._errors[i]);
       }
     }
@@ -80,7 +80,7 @@ function runAllTests() {
   testResourceLockTimeout();
   testTransactionRollback();
 
-  var result = _ASSERT.summary();
+  const result = _ASSERT.summary();
   Logger.log("[TEST-RUNNER] ===== FIN =====");
   return result;
 }
@@ -122,12 +122,12 @@ function testSanitizeId() {
 function testError() {
   Logger.log("[TEST] ===== testError =====");
 
-  var e1 = _error("algo falló");
+  const e1 = _error("algo falló");
   _ASSERT.equal(e1.success, false, "success=false");
   _ASSERT.equal(e1.message, "algo falló", "message correcto");
   _ASSERT.equal(e1.code, "ERROR", "code=ERROR");
 
-  var e2 = _error();
+  const e2 = _error();
   _ASSERT.equal(e2.message, "Error desconocido", "mensaje default");
 }
 
@@ -148,10 +148,10 @@ function testSafeDate() {
   _ASSERT.equal(_safeDate(""), null, "vacío retorna null");
   _ASSERT.equal(_safeDate("  "), null, "espacios retorna null");
 
-  var d = _safeDate("2026-06-25");
+  const d = _safeDate("2026-06-25");
   _ASSERT.ok(d instanceof Date && !isNaN(d.getTime()), "iso date parsea");
 
-  var d2 = _safeDate("25/06/2026");
+  const d2 = _safeDate("25/06/2026");
   _ASSERT.ok(d2 instanceof Date && !isNaN(d2.getTime()), "dd/mm/yyyy parsea");
 
   _ASSERT.ok(!_safeDate("not-a-date"), "string random retorna null");
@@ -194,7 +194,7 @@ function testCircuitBreakerTransitions() {
   CACHE.terceros = [{ id: "T1" }];
   _ASSERT.ok(CACHE.isTercerosValid(), "stale dentro de MAX_STALE_MS → válido (usa stale data)");
 
-  var info = CACHE.getStalenessInfo();
+  const info = CACHE.getStalenessInfo();
   _ASSERT.ok(info.terceros !== undefined, "getStalenessInfo tiene terceros");
   _ASSERT.ok(info.cartera !== undefined, "getStalenessInfo tiene cartera");
   _ASSERT.ok(info.metrics.circuitOpens !== undefined, "getStalenessInfo tiene metrics.circuitOpens");
@@ -215,7 +215,7 @@ function testResourceLockTimeout() {
 
   LOCK_MANAGER._lockDepth = 0;
 
-  var got = LOCK_MANAGER._safeTryLock(100);
+  const got = LOCK_MANAGER._safeTryLock(100);
   _ASSERT.ok(got, "_safeTryLock adquiere lock exitosamente");
   _ASSERT.equal(LOCK_MANAGER._lockDepth, 1, "_lockDepth = 1 tras adquirir");
 
@@ -223,45 +223,45 @@ function testResourceLockTimeout() {
   _ASSERT.equal(LOCK_MANAGER._lockDepth, 0, "_lockDepth = 0 tras release");
 
   LOCK_MANAGER._lockDepth = 5;
-  var gotReentrant = LOCK_MANAGER._safeTryLock(100);
+  const gotReentrant = LOCK_MANAGER._safeTryLock(100);
   _ASSERT.ok(gotReentrant, "_safeTryLock con depth>0 (reentrante) → true");
   _ASSERT.equal(LOCK_MANAGER._lockDepth, 6, "_lockDepth incrementado en reentrada");
 
-  for (var r = 0; r < 6; r++) { LOCK_MANAGER._safeReleaseLock(); }
+  for (let r = 0; r < 6; r++) { LOCK_MANAGER._safeReleaseLock(); }
   _ASSERT.equal(LOCK_MANAGER._lockDepth, 0, "_lockDepth = 0 tras releases completos");
 
-  var lock1 = LOCK_MANAGER.acquireResourceLock("_TEST_RES_1");
+  const lock1 = LOCK_MANAGER.acquireResourceLock("_TEST_RES_1");
   _ASSERT.ok(lock1 !== undefined && lock1.releaseLock !== undefined, "acquireResourceLock devuelve objeto con releaseLock");
 
-  var lockKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_RES_1";
-  var raw = PropertiesService.getScriptProperties().getProperty(lockKey);
+  const lockKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_RES_1";
+  const raw = PropertiesService.getScriptProperties().getProperty(lockKey);
   _ASSERT.ok(raw !== null, "lock persistido en ScriptProperties");
   if (raw) {
-    var parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
     _ASSERT.ok(parsed.expiresAt > Date.now(), "lock tiene expiresAt futuro");
   }
 
-  var corruptKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_CORRUPT_1";
-  var absurdTs = Date.now() + 999999999;
+  const corruptKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_CORRUPT_1";
+  const absurdTs = Date.now() + 999999999;
   PropertiesService.getScriptProperties().setProperty(corruptKey, JSON.stringify({ expiresAt: absurdTs }));
   Logger.log("[TEST] Lock corrupto con TTL absurdo configurado");
 
-  var lock2 = LOCK_MANAGER.acquireResourceLock("_TEST_CORRUPT_1");
+  const lock2 = LOCK_MANAGER.acquireResourceLock("_TEST_CORRUPT_1");
   _ASSERT.ok(lock2 !== undefined, "lock corrupto (absurd TTL) se adquiere igual");
   lock2.releaseLock();
 
-  var alienKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_ALIEN_1";
-  var originalData = { expiresAt: Date.now() + 60000 };
+  const alienKey = LOCK_MANAGER.LOCK_PREFIX + "_TEST_ALIEN_1";
+  const originalData = { expiresAt: Date.now() + 60000 };
   PropertiesService.getScriptProperties().setProperty(alienKey, JSON.stringify(originalData));
   LOCK_MANAGER._releaseResourceLock(alienKey, originalData);
-  var afterRelease = PropertiesService.getScriptProperties().getProperty(alienKey);
+  const afterRelease = PropertiesService.getScriptProperties().getProperty(alienKey);
   _ASSERT.ok(afterRelease === null, "_releaseResourceLock elimina lock propio");
 
-  var alienData = { expiresAt: Date.now() + 60000 };
+  const alienData = { expiresAt: Date.now() + 60000 };
   PropertiesService.getScriptProperties().setProperty(alienKey, JSON.stringify(alienData));
-  var alienDataMod = { expiresAt: Date.now() + 120000 };
+  const alienDataMod = { expiresAt: Date.now() + 120000 };
   LOCK_MANAGER._releaseResourceLock(alienKey, alienDataMod);
-  var afterAlien = PropertiesService.getScriptProperties().getProperty(alienKey);
+  const afterAlien = PropertiesService.getScriptProperties().getProperty(alienKey);
   _ASSERT.ok(afterAlien !== null, "_releaseResourceLock con expiresAt distinto → no elimina (lock ajeno)");
 
   PropertiesService.getScriptProperties().deleteProperty(alienKey);
@@ -274,36 +274,36 @@ function testResourceLockTimeout() {
 function testTransactionRollback() {
   Logger.log("[TEST] ===== testTransactionRollback =====");
 
-  var cCol = CARTERA_CONFIG.COLUMNS.CARTERA;
-  var terCol = CARTERA_CONFIG.COLUMNS.TERCEROS;
-  var prodCol = CONFIG.COLUMNS.PRODUCTOS;
+  const cCol = CARTERA_CONFIG.COLUMNS.CARTERA;
+  const terCol = CARTERA_CONFIG.COLUMNS.TERCEROS;
+  const prodCol = CONFIG.COLUMNS.PRODUCTOS;
 
-  var terSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-  var carSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-  var movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
-  var prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-  var compSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-  var detSheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
-  var pagSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+  const terSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+  const carSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+  const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
+  const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+  const compSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+  const detSheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
+  const pagSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
 
-  var tc = _sanitizeCell;
+  const tc = _sanitizeCell;
 
   // ── Tercero snapshot + rollback ──
-  var terId = "_TEST_TER_" + Date.now();
+  const terId = "_TEST_TER_" + Date.now();
   terSheet.appendRow([tc(terId), "Test Tercero", "555-0000", "PROVEEDOR", 500000, "ACTIVO"]);
-  var terRowIdx = terSheet.getLastRow();
+  const terRowIdx = terSheet.getLastRow();
 
-  var tx1 = _Transaction.create();
+  const tx1 = _Transaction.create();
   tx1.begin();
   tx1.snapshotTerceroRow(terRowIdx);
   terSheet.getRange(terRowIdx, 2, 1, 1).setValues([["Modificado"]]);
   tx1.rollback();
-  var restoredTer = terSheet.getRange(terRowIdx, 2, 1, 1).getValues()[0][0];
+  const restoredTer = terSheet.getRange(terRowIdx, 2, 1, 1).getValues()[0][0];
   _ASSERT.equal(restoredTer, "Test Tercero", "rollback restaura nombre de tercero");
 
   // ── Cartera snapshot + rollback ──
-  var carId = "_TEST_CAR_" + Date.now();
-  var carRow = [];
+  const carId = "_TEST_CAR_" + Date.now();
+  const carRow = [];
   carRow[cCol.id] = tc(carId);
   carRow[cCol.fecha] = new Date();
   carRow[cCol.id_tercero] = tc(terId);
@@ -314,24 +314,24 @@ function testTransactionRollback() {
   carRow[cCol.estado] = "ABIERTA";
   carRow[cCol.fecha_vencimiento] = new Date();
   carRow[cCol.version] = 1;
-  for (var ci = 0; ci < carRow.length; ci++) { if (carRow[ci] === undefined) carRow[ci] = ""; }
+  for (let ci = 0; ci < carRow.length; ci++) { if (carRow[ci] === undefined) carRow[ci] = ""; }
   carSheet.appendRow(carRow);
-  var carRowIdx = carSheet.getLastRow();
+  const carRowIdx = carSheet.getLastRow();
 
-  var tx2 = _Transaction.create();
+  const tx2 = _Transaction.create();
   tx2.begin();
   tx2.snapshotCarteraRows([carRowIdx]);
   carSheet.getRange(carRowIdx, cCol.saldo + 1, 1, 1).setValues([[50000]]);
   carSheet.getRange(carRowIdx, cCol.estado + 1, 1, 1).setValues([["PARCIAL"]]);
   tx2.rollback();
-  var restoredSaldo = carSheet.getRange(carRowIdx, cCol.saldo + 1, 1, 1).getValues()[0][0];
-  var restoredEstado = carSheet.getRange(carRowIdx, cCol.estado + 1, 1, 1).getValues()[0][0];
+  const restoredSaldo = carSheet.getRange(carRowIdx, cCol.saldo + 1, 1, 1).getValues()[0][0];
+  const restoredEstado = carSheet.getRange(carRowIdx, cCol.estado + 1, 1, 1).getValues()[0][0];
   _ASSERT.equal(restoredSaldo, 100000, "rollback restaura saldo de cartera");
   _ASSERT.equal(restoredEstado, "ABIERTA", "rollback restaura estado de cartera");
 
   // ── Mov append + rollback ──
-  var movPre = movSheet.getLastRow();
-  var tx3 = _Transaction.create();
+  const movPre = movSheet.getLastRow();
+  const tx3 = _Transaction.create();
   tx3.begin();
   tx3.markMovPreAppend();
   movSheet.appendRow(["_TEST_MOV_", new Date(), carId, terId, 50000, "ABONO", "test"]);
@@ -341,8 +341,8 @@ function testTransactionRollback() {
   _ASSERT.equal(movSheet.getLastRow(), movPre, "rollback elimina fila de movimientos append");
 
   // ── Compra snapshot + rollback ──
-  var compId = "_TEST_COMP_" + Date.now();
-  var compRow = [];
+  const compId = "_TEST_COMP_" + Date.now();
+  const compRow = [];
   compRow[DAO_COMPRAS.COMPRAS_COL.id] = tc(compId);
   compRow[DAO_COMPRAS.COMPRAS_COL.fecha] = new Date();
   compRow[DAO_COMPRAS.COMPRAS_COL.id_proveedor] = tc(terId);
@@ -352,22 +352,22 @@ function testTransactionRollback() {
   compRow[DAO_COMPRAS.COMPRAS_COL.estado] = "ABIERTA";
   compRow[DAO_COMPRAS.COMPRAS_COL.fecha_vencimiento] = new Date();
   compRow[DAO_COMPRAS.COMPRAS_COL.version] = 1;
-  for (var ci2 = 0; ci2 < compRow.length; ci2++) { if (compRow[ci2] === undefined) compRow[ci2] = ""; }
+  for (let ci2 = 0; ci2 < compRow.length; ci2++) { if (compRow[ci2] === undefined) compRow[ci2] = ""; }
   compSheet.appendRow(compRow);
-  var compRowIdx = compSheet.getLastRow();
+  const compRowIdx = compSheet.getLastRow();
 
-  var tx4 = _Transaction.create();
+  const tx4 = _Transaction.create();
   tx4.begin();
   tx4.snapshotCompraRow(compRowIdx);
   compSheet.getRange(compRowIdx, DAO_COMPRAS.COMPRAS_COL.saldo + 1, 1, 1).setValues([[0]]);
   compSheet.getRange(compRowIdx, DAO_COMPRAS.COMPRAS_COL.estado + 1, 1, 1).setValues([["PAGADA"]]);
   tx4.rollback();
-  var compSaldo = compSheet.getRange(compRowIdx, DAO_COMPRAS.COMPRAS_COL.saldo + 1, 1, 1).getValues()[0][0];
+  const compSaldo = compSheet.getRange(compRowIdx, DAO_COMPRAS.COMPRAS_COL.saldo + 1, 1, 1).getValues()[0][0];
   _ASSERT.equal(compSaldo, 200000, "rollback restaura saldo de compra");
 
   // ── Pago append + rollback ──
-  var pagoPre = pagSheet.getLastRow();
-  var tx5 = _Transaction.create();
+  const pagoPre = pagSheet.getLastRow();
+  const tx5 = _Transaction.create();
   tx5.begin();
   tx5.markPagoPreAppend();
   pagSheet.appendRow(["_TEST_PAG_", new Date(), compId, tc(terId), 50000, "test", "EFECTIVO"]);
@@ -377,8 +377,8 @@ function testTransactionRollback() {
   _ASSERT.equal(pagSheet.getLastRow(), pagoPre, "rollback elimina fila de pagos append");
 
   // ── Detalle append + rollback ──
-  var detPre = detSheet.getLastRow();
-  var tx6 = _Transaction.create();
+  const detPre = detSheet.getLastRow();
+  const tx6 = _Transaction.create();
   tx6.begin();
   tx6.markDetallePreAppend();
   detSheet.appendRow(["_TEST_DET_", compId, "PROD-01", 2, 50000, 100000]);
@@ -388,45 +388,45 @@ function testTransactionRollback() {
   _ASSERT.equal(detSheet.getLastRow(), detPre, "rollback elimina fila de detalle append");
 
   // ── Producto snapshot + rollback ──
-  var prodId = "_TEST_PROD_" + Date.now();
+  const prodId = "_TEST_PROD_" + Date.now();
   prodSheet.appendRow([tc(prodId), "Test Producto", 100, 50000, 1]);
-  var prodRowIdx = prodSheet.getLastRow();
+  const prodRowIdx = prodSheet.getLastRow();
 
-  var tx7 = _Transaction.create();
+  const tx7 = _Transaction.create();
   tx7.begin();
   tx7.snapshotProductoRows([prodRowIdx]);
   prodSheet.getRange(prodRowIdx, prodCol.stock + 1, 1, 1).setValues([[50]]);
   tx7.rollback();
-  var restoredStock = prodSheet.getRange(prodRowIdx, prodCol.stock + 1, 1, 1).getValues()[0][0];
+  const restoredStock = prodSheet.getRange(prodRowIdx, prodCol.stock + 1, 1, 1).getValues()[0][0];
   _ASSERT.equal(restoredStock, 100, "rollback restaura stock de producto");
 
   // ── Cleanup: delete test rows ──
-  for (var d = terSheet.getLastRow(); d >= 2; d--) {
-    var val = String(terSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = terSheet.getLastRow(); d >= 2; d--) {
+    const val = String(terSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) terSheet.deleteRow(d);
   }
-  for (var d = carSheet.getLastRow(); d >= 2; d--) {
-    var val = String(carSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = carSheet.getLastRow(); d >= 2; d--) {
+    const val = String(carSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) carSheet.deleteRow(d);
   }
-  for (var d = movSheet.getLastRow(); d >= 2; d--) {
-    var val = String(movSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = movSheet.getLastRow(); d >= 2; d--) {
+    const val = String(movSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) movSheet.deleteRow(d);
   }
-  for (var d = compSheet.getLastRow(); d >= 2; d--) {
-    var val = String(compSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = compSheet.getLastRow(); d >= 2; d--) {
+    const val = String(compSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) compSheet.deleteRow(d);
   }
-  for (var d = pagSheet.getLastRow(); d >= 2; d--) {
-    var val = String(pagSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = pagSheet.getLastRow(); d >= 2; d--) {
+    const val = String(pagSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) pagSheet.deleteRow(d);
   }
-  for (var d = detSheet.getLastRow(); d >= 2; d--) {
-    var val = String(detSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = detSheet.getLastRow(); d >= 2; d--) {
+    const val = String(detSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) detSheet.deleteRow(d);
   }
-  for (var d = prodSheet.getLastRow(); d >= 2; d--) {
-    var val = String(prodSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+  for (const d = prodSheet.getLastRow(); d >= 2; d--) {
+    const val = String(prodSheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
     if (val.indexOf("_TEST_") === 0) prodSheet.deleteRow(d);
   }
   Logger.log("[TEST] testTransactionRollback: limpieza completada");
@@ -435,8 +435,8 @@ function testTransactionRollback() {
 function testCacheMetrics() {
   Logger.log("[TEST] ===== testCacheMetrics =====");
 
-  var beforeOpens = CACHE.circuitOpens;
-  var beforeCloses = CACHE.circuitCloses;
+  const beforeOpens = CACHE.circuitOpens;
+  const beforeCloses = CACHE.circuitCloses;
 
   CACHE._incrementMetric('circuitOpens');
   _ASSERT.equal(CACHE.circuitOpens, beforeOpens + 1, "circuitOpens incrementado en memoria");
@@ -445,8 +445,8 @@ function testCacheMetrics() {
   _ASSERT.equal(CACHE.circuitCloses, beforeCloses + 1, "circuitCloses incrementado en memoria");
 
   try {
-    var props = PropertiesService.getScriptProperties();
-    var persistedOpens = Number(props.getProperty('CACHE_CIRCUIT_OPENS') || 0);
+    const props = PropertiesService.getScriptProperties();
+    const persistedOpens = Number(props.getProperty('CACHE_CIRCUIT_OPENS') || 0);
     _ASSERT.ok(persistedOpens >= beforeOpens + 1, "circuitOpens persistido en ScriptProperties");
   } catch (e) {
     _ASSERT.ok(true, "ScriptProperties no disponible en este entorno — test de persistencia omitido");
@@ -475,7 +475,7 @@ function runIntegrationTests() {
   testDAOProductosIncrementarStock();
   testDAOProductosToggleActivo();
 
-  var result = _ASSERT.summary();
+  const result = _ASSERT.summary();
   Logger.log("[TEST-INT] ===== FIN =====");
   return result;
 }
@@ -483,19 +483,19 @@ function runIntegrationTests() {
 function testRegistrarCompraAtomicValidation() {
   Logger.log("[TEST] ===== testRegistrarCompraAtomicValidation =====");
 
-  var resultSinItems = DOMAIN.registrarCompraAtomic("PROV-001", [], 50000, null, "");
+  const resultSinItems = DOMAIN.registrarCompraAtomic("PROV-001", [], 50000, null, "");
   _ASSERT.equal(resultSinItems.success, false, "sin items → falla");
   _ASSERT.ok((resultSinItems.message || resultSinItems.error || "").indexOf("producto") > -1,
     "sin items → mensaje sobre producto");
 
-  var resultSinProv = DOMAIN.registrarCompraAtomic("", [{ id: "P1", cantidad: 1, precio_unitario: 100 }], 100, null, "");
+  const resultSinProv = DOMAIN.registrarCompraAtomic("", [{ id: "P1", cantidad: 1, precio_unitario: 100 }], 100, null, "");
   _ASSERT.equal(resultSinProv.success, false, "sin proveedor → falla");
 
-  var resultPrecioCero = DOMAIN.registrarCompraAtomic("PROV-001",
+  const resultPrecioCero = DOMAIN.registrarCompraAtomic("PROV-001",
     [{ id: "P1", cantidad: 1, precio_unitario: 0 }], 0, null, "");
   _ASSERT.equal(resultPrecioCero.success, false, "precio 0 → falla");
 
-  var resultTotalCero = DOMAIN.registrarCompraAtomic("PROV-001",
+  const resultTotalCero = DOMAIN.registrarCompraAtomic("PROV-001",
     [{ id: "P1", cantidad: 1, precio_unitario: 100 }], 0, null, "");
   _ASSERT.equal(resultTotalCero.success, false, "total 0 → falla");
 }
@@ -568,13 +568,13 @@ function diagnoseCartera() {
 function testActualizarSaldoCompraOptimisticLock() {
   Logger.log("[TEST-INT] ===== testActualizarSaldoCompraOptimisticLock =====");
 
-  var testId = "_TEST_LOCK_" + Date.now();
-  var C = DAO_COMPRAS.COMPRAS_COL;
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const testId = "_TEST_LOCK_" + Date.now();
+  const C = DAO_COMPRAS.COMPRAS_COL;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
 
   try {
-    var numCols = Math.max.apply(null, Object.values(C)) + 1;
-    var row = [];
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    const row = [];
     row[C.id] = testId;
     row[C.fecha] = new Date();
     row[C.id_proveedor] = "_TEST_PROV_";
@@ -584,12 +584,12 @@ function testActualizarSaldoCompraOptimisticLock() {
     row[C.estado] = COMPRAS_CONFIG.ESTADOS.ABIERTA;
     row[C.fecha_vencimiento] = new Date();
     row[C.version] = 1;
-    for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
-    var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+    for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+    const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     sheet.appendRow(row);
     Logger.log("[TEST-INT] Creada compra test: " + testId);
 
-    var errVersion = null;
+    const errVersion = null;
     try {
       DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 999);
     } catch (e) {
@@ -603,10 +603,10 @@ function testActualizarSaldoCompraOptimisticLock() {
       _ASSERT.ok(errVersion.retryable === true, "error es retryable");
     }
 
-    var resultOk = DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 1);
+    const resultOk = DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 1);
     _ASSERT.equal(resultOk, true, "version correcta (1) → actualiza exitosamente");
 
-    var compraActualizada = DAO_COMPRAS.getCompraById(testId);
+    const compraActualizada = DAO_COMPRAS.getCompraById(testId);
     _ASSERT.equal(compraActualizada.saldo, 0, "saldo actualizado a 0");
     _ASSERT.equal(compraActualizada.estado, "PAGADA", "estado actualizado a PAGADA");
 
@@ -627,24 +627,24 @@ function testProcesarPagoProveedorAtomic() {
   Logger.log("[TEST-INT] ===== testProcesarPagoProveedorAtomic =====");
 
   // ── Validaciones de entrada (unitario) ──
-  var resSinId = DOMAIN.procesarPagoProveedorAtomic("", 1000, "test");
+  const resSinId = DOMAIN.procesarPagoProveedorAtomic("", 1000, "test");
   _ASSERT.equal(resSinId.success, false, "sin ID compra → falla");
-  var resMonto0 = DOMAIN.procesarPagoProveedorAtomic("CXP-001", 0, "test");
+  const resMonto0 = DOMAIN.procesarPagoProveedorAtomic("CXP-001", 0, "test");
   _ASSERT.equal(resMonto0.success, false, "monto 0 → falla");
-  var resNeg = DOMAIN.procesarPagoProveedorAtomic("CXP-001", -500, "test");
+  const resNeg = DOMAIN.procesarPagoProveedorAtomic("CXP-001", -500, "test");
   _ASSERT.equal(resNeg.success, false, "monto negativo → falla");
 
   // ── Crear compra real para pago ──
-  var testId = "_TEST_PAGO_" + Date.now();
-  var provId = "_TEST_PROV_" + Date.now();
-  var totalCompra = 200000;
-  var C = DAO_COMPRAS.COMPRAS_COL;
-  var compSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const testId = "_TEST_PAGO_" + Date.now();
+  const provId = "_TEST_PROV_" + Date.now();
+  const totalCompra = 200000;
+  const C = DAO_COMPRAS.COMPRAS_COL;
+  const compSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
 
   try {
-    var numCols = Math.max.apply(null, Object.values(C)) + 1;
-    var row = [];
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    const row = [];
     row[C.id] = testId;
     row[C.fecha] = new Date();
     row[C.id_proveedor] = provId;
@@ -654,12 +654,12 @@ function testProcesarPagoProveedorAtomic() {
     row[C.estado] = COMPRAS_CONFIG.ESTADOS.ABIERTA;
     row[C.fecha_vencimiento] = new Date();
     row[C.version] = 1;
-    for (var ri = 0; ri < row.length; ri++) { if (row[ri] === undefined) row[ri] = ""; }
+    for (let ri = 0; ri < row.length; ri++) { if (row[ri] === undefined) row[ri] = ""; }
     compSheet.appendRow(row);
     Logger.log("[TEST-INT] Creada compra test: " + testId);
 
     // ── Procesar pago exitoso ──
-    var resultPago = DOMAIN.procesarPagoProveedorAtomic(testId, totalCompra, "Pago completo test");
+    const resultPago = DOMAIN.procesarPagoProveedorAtomic(testId, totalCompra, "Pago completo test");
     Logger.log("[DEBUG] resultPago = " + JSON.stringify(resultPago));
     _ASSERT.equal(resultPago.success, true, "pago exitoso → success=true");
     _ASSERT.equal(resultPago.saldo_restante, 0, "pago total → saldo_restante=0");
@@ -667,15 +667,15 @@ function testProcesarPagoProveedorAtomic() {
     _ASSERT.ok(resultPago.id !== undefined, "pago exitoso → id de pago generado");
 
     // ── Verificar compra actualizada ──
-    var compraPost = DAO_COMPRAS.getCompraById(testId);
+    const compraPost = DAO_COMPRAS.getCompraById(testId);
     _ASSERT.equal(compraPost.saldo, 0, "compra.saldo actualizado a 0");
     _ASSERT.equal(compraPost.estado, COMPRAS_CONFIG.ESTADOS.PAGADA, "compra.estado actualizado a PAGADA");
 
     // ── Verificar pago creado en sheet ──
-    var pagSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
-    var pagData = pagSheet.getDataRange().getValues();
-    var pagoEncontrado = false;
-    for (var pi = 1; pi < pagData.length; pi++) {
+    const pagSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+    const pagData = pagSheet.getDataRange().getValues();
+    const pagoEncontrado = false;
+    for (const pi = 1; pi < pagData.length; pi++) {
       if (String(pagData[pi][0] || "").trim() === resultPago.id) {
         pagoEncontrado = true;
         _ASSERT.equal(String(pagData[pi][3] || "").trim(), provId, "pago tiene id_proveedor correcto");
@@ -686,13 +686,13 @@ function testProcesarPagoProveedorAtomic() {
     _ASSERT.ok(pagoEncontrado, "pago persistido en Pagos_Proveedores");
 
     // ── Compra ya pagada → error ──
-    var resultYaPagado = DOMAIN.procesarPagoProveedorAtomic(testId, 1000, "otro pago");
+    const resultYaPagado = DOMAIN.procesarPagoProveedorAtomic(testId, 1000, "otro pago");
     _ASSERT.equal(resultYaPagado.success, false, "compra ya pagada → falla");
     _ASSERT.ok((resultYaPagado.message || resultYaPagado.error || "").indexOf("ya está pagada") > -1,
       "compra ya pagada → mensaje 'ya está pagada'");
 
     // ── Compra no existe → error ──
-    var resultNoExiste = DOMAIN.procesarPagoProveedorAtomic("_NO_EXISTE_" + Date.now(), 50000, "test");
+    const resultNoExiste = DOMAIN.procesarPagoProveedorAtomic("_NO_EXISTE_" + Date.now(), 50000, "test");
     _ASSERT.equal(resultNoExiste.success, false, "compra no existe → falla");
     _ASSERT.ok((resultNoExiste.message || resultNoExiste.error || "").indexOf("no encontrada") > -1,
       "compra no existe → mensaje 'no encontrada'");
@@ -714,28 +714,28 @@ function testRegistrarAbonoAtomic() {
   Logger.log("[TEST-INT] ===== testRegistrarAbonoAtomic =====");
 
   // ── Validaciones de entrada ──
-  var resSinId = DOMAIN.registrarAbonoAtomic("", 1000, "test", "CxC");
+  const resSinId = DOMAIN.registrarAbonoAtomic("", 1000, "test", "CxC");
   _ASSERT.equal(resSinId.success, false, "sin ID tercero → falla");
-  var resVal0 = DOMAIN.registrarAbonoAtomic("T-001", 0, "test", "CxC");
+  const resVal0 = DOMAIN.registrarAbonoAtomic("T-001", 0, "test", "CxC");
   _ASSERT.equal(resVal0.success, false, "valor 0 → falla");
-  var resNeg = DOMAIN.registrarAbonoAtomic("T-001", -100, "test", "CxC");
+  const resNeg = DOMAIN.registrarAbonoAtomic("T-001", -100, "test", "CxC");
   _ASSERT.equal(resNeg.success, false, "valor negativo → falla");
 
   // ── Setup: crear tercero y cartera para abono ──
-  var terId = "_TEST_ABONO_TER_" + Date.now();
-  var carId = "_TEST_ABONO_CAR_" + Date.now();
-  var totalDeuda = 150000;
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const terId = "_TEST_ABONO_TER_" + Date.now();
+  const carId = "_TEST_ABONO_CAR_" + Date.now();
+  const totalDeuda = 150000;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
 
   try {
-    var terSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-    var carSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    var movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
-    var cCol = CARTERA_CONFIG.COLUMNS.CARTERA;
-    var terCol = CARTERA_CONFIG.COLUMNS.TERCEROS;
+    const terSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+    const carSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
+    const cCol = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const terCol = CARTERA_CONFIG.COLUMNS.TERCEROS;
 
     terSheet.appendRow([_sanitizeCell(terId), "Tercero Abono Test", "555-1111", "CLIENTE", 500000, "ACTIVO"]);
-    var terRowIdx = terSheet.getLastRow();
+    const terRowIdx = terSheet.getLastRow();
     Logger.log("[TEST-INT] Tercero test creado: " + terId);
 
     // Poblar CACHE manualmente para que registrarAbonoAtomic funcione
@@ -746,7 +746,7 @@ function testRegistrarAbonoAtomic() {
     CACHE.tercerosStale = false;
     CACHE.tercerosCircuitOpen = false;
 
-    var carRow = [];
+    const carRow = [];
     carRow[cCol.id] = _sanitizeCell(carId);
     carRow[cCol.fecha] = new Date();
     carRow[cCol.id_tercero] = _sanitizeCell(terId);
@@ -757,9 +757,9 @@ function testRegistrarAbonoAtomic() {
     carRow[cCol.estado] = "ABIERTA";
     carRow[cCol.fecha_vencimiento] = new Date(Date.now() + 30 * 86400000);
     carRow[cCol.version] = 1;
-    for (var ci = 0; ci < carRow.length; ci++) { if (carRow[ci] === undefined) carRow[ci] = ""; }
+    for (let ci = 0; ci < carRow.length; ci++) { if (carRow[ci] === undefined) carRow[ci] = ""; }
     carSheet.appendRow(carRow);
-    var carRowIdx = carSheet.getLastRow();
+    const carRowIdx = carSheet.getLastRow();
     Logger.log("[TEST-INT] Cartera test creada: " + carId);
 
     CACHE.cartera = [{
@@ -774,7 +774,7 @@ function testRegistrarAbonoAtomic() {
     CACHE.carteraCircuitOpen = false;
 
     // ── Abono parcial: 50k de 150k ──
-    var abonoParcial = DOMAIN.registrarAbonoAtomic(terId, 50000, "Abono parcial test", "CxC");
+    const abonoParcial = DOMAIN.registrarAbonoAtomic(terId, 50000, "Abono parcial test", "CxC");
     Logger.log("[DEBUG] abonoParcial = " + JSON.stringify(abonoParcial));
     _ASSERT.equal(abonoParcial.success, true, "abono parcial → success=true");
     if (abonoParcial.success) {
@@ -782,9 +782,9 @@ function testRegistrarAbonoAtomic() {
       _ASSERT.equal(abonoParcial.restante, 0, "abono parcial → restante=0 (remanente del pago)");
     }
 
-    var carteraPost = DAO.getCarteraByTerceroAndTipo(terId, "CxC");
+    const carteraPost = DAO.getCarteraByTerceroAndTipo(terId, "CxC");
     _ASSERT.ok(carteraPost.length > 0, "cartera aun existe tras abono parcial");
-    var carItem = carteraPost[0];
+    const carItem = carteraPost[0];
     _ASSERT.equal(carItem.saldo, 100000, "cartera.saldo reducido a 100000");
     _ASSERT.equal(carItem.estado, CARTERA_CONFIG.ESTADOS.PARCIAL, "cartera.estado = PARCIAL tras abono parcial");
 
@@ -796,20 +796,20 @@ function testRegistrarAbonoAtomic() {
     Logger.log("[DEBUG] CACHE.terceroIndex: " + JSON.stringify(CACHE.terceroIndex));
     Logger.log("[DEBUG] CACHE.cartera after refresh: " + (CACHE.cartera ? JSON.stringify(CACHE.cartera.map(function(c) { return {id: c.id, id_tercero: c.id_tercero, saldo: c.saldo, estado: c.estado, version: c.version}; })) : "null"));
     Logger.log("[DEBUG] CACHE.carteraIndex: " + JSON.stringify(CACHE.carteraIndex));
-    var testTercero = DAO.getTerceroById(terId);
+    const testTercero = DAO.getTerceroById(terId);
     Logger.log("[DEBUG] DAO.getTerceroById(" + terId + ") = " + JSON.stringify(testTercero));
-    var abonoFull = DOMAIN.registrarAbonoAtomic(terId, 100000, "Abono cancelación test", "CxC");
+    const abonoFull = DOMAIN.registrarAbonoAtomic(terId, 100000, "Abono cancelación test", "CxC");
     Logger.log("[DEBUG] abonoFull = " + JSON.stringify(abonoFull));
     _ASSERT.equal(abonoFull.success, true, "abono cancelación → success=true");
     _ASSERT.equal(abonoFull.aplicado, 100000, "abono cancelación → aplicado=100000");
     _ASSERT.equal(abonoFull.restante, 0, "abono cancelación → restante=0");
 
-    var carteraFull = DAO.getCarteraByTerceroAndTipo(terId, "CxC");
+    const carteraFull = DAO.getCarteraByTerceroAndTipo(terId, "CxC");
     _ASSERT.equal(carteraFull.length, 0, "cartera filtrada vacía (estado CANCELADA)");
 
-    var rawCarData = carSheet.getDataRange().getValues();
-    var estadoFinal = "";
-    for (var ci2 = 1; ci2 < rawCarData.length; ci2++) {
+    const rawCarData = carSheet.getDataRange().getValues();
+    const estadoFinal = "";
+    for (const ci2 = 1; ci2 < rawCarData.length; ci2++) {
       if (String(rawCarData[ci2][cCol.id] || "").trim() === carId) {
         estadoFinal = String(rawCarData[ci2][cCol.estado] || "").trim();
         break;
@@ -818,22 +818,22 @@ function testRegistrarAbonoAtomic() {
     _ASSERT.equal(estadoFinal, "CANCELADA", "cartera.estado = CANCELADA en sheet");
 
     // ── Tercero sin cartera pendiente → error ──
-    var terSinDeuda = "_TEST_SIN_DEUDA_" + Date.now();
+    const terSinDeuda = "_TEST_SIN_DEUDA_" + Date.now();
     terSheet.appendRow([_sanitizeCell(terSinDeuda), "Sin Deuda", "555-2222", "CLIENTE", 100000, "ACTIVO"]);
-    var terSinRow = terSheet.getLastRow();
+    const terSinRow = terSheet.getLastRow();
     CACHE.terceros.push({ id: terSinDeuda, rowIndex: terSinRow, nombre: "Sin Deuda", tipo: "CLIENTE", limite_credito: 100000, activo: true });
     CACHE.terceroIndex[terSinDeuda] = terSinRow;
 
-    var resultSinDeuda = DOMAIN.registrarAbonoAtomic(terSinDeuda, 10000, "test", "CxC");
+    const resultSinDeuda = DOMAIN.registrarAbonoAtomic(terSinDeuda, 10000, "test", "CxC");
     Logger.log("[DEBUG] resultSinDeuda = " + JSON.stringify(resultSinDeuda));
     _ASSERT.equal(resultSinDeuda.success, false, "tercero sin cartera pendiente → falla");
     _ASSERT.ok((resultSinDeuda.message || resultSinDeuda.error || "").indexOf("No hay cartera pendiente") > -1,
       "tercero sin cartera → mensaje 'No hay cartera pendiente'");
 
     // ── Abono supera deuda → error (necesita un item de cartera pendiente) ──
-    var smallId = "CAR_SMALL_" + Date.now();
+    const smallId = "CAR_SMALL_" + Date.now();
     carSheet.appendRow([_sanitizeCell(smallId), new Date(), _sanitizeCell(terId), "TEST_SMALL", 1000, 1000, "CxC", "ABIERTA", new Date(), null, 1]);
-    var resultSupera = DOMAIN.registrarAbonoAtomic(terId, 10000, "test", "CxC");
+    const resultSupera = DOMAIN.registrarAbonoAtomic(terId, 10000, "test", "CxC");
     Logger.log("[DEBUG] resultSupera = " + JSON.stringify(resultSupera));
     _ASSERT.equal(resultSupera.success, false, "abono supera deuda → falla");
     _ASSERT.ok((resultSupera.message || resultSupera.error || "").indexOf("supera") > -1,
@@ -851,16 +851,16 @@ function testRegistrarAbonoAtomic() {
     CACHE.lastRefreshTerceros = 0;
     CACHE.lastRefreshCartera = 0;
 
-    var allSheets = [
+    const allSheets = [
       getSheet(CARTERA_CONFIG.SHEETS.TERCEROS),
       getSheet(CARTERA_CONFIG.SHEETS.CARTERA),
       getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA),
     ];
-    for (var si = 0; si < allSheets.length; si++) {
+    for (let si = 0; si < allSheets.length; si++) {
       try {
-        var sh = allSheets[si];
-        for (var d = sh.getLastRow(); d >= 2; d--) {
-          var v = String(sh.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+        const sh = allSheets[si];
+        for (const d = sh.getLastRow(); d >= 2; d--) {
+          const v = String(sh.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
           if (v.indexOf("_TEST_") === 0) sh.deleteRow(d);
         }
       } catch (eCln) { Logger.log("[TEST-INT] WARN: limpieza falló: " + eCln.message); }
@@ -877,8 +877,8 @@ function testRegistrarCompra() {
 function testVencimientosProximos() {
   Logger.log("[TEST] ===== testVencimientosProximos =====");
   try {
-    var v7 = DOMAIN.getVencimientosProximos(7);
-    var v30 = DOMAIN.getVencimientosProximos(30);
+    const v7 = DOMAIN.getVencimientosProximos(7);
+    const v30 = DOMAIN.getVencimientosProximos(30);
     Logger.log("[TEST] Próximos 7 días: " + v7.length + " items");
     Logger.log("[TEST] Próximos 30 días: " + v30.length + " items");
     return { dias7: v7.length, dias30: v30.length, muestra: v7.slice(0, 3) };
@@ -891,7 +891,7 @@ function testVencimientosProximos() {
 function testRankingDeudores() {
   Logger.log("[TEST] ===== testRankingDeudores =====");
   try {
-    var ranking = DOMAIN.getRankingDeudores(5);
+    const ranking = DOMAIN.getRankingDeudores(5);
     Logger.log("[TEST] Top deudores: " + JSON.stringify(ranking));
     return ranking;
   } catch (e) {
@@ -903,7 +903,7 @@ function testRankingDeudores() {
 function testConcentracionProveedores() {
   Logger.log("[TEST] ===== testConcentracionProveedores =====");
   try {
-    var conc = DOMAIN.getConcentracionProveedores();
+    const conc = DOMAIN.getConcentracionProveedores();
     Logger.log("[TEST] Concentración: " + JSON.stringify(conc));
     return conc;
   } catch (e) {
@@ -915,7 +915,7 @@ function testConcentracionProveedores() {
 function testMigrarDatosCompras() {
   Logger.log("[TEST] ===== testMigrarDatosCompras =====");
   try {
-    var result = migrarDatosCompras();
+    const result = migrarDatosCompras();
     Logger.log("[TEST] Resultado: " + JSON.stringify(result));
     return result;
   } catch (e) {
@@ -931,12 +931,12 @@ function testMigrarDatosCompras() {
 function testCheckPermissionRoles() {
   Logger.log("[TEST] ===== testCheckPermissionRoles =====");
 
-  var accionValida = "ver_terceros";
-  var accionInvalida = "accion_inexistente_xyz";
+  const accionValida = "ver_terceros";
+  const accionInvalida = "accion_inexistente_xyz";
   _ASSERT.ok(!!PERMISSION_ROLES[accionValida], "accionValida existe en PERMISSION_ROLES");
   _ASSERT.ok(!PERMISSION_ROLES[accionInvalida], "accionInvalida NO existe en PERMISSION_ROLES");
 
-  var errAccion = null;
+  const errAccion = null;
   try {
     AuthService.checkPermission(accionInvalida);
   } catch (e) {
@@ -947,19 +947,19 @@ function testCheckPermissionRoles() {
     _ASSERT.ok(errAccion.message.indexOf("Acción desconocida") > -1, "mensaje contiene 'Acción desconocida'");
   }
 
-  var props = PropertiesService.getScriptProperties();
-  var savedUsers = props.getProperty("AUTHORIZED_USERS");
+  const props = PropertiesService.getScriptProperties();
+  const savedUsers = props.getProperty("AUTHORIZED_USERS");
   props.setProperty("AUTHORIZED_USERS", JSON.stringify({ "test@example.com": "VIEWER" }));
 
-  var roleViewer = AuthService.getUserRole("test@example.com");
+  const roleViewer = AuthService.getUserRole("test@example.com");
   _ASSERT.equal(roleViewer, "VIEWER", "getUserRole('test@example.com') = VIEWER");
 
-  var roleNull = AuthService.getUserRole("unknown@example.com");
+  const roleNull = AuthService.getUserRole("unknown@example.com");
   _ASSERT.equal(roleNull, null, "getUserRole('unknown') = null");
 
-  var corruptSnapshot = '{"bad json';
+  const corruptSnapshot = '{"bad json';
   props.setProperty("AUTHORIZED_USERS", corruptSnapshot);
-  var roleCorrupt = AuthService.getUserRole("test@example.com");
+  const roleCorrupt = AuthService.getUserRole("test@example.com");
   _ASSERT.equal(roleCorrupt, null, "getUserRole con JSON corrupto → null");
 
   if (savedUsers) {
@@ -972,14 +972,14 @@ function testCheckPermissionRoles() {
 function testActualizarSaldoCompraConcurrente() {
   Logger.log("[TEST-INT] ===== testActualizarSaldoCompraConcurrente =====");
 
-  var testId = "_TEST_CONCUR_" + Date.now();
-  var C = DAO_COMPRAS.COMPRAS_COL;
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
-  var sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+  const testId = "_TEST_CONCUR_" + Date.now();
+  const C = DAO_COMPRAS.COMPRAS_COL;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
 
   try {
-    var numCols = Math.max.apply(null, Object.values(C)) + 1;
-    var row = [];
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    const row = [];
     row[C.id] = testId;
     row[C.fecha] = new Date();
     row[C.id_proveedor] = "_TEST_CONCUR_PROV_";
@@ -989,16 +989,16 @@ function testActualizarSaldoCompraConcurrente() {
     row[C.estado] = COMPRAS_CONFIG.ESTADOS.ABIERTA;
     row[C.fecha_vencimiento] = new Date();
     row[C.version] = 1;
-    for (var i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+    for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
     sheet.appendRow(row);
     Logger.log("[TEST-INT] Creada compra test: " + testId);
 
     // Simular actualización 1: versión correcta (1) → éxito
-    var r1 = DAO_COMPRAS.actualizarSaldoCompra(testId, 50000, "PARCIAL", 1);
+    const r1 = DAO_COMPRAS.actualizarSaldoCompra(testId, 50000, "PARCIAL", 1);
     _ASSERT.equal(r1, true, "actualización 1 (v1) → éxito");
 
     // Simular actualización 2: versión vieja (1, pero ahora es 2) → fallo
-    var errConc = null;
+    const errConc = null;
     try {
       DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 1);
     } catch (e) {
@@ -1013,10 +1013,10 @@ function testActualizarSaldoCompraConcurrente() {
     }
 
     // Actualización 3: ahora con versión correcta (2) → éxito
-    var r3 = DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 2);
+    const r3 = DAO_COMPRAS.actualizarSaldoCompra(testId, 0, "PAGADA", 2);
     _ASSERT.equal(r3, true, "actualización 3 (v2) → éxito");
 
-    var compraFinal = DAO_COMPRAS.getCompraById(testId);
+    const compraFinal = DAO_COMPRAS.getCompraById(testId);
     _ASSERT.equal(compraFinal.saldo, 0, "saldo final = 0");
     _ASSERT.equal(compraFinal.estado, "PAGADA", "estado final = PAGADA");
 
@@ -1037,7 +1037,7 @@ function testVerifyConsistencyConSheet() {
   // Forzar CACHE a tener datos válidos para que verifyConsistency tenga con qué comparar
   CACHE.invalidate();
   CACHE.refresh(true);
-  var consistBase = CACHE.verifyConsistency();
+  const consistBase = CACHE.verifyConsistency();
   Logger.log("[TEST-INT] verifyConsistency baseline: " + JSON.stringify(consistBase));
 
   // Si no hay datos en las hojas, no se puede probar — marcar como omitido
@@ -1049,16 +1049,16 @@ function testVerifyConsistencyConSheet() {
   _ASSERT.ok(!consistBase.mismatched, "verifyConsistency baseline → no hay mismatch");
 
   // Modificar el checksum almacenado para simular desincronización
-  var originalCarChecksum = CACHE.lastChecksumCartera;
+  const originalCarChecksum = CACHE.lastChecksumCartera;
   CACHE.lastChecksumCartera = "FORCED_MISMATCH_" + Date.now();
 
-  var consistForzado = CACHE.verifyConsistency();
+  const consistForzado = CACHE.verifyConsistency();
   _ASSERT.ok(consistForzado.mismatched, "verifyConsistency con checksum alterado → mismatched=true");
   _ASSERT.ok(!consistForzado.cartera, "verifyConsistency → cartera=false tras alterar checksum");
 
   // Restaurar
   CACHE.lastChecksumCartera = originalCarChecksum;
-  var consistRestored = CACHE.verifyConsistency();
+  const consistRestored = CACHE.verifyConsistency();
   _ASSERT.ok(!consistRestored.mismatched, "verifyConsistency tras restaurar checksum → sin mismatch");
 }
 
@@ -1066,8 +1066,8 @@ function testRegistrarCompraAtomicLockError() {
   Logger.log("[TEST-INT] ===== testRegistrarCompraAtomicLockError =====");
 
   // Mock: reemplazar temporalmente acquireResourceLock para que siempre falle
-  var originalAcquire = LOCK_MANAGER.acquireResourceLock;
-  var mockCalled = false;
+  const originalAcquire = LOCK_MANAGER.acquireResourceLock;
+  const mockCalled = false;
 
   LOCK_MANAGER.acquireResourceLock = function(resourceId) {
     mockCalled = true;
@@ -1075,7 +1075,7 @@ function testRegistrarCompraAtomicLockError() {
   };
 
   try {
-    var result = DOMAIN.registrarCompraAtomic("PROV_MOCK", [{ id: "P1", cantidad: 1, precio_unitario: 100 }], 100, null, "");
+    const result = DOMAIN.registrarCompraAtomic("PROV_MOCK", [{ id: "P1", cantidad: 1, precio_unitario: 100 }], 100, null, "");
     _ASSERT.ok(mockCalled, "acquireResourceLock fue invocado");
     _ASSERT.equal(result.success, false, "lock timeout → respuesta con success=false");
     _ASSERT.ok((result.message || result.error || "").indexOf("LOCK") > -1 ||
@@ -1091,8 +1091,8 @@ function testRegistrarCompraAtomicRollbackOnLockFailure() {
   Logger.log("[TEST-INT] ===== testRegistrarCompraAtomicRollbackOnLockFailure =====");
 
   // Mock acquireResourceLock para simular timeout después de escritura parcial
-  var originalAcquire = LOCK_MANAGER.acquireResourceLock;
-  var callCount = 0;
+  const originalAcquire = LOCK_MANAGER.acquireResourceLock;
+  const callCount = 0;
 
   LOCK_MANAGER.acquireResourceLock = function(resourceId) {
     callCount++;
@@ -1103,7 +1103,7 @@ function testRegistrarCompraAtomicRollbackOnLockFailure() {
   };
 
   try {
-    var result = DOMAIN.registrarCompraAtomic("PROV_MOCK_RB", [
+    const result = DOMAIN.registrarCompraAtomic("PROV_MOCK_RB", [
       { id: "P1", cantidad: 1, precio_unitario: 100 }
     ], 100, null, "");
 
@@ -1120,20 +1120,20 @@ function testRegistrarCompraAtomicRollbackOnLockFailure() {
 
 function testDAOProductosCrearYListar() {
   Logger.log("[TEST-INT] ===== testDAOProductosCrearYListar =====");
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
-  var createdIds = [];
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const createdIds = [];
   try {
-    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-CR-" + Date.now(), precio_compra: 5000, precio_venta: 12000, categoria: "HERRAMIENTAS" });
+    const r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-CR-" + Date.now(), precio_compra: 5000, precio_venta: 12000, categoria: "HERRAMIENTAS" });
     _ASSERT.ok(r.success === true, "crear → success=true");
     _ASSERT.ok(r.id && r.id.indexOf("P") === 0, "crear → id prefijo P");
     _ASSERT.equal(r.stock, 0, "crear → stock=0");
     createdIds.push(r.id);
 
-    var lista = DAO_PRODUCTOS.listar({ activo: true });
-    var encontrado = lista.some(function(p) { return p.id === r.id; });
+    const lista = DAO_PRODUCTOS.listar({ activo: true });
+    const encontrado = lista.some(function(p) { return p.id === r.id; });
     _ASSERT.ok(encontrado, "listar({ activo:true }) incluye producto");
 
-    var o = DAO_PRODUCTOS.obtener(r.id);
+    const o = DAO_PRODUCTOS.obtener(r.id);
     _ASSERT.ok(o !== null, "obtener → objeto");
     _ASSERT.equal(o.nombre, r.nombre, "obtener.nombre");
     _ASSERT.equal(o.precio_compra, 5000, "obtener.precio_compra");
@@ -1144,23 +1144,23 @@ function testDAOProductosCrearYListar() {
     _ASSERT.equal(o.version, 1, "obtener.version=1");
     _ASSERT.ok(o.fecha_creacion instanceof Date, "obtener.fecha_creacion Date");
 
-    var dup = DAO_PRODUCTOS.crear({ nombre: r.nombre, precio_venta: 100 });
+    const dup = DAO_PRODUCTOS.crear({ nombre: r.nombre, precio_venta: 100 });
     _ASSERT.equal(dup.success, false, "nombre duplicado → false");
     _ASSERT.ok((dup.error || "").indexOf("Ya existe") > -1, "dup → msg 'Ya existe'");
 
-    var sinNom = DAO_PRODUCTOS.crear({ nombre: "", precio_venta: 100 });
+    const sinNom = DAO_PRODUCTOS.crear({ nombre: "", precio_venta: 100 });
     _ASSERT.equal(sinNom.success, false, "nombre vacío → false");
 
-    var precioNeg = DAO_PRODUCTOS.crear({ nombre: "OTRO-TEST-" + Date.now(), precio_venta: -1 });
+    const precioNeg = DAO_PRODUCTOS.crear({ nombre: "OTRO-TEST-" + Date.now(), precio_venta: -1 });
     _ASSERT.equal(precioNeg.success, false, "precio negativo → false");
 
     _ASSERT.equal(DAO_PRODUCTOS.obtener(""), null, "obtener('') → null");
     _ASSERT.equal(DAO_PRODUCTOS.obtener(null), null, "obtener(null) → null");
     _ASSERT.equal(DAO_PRODUCTOS.obtener("P_NO_EXISTE_999"), null, "obtener inexistente → null");
 
-    var todos = DAO_PRODUCTOS.listar();
+    const todos = DAO_PRODUCTOS.listar();
     _ASSERT.ok(Array.isArray(todos), "listar() → array");
-    for (var j = 1; j < todos.length; j++) {
+    for (const j = 1; j < todos.length; j++) {
       _ASSERT.ok(todos[j-1].nombre <= todos[j].nombre, "listar orden alfabético");
     }
 
@@ -1168,9 +1168,9 @@ function testDAOProductosCrearYListar() {
   } catch (e) {
     _ASSERT.ok(false, "ERROR: " + e.toString());
   } finally {
-    var sheet = getSheet(DAO_PRODUCTOS.SHEET);
-    for (var d = sheet.getLastRow(); d >= 2; d--) {
-      var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+    const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+    for (const d = sheet.getLastRow(); d >= 2; d--) {
+      const v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
       if (createdIds.indexOf(v) !== -1) sheet.deleteRow(d);
     }
     if (lock) lock.releaseLock();
@@ -1179,14 +1179,14 @@ function testDAOProductosCrearYListar() {
 
 function testDAOProductosActualizarOptimisticLock() {
   Logger.log("[TEST-INT] ===== testDAOProductosActualizarOptimisticLock =====");
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
-  var prodId = null;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const prodId = null;
   try {
-    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-UPD-" + Date.now(), precio_compra: 1000, precio_venta: 2000, categoria: "A" });
+    const r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-UPD-" + Date.now(), precio_compra: 1000, precio_venta: 2000, categoria: "A" });
     _ASSERT.ok(r.success === true, "crear producto para actualizar");
     prodId = r.id;
 
-    var errVer = null;
+    const errVer = null;
     try {
       DAO_PRODUCTOS.actualizar(prodId, { precio_venta: 9999 }, 999);
     } catch (e) {
@@ -1200,23 +1200,23 @@ function testDAOProductosActualizarOptimisticLock() {
       _ASSERT.ok(errVer.retryable === true, "error.retryable=true");
     }
 
-    var ok = DAO_PRODUCTOS.actualizar(prodId, { precio_venta: 9999, categoria: "B" }, 1);
+    const ok = DAO_PRODUCTOS.actualizar(prodId, { precio_venta: 9999, categoria: "B" }, 1);
     _ASSERT.equal(ok, true, "actualizar v1 → true");
 
-    var p = DAO_PRODUCTOS.obtener(prodId);
+    const p = DAO_PRODUCTOS.obtener(prodId);
     _ASSERT.equal(p.precio_venta, 9999, "precio_venta actualizado");
     _ASSERT.equal(p.categoria, "B", "categoria actualizada");
     _ASSERT.equal(p.nombre, r.nombre, "nombre inmutable sin cambios");
     _ASSERT.equal(p.version, 2, "version=2 tras update");
 
-    var ok2 = DAO_PRODUCTOS.actualizar(prodId, { nombre: "TEST-PROD-UPD-RENAMED" }, 2);
+    const ok2 = DAO_PRODUCTOS.actualizar(prodId, { nombre: "TEST-PROD-UPD-RENAMED" }, 2);
     _ASSERT.equal(ok2, true, "actualizar nombre v2 → true");
 
-    var p2 = DAO_PRODUCTOS.obtener(prodId);
+    const p2 = DAO_PRODUCTOS.obtener(prodId);
     _ASSERT.equal(p2.nombre, "TEST-PROD-UPD-RENAMED", "nombre actualizado");
     _ASSERT.equal(p2.version, 3, "version=3");
 
-    var okSinVer = DAO_PRODUCTOS.actualizar(prodId, { precio_compra: 7777 });
+    const okSinVer = DAO_PRODUCTOS.actualizar(prodId, { precio_compra: 7777 });
     _ASSERT.equal(okSinVer, true, "actualizar sin version → true");
 
     Logger.log("[TEST-INT] testDAOProductosActualizarOptimisticLock OK");
@@ -1224,9 +1224,9 @@ function testDAOProductosActualizarOptimisticLock() {
     _ASSERT.ok(false, "ERROR: " + e.toString());
   } finally {
     if (prodId) {
-      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
-      for (var d = sheet.getLastRow(); d >= 2; d--) {
-        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (const d = sheet.getLastRow(); d >= 2; d--) {
+        const v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
         if (v === prodId) sheet.deleteRow(d);
       }
     }
@@ -1236,23 +1236,23 @@ function testDAOProductosActualizarOptimisticLock() {
 
 function testDAOProductosIncrementarStock() {
   Logger.log("[TEST-INT] ===== testDAOProductosIncrementarStock =====");
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
-  var prodId = null;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const prodId = null;
   try {
-    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-STK-" + Date.now(), precio_compra: 500, precio_venta: 1500 });
+    const r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-STK-" + Date.now(), precio_compra: 500, precio_venta: 1500 });
     _ASSERT.ok(r.success === true, "crear producto para stock");
     prodId = r.id;
 
-    var inc1 = DAO_PRODUCTOS.incrementarStock(prodId, 5);
+    const inc1 = DAO_PRODUCTOS.incrementarStock(prodId, 5);
     _ASSERT.ok(inc1 !== undefined, "incrementarStock devuelve objeto");
     _ASSERT.equal(inc1.stockAnterior, 0, "stockAnterior=0");
     _ASSERT.equal(inc1.stockNuevo, 5, "stockNuevo=5");
 
-    var inc2 = DAO_PRODUCTOS.incrementarStock(prodId, -2);
+    const inc2 = DAO_PRODUCTOS.incrementarStock(prodId, -2);
     _ASSERT.equal(inc2.stockAnterior, 5, "stockAnterior=5");
     _ASSERT.equal(inc2.stockNuevo, 3, "stockNuevo=3");
 
-    var errStock = null;
+    const errStock = null;
     try {
       DAO_PRODUCTOS.incrementarStock(prodId, -10);
     } catch (e) {
@@ -1263,7 +1263,7 @@ function testDAOProductosIncrementarStock() {
       _ASSERT.ok(errStock.message.indexOf("insuficiente") > -1, "mensaje contiene 'insuficiente'");
     }
 
-    var p = DAO_PRODUCTOS.obtener(prodId);
+    const p = DAO_PRODUCTOS.obtener(prodId);
     _ASSERT.equal(p.stock, 3, "stock final = 3 (no afectado por error)");
     _ASSERT.ok(p.version > 1, "version incrementada");
 
@@ -1272,9 +1272,9 @@ function testDAOProductosIncrementarStock() {
     _ASSERT.ok(false, "ERROR: " + e.toString());
   } finally {
     if (prodId) {
-      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
-      for (var d = sheet.getLastRow(); d >= 2; d--) {
-        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (const d = sheet.getLastRow(); d >= 2; d--) {
+        const v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
         if (v === prodId) sheet.deleteRow(d);
       }
     }
@@ -1284,29 +1284,29 @@ function testDAOProductosIncrementarStock() {
 
 function testDAOProductosToggleActivo() {
   Logger.log("[TEST-INT] ===== testDAOProductosToggleActivo =====");
-  var lock = LOCK_MANAGER.acquireGlobalLock(10000);
-  var prodId = null;
+  const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+  const prodId = null;
   try {
-    var r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-TGL-" + Date.now(), precio_venta: 3000 });
+    const r = DAO_PRODUCTOS.crear({ nombre: "TEST-PROD-TGL-" + Date.now(), precio_venta: 3000 });
     _ASSERT.ok(r.success === true, "crear producto para toggle");
     prodId = r.id;
 
-    var t1 = DAO_PRODUCTOS.toggleActivo(prodId);
+    const t1 = DAO_PRODUCTOS.toggleActivo(prodId);
     _ASSERT.equal(t1.activo, "INACTIVO", "primer toggle → INACTIVO");
 
-    var listaInactivos = DAO_PRODUCTOS.listar({ activo: false });
+    const listaInactivos = DAO_PRODUCTOS.listar({ activo: false });
     _ASSERT.ok(listaInactivos.some(function(p) { return p.id === prodId; }), "listar({ activo:false }) lo incluye");
 
-    var listaActivos = DAO_PRODUCTOS.listar({ activo: true });
+    const listaActivos = DAO_PRODUCTOS.listar({ activo: true });
     _ASSERT.ok(!listaActivos.some(function(p) { return p.id === prodId; }), "listar({ activo:true }) NO lo incluye");
 
-    var t2 = DAO_PRODUCTOS.toggleActivo(prodId);
+    const t2 = DAO_PRODUCTOS.toggleActivo(prodId);
     _ASSERT.equal(t2.activo, "ACTIVO", "segundo toggle → ACTIVO");
 
-    var p = DAO_PRODUCTOS.obtener(prodId);
+    const p = DAO_PRODUCTOS.obtener(prodId);
     _ASSERT.equal(p.activo, "ACTIVO", "obtener confirma ACTIVO");
 
-    var errNoExiste = null;
+    const errNoExiste = null;
     try {
       DAO_PRODUCTOS.toggleActivo("P_NO_EXISTE_999");
     } catch (e) {
@@ -1319,9 +1319,9 @@ function testDAOProductosToggleActivo() {
     _ASSERT.ok(false, "ERROR: " + e.toString());
   } finally {
     if (prodId) {
-      var sheet = getSheet(DAO_PRODUCTOS.SHEET);
-      for (var d = sheet.getLastRow(); d >= 2; d--) {
-        var v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
+      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      for (const d = sheet.getLastRow(); d >= 2; d--) {
+        const v = String(sheet.getRange(d, 1, 1, 1).getValues()[0][0] || "").trim();
         if (v === prodId) sheet.deleteRow(d);
       }
     }

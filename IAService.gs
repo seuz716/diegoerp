@@ -247,7 +247,7 @@ const IA_SERVICE = {
     if (count >= this.RATE_LIMIT_MAX_REQUESTS) {
       this._rateLimitHit++;
       const resetMs = this.RATE_LIMIT_WINDOW_MS - (now - Number(windowStart));
-      console.warn('Rate limit excedido para ' + email + '. Espera ' + Math.ceil(resetMs / 1000) + 's');
+      Logger.log('Rate limit excedido para ' + email + '. Espera ' + Math.ceil(resetMs / 1000) + 's');
       return false;
     }
     
@@ -314,7 +314,7 @@ const IA_SERVICE = {
       // Handle retryable errors with exponential backoff and jitter
       if ((status === 429 || status >= 500) && attempt < this.MAX_RETRIES) {
         const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
-        console.warn(`Retryable error (${status}), retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms`);
+        Logger.log(`Retryable error (${status}), retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms`);
         Utilities.sleep(wait);
         return this._retryablePost(url, payload, attempt + 1);
       }
@@ -325,7 +325,7 @@ const IA_SERVICE = {
       if (e.name === "IAError") throw e;
       if (attempt < this.MAX_RETRIES) {
         const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
-        console.warn(`Network error, retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms: ${e.message}`);
+        Logger.log(`Network error, retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms: ${e.message}`);
         Utilities.sleep(wait);
         return this._retryablePost(url, payload, attempt + 1);
       }
@@ -541,7 +541,7 @@ ${JSON.stringify(movimientosComprimidos)}`;
           .filter(m => m.fecha && m.fecha >= Utilities.formatDate(doceMesesAtras, _getTimeZone(), "yyyy-MM-dd"));
       }
     } catch (e) {
-      console.warn("No se pudieron leer Movimientos_Cartera: " + e.message);
+      Logger.log("No se pudieron leer Movimientos_Cartera: " + e.message);
     }
 
     const resumen = {
@@ -935,7 +935,7 @@ function analizarConGeminiCompleto() {
     const resultado = IA_SERVICE.ejecutarAnalisis();
     return resultado;
   } catch (e) {
-    console.error("ERROR analizarConGeminiCompleto:", e.toString());
+    Logger.log("ERROR analizarConGeminiCompleto:", e.toString());
 
     if (e instanceof IAError) {
       const userMessages = {

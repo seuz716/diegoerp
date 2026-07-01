@@ -167,7 +167,7 @@ function getSheet(name) {
   const spreadsheet = getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
-    console.error("Error: Hoja no encontrada: " + name);
+    Logger.log("Error: Hoja no encontrada: " + name);
     throw new Error("Hoja no encontrada: " + name);
   }
 
@@ -367,7 +367,7 @@ function _parseMoneda(v, defaultVal) {
   const num = Number(raw);
   if (isNaN(num)) return defaultVal || 0;
   if (num % 1 !== 0) {
-    console.warn(`Valor con decimales convertido: ${raw} -> ${Math.round(num)}`);
+    Logger.log(`Valor con decimales convertido: ${raw} -> ${Math.round(num)}`);
     return Math.round(num);
   }
   return num;
@@ -381,7 +381,7 @@ function _captureError(context, error) {
   const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
   const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
   Logger.log(`[${context}][${corrId}] ${stack}`);
-  console.error(`[${context}][${corrId}]`, error);
+  Logger.log(`[${context}][${corrId}]`, error);
 }
 
 function _getTimeZone() {
@@ -500,7 +500,7 @@ function crearBackup() {
          }
        }
      } catch (e) {
-       console.debug("TransactionManager: error snapshot cartera: " + e.toString());
+       Logger.log("TransactionManager: error snapshot cartera: " + e.toString());
      }
      return { cartera: carteraSnapshot, tercero: terceroSnapshot };
    }

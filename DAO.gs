@@ -63,7 +63,7 @@ const DAO = {
     const numCols = Math.max(...Object.values(COL)) + 1;
     const lastRow = sheet.getLastRow();
 
-    console.log("[DAO.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", lastRow=" + lastRow);
+    Logger.log("[DAO.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", lastRow=" + lastRow);
 
     if (!filtroTipo && !filtroEstado) {
       if (lastRow < 2) return { items: [], nextPageToken: null };
@@ -73,32 +73,32 @@ const DAO = {
       const values = sheet.getRange(startRow, 1, limit, numCols).getValues();
       const items = values.map((row, idx) => this._rowToCarteraItem(row, startRow + idx));
       const nextPageToken = (startRow + limit - 2 < lastRow - 1) ? (pageToken + limit) : null;
-      console.log("[DAO.getCartera] sin filtro: devolviendo " + items.length + " items");
+      Logger.log("[DAO.getCartera] sin filtro: devolviendo " + items.length + " items");
       return { items, nextPageToken };
     }
 
     let rowIndexes = null;
     if (filtroTipo) {
-      console.log("[DAO.getCartera] Buscando por tipo: " + filtroTipo);
+      Logger.log("[DAO.getCartera] Buscando por tipo: " + filtroTipo);
       rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.tipo, filtroTipo);
-      console.log("[DAO.getCartera] Encontrados " + (rowIndexes ? rowIndexes.length : 0) + " por tipo");
+      Logger.log("[DAO.getCartera] Encontrados " + (rowIndexes ? rowIndexes.length : 0) + " por tipo");
     }
 
     if (filtroEstado) {
-      console.log("[DAO.getCartera] Buscando por estado: " + filtroEstado);
+      Logger.log("[DAO.getCartera] Buscando por estado: " + filtroEstado);
       const estadoRows = this._findRowIndexesByColumnValue(sheet, COL.estado, filtroEstado);
-      console.log("[DAO.getCartera] Encontrados " + (estadoRows ? estadoRows.length : 0) + " por estado");
+      Logger.log("[DAO.getCartera] Encontrados " + (estadoRows ? estadoRows.length : 0) + " por estado");
       if (rowIndexes === null) {
         rowIndexes = estadoRows;
       } else {
         const estadoSet = new Set(estadoRows);
         rowIndexes = rowIndexes.filter(row => estadoSet.has(row));
-        console.log("[DAO.getCartera] Después del filtro combinado: " + rowIndexes.length);
+        Logger.log("[DAO.getCartera] Después del filtro combinado: " + rowIndexes.length);
       }
     }
 
     if (!rowIndexes || rowIndexes.length === 0) {
-      console.log("[DAO.getCartera] Retornando vacío - no hay coincidencias");
+      Logger.log("[DAO.getCartera] Retornando vacío - no hay coincidencias");
       return { items: [], nextPageToken: null };
     }
 
@@ -106,7 +106,7 @@ const DAO = {
     const totalCount = rowIndexes.length;
     const paginatedRows = rowIndexes.slice(pageToken, pageToken + pageSize);
     const items = this._fetchCarteraItemsFromRows(sheet, paginatedRows, numCols);
-    console.log("[DAO.getCartera] Items finales: " + items.length);
+    Logger.log("[DAO.getCartera] Items finales: " + items.length);
     const nextPageToken = (pageToken + paginatedRows.length < totalCount) ? (pageToken + paginatedRows.length) : null;
 
     return { items, nextPageToken };
@@ -139,7 +139,7 @@ const DAO = {
     const searchValue = String(value).trim();
     // Use regex to match value with or without leading ' prefix
     const regexPattern = "^'?" + searchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "$";
-    console.log("[DAO._findRowIndexes] Buscando en col=" + colIndex + ", valor='" + searchValue + "', regex='" + regexPattern + "'");
+    Logger.log("[DAO._findRowIndexes] Buscando en col=" + colIndex + ", valor='" + searchValue + "', regex='" + regexPattern + "'");
     
     const matches = range.createTextFinder(regexPattern)
       .useRegularExpression(true)
@@ -147,7 +147,7 @@ const DAO = {
 
     if (!matches || matches.length === 0) {
       // Debug: intentar leer valores crudos para diagnosticar
-      console.log("_findRowIndexesByColumnValue: No matches para colIndex=" + colIndex + ", valor=" + searchValue + ". Intentando lectura directa...");
+      Logger.log("_findRowIndexesByColumnValue: No matches para colIndex=" + colIndex + ", valor=" + searchValue + ". Intentando lectura directa...");
       
       // Fallback: leer valores directamente y buscar coincidencia simple
       const rawValues = range.getValues();
@@ -159,14 +159,14 @@ const DAO = {
         }
       }
       if (directMatches.length > 0) {
-        console.log("_findRowIndexesByColumnValue: Fallback directo encontró " + directMatches.length + " coincidencias");
+        Logger.log("_findRowIndexesByColumnValue: Fallback directo encontró " + directMatches.length + " coincidencias");
         return directMatches;
       }
       
       return [];
     }
     
-    console.log("_findRowIndexesByColumnValue: Found " + matches.length + " matches para colIndex=" + colIndex);
+    Logger.log("_findRowIndexesByColumnValue: Found " + matches.length + " matches para colIndex=" + colIndex);
     return matches.map(match => match.getRow());
   },
 
@@ -321,7 +321,7 @@ const DAO = {
         }
         CACHE.refresh(true);
         const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 100;
-        console.debug(`WARN: OptimisticLock retry #${attempt + 1}. Waiting ${Math.round(delay)}ms`);
+        Logger.log(`WARN: OptimisticLock retry #${attempt + 1}. Waiting ${Math.round(delay)}ms`);
         Utilities.sleep(delay);
       }
     }
@@ -402,7 +402,7 @@ const DAO = {
           const currentFailures = Math.min(Number(props.getProperty('OPTIMISTIC_LOCK_FAILURES') || 0), 999999);
           props.setProperty('OPTIMISTIC_LOCK_FAILURES', String(Math.min(currentFailures + 1, 999999)));
         } catch (e) {
-          console.debug("Failed to persist optimistic lock metric: " + e.toString());
+          Logger.log("Failed to persist optimistic lock metric: " + e.toString());
         }
 
         const err = new Error(
@@ -433,7 +433,7 @@ const DAO = {
         }
       }
 
-      console.debug(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
+      Logger.log(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
 
       try {
         targetRange.setValues(values);

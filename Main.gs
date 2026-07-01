@@ -146,49 +146,49 @@ function getHealthStatus() {
  * Diagnostico: Verificar datos de cartera directamente desde console GAS
  */
 function Main_getCarteraDebug(filtroTipo, filtroEstado) {
-  var result = { checks: {}, errors: [] };
-  try {
-    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    result.checks.sheetExists = !!sheet;
-    if (!sheet) {
-      result.errors.push("La hoja Cartera no existe");
-      return result;
-    }
-    result.checks.sheetLastRow = sheet.getLastRow();
-    var colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
-    if (result.checks.sheetLastRow < 2) {
-      result.errors.push("La hoja Cartera está vacía");
-      return result;
-    }
-    var rawData = sheet.getRange(2, 1, result.checks.sheetLastRow - 1, colCount).getValues();
-    result.checks.rawDataCount = rawData.length;
-    var tiposSet = {};
-    for (var i = 0; i < rawData.length; i++) {
-      var tipo = String(rawData[i][CARTERA_CONFIG.COLUMNS.CARTERA.tipo] || '').trim();
-      if (tipo) tiposSet[tipo] = (tiposSet[tipo] || 0) + 1;
-    }
-    result.checks.tiposEnHoja = Object.keys(tiposSet);
-    try {
-      var apiResult = DOMAIN.getCartera(filtroTipo, filtroEstado, 5, 0);
-      result.checks.apiResult = {
-        itemsCount: apiResult && apiResult.items ? apiResult.items.length : 0,
-        error: null
-      };
-    } catch (e) {
-      result.checks.apiResult = { itemsCount: 0, error: e.message };
-    }
-  } catch (e) {
-    result.errors.push(e.message);
-  }
-  return result;
-}
+   const result = { checks: {}, errors: [] };
+   try {
+     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+     result.checks.sheetExists = !!sheet;
+     if (!sheet) {
+       result.errors.push("La hoja Cartera no existe");
+       return result;
+     }
+     result.checks.sheetLastRow = sheet.getLastRow();
+     const colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+     if (result.checks.sheetLastRow < 2) {
+       result.errors.push("La hoja Cartera está vacía");
+       return result;
+     }
+     const rawData = sheet.getRange(2, 1, result.checks.sheetLastRow - 1, colCount).getValues();
+     result.checks.rawDataCount = rawData.length;
+     const tiposSet = {};
+     for (let i = 0; i < rawData.length; i++) {
+       const tipo = String(rawData[i][CARTERA_CONFIG.COLUMNS.CARTERA.tipo] || '').trim();
+       if (tipo) tiposSet[tipo] = (tiposSet[tipo] || 0) + 1;
+     }
+     result.checks.tiposEnHoja = Object.keys(tiposSet);
+     try {
+       const apiResult = DOMAIN.getCartera(filtroTipo, filtroEstado, 5, 0);
+       result.checks.apiResult = {
+         itemsCount: apiResult && apiResult.items ? apiResult.items.length : 0,
+         error: null
+       };
+     } catch (e) {
+       result.checks.apiResult = { itemsCount: 0, error: e.message };
+     }
+   } catch (e) {
+     result.errors.push(e.message);
+   }
+   return result;
+ }
 
 function debugCartera() {
   try {
     CACHE.invalidate(); // Forzar refresh fresco
-    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    var lastRow = sheet.getLastRow();
-    var colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const lastRow = sheet.getLastRow();
+    const colCount = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.CARTERA)) + 1;
     
     Logger.log("DEBUG CARTERA: sheet=%s, lastRow=%s, cols=%s", 
       CARTERA_CONFIG.SHEETS.CARTERA, lastRow, colCount);
@@ -199,7 +199,7 @@ function debugCartera() {
     }
     
     // Leer directamente de la hoja
-    var data = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
+    const data = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
     Logger.log("DEBUG CARTERA: datos leidos=%s", data.length);
     
     // Analizar tipos reales en la hoja
@@ -215,15 +215,15 @@ function debugCartera() {
     Logger.log("DEBUG CARTERA: estados en hoja=%s", JSON.stringify(estadosEncontrados));
     
     // Verificar DAO sin filtro
-    var daoResult = DAO.getCartera();
+    const daoResult = DAO.getCartera();
     Logger.log("DEBUG CARTERA: DAO getCartera() returned items=%s", daoResult?.items?.length || 0);
     
     // Verificar Domain sin filtro
-    var domainResult = DOMAIN.getCartera();
+    const domainResult = DOMAIN.getCartera();
     Logger.log("DEBUG CARTERA: DOMAIN getCartera() returned items=%s", domainResult?.items?.length || 0);
     
     // Test con filtro CxC específico
-    var cxcResult = DAO.getCartera("CxC", null);
+    const cxcResult = DAO.getCartera("CxC", null);
     Logger.log("DEBUG CARTERA: DAO getCartera('CxC') returned items=%s", cxcResult?.items?.length || 0);
     
     return { 
@@ -249,8 +249,8 @@ function debugCartera() {
 
 function testCarteraSimple() {
   try {
-    var sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-    var lastRow = sheet.getLastRow();
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const lastRow = sheet.getLastRow();
     Logger.log("testCarteraSimple: Sheet exists, lastRow=%s", lastRow);
     return lastRow;
   } catch(e) {
@@ -348,9 +348,9 @@ function setSpreadsheetId(ssId) {
 function inicializarSistema() {
   try {
     Logger.log("[MIGRACION] Iniciando inicializarSistema()...");
-    var resultado = CONFIG.reloadSchema();
+    const resultado = CONFIG.reloadSchema();
     Logger.log("[MIGRACION] reloadSchema ejecutado: " + JSON.stringify(resultado));
-    var reporte = CONFIG.getSchemaReport();
+    const reporte = CONFIG.getSchemaReport();
     Logger.log("[MIGRACION] Reporte de esquemas: " + JSON.stringify(reporte));
     Logger.log("[MIGRACION] Sistema inicializado correctamente.");
     return {
@@ -373,21 +373,21 @@ function inicializarSistema() {
 function migrarEstructuraCompras() {
   try {
     Logger.log("[MIGRACION] Iniciando migrarEstructuraCompras()...");
-    var ss = getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
+    const ss = getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
     if (!sheet) {
       return { success: false, error: "Hoja Cartera no encontrada" };
     }
-    var lastCol = sheet.getLastColumn();
-    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
-    var headerNames = headers.map(function(h) { return String(h || "").trim(); });
-    var cambios = [];
+    const lastCol = sheet.getLastColumn();
+    const headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    const headerNames = headers.map(function(h) { return String(h || "").trim(); });
+    const cambios = [];
 
     // --- Agregar Numero_Factura ---
     if (headerNames.indexOf("Numero_Factura") === -1) {
-      var colIdx = headerNames.indexOf("Origen_ID");
+      const colIdx = headerNames.indexOf("Origen_ID");
       if (colIdx === -1) colIdx = headerNames.length;
-      var insertAt = colIdx + 1;
+      const insertAt = colIdx + 1;
       sheet.insertColumnAfter(insertAt);
       sheet.getRange(1, insertAt).setValue("Numero_Factura");
       cambios.push("Numero_Factura agregada en columna " + insertAt);

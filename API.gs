@@ -26,7 +26,7 @@ function _safeError(context, error, correlationId) {
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;
   const executionTime = startTime > 0 ? Date.now() - parseInt(startTime) : 0;
-  console.error('[' + corrId + '] ' + context + ': ' + message);
+  Logger.log('[' + corrId + '] ' + context + ': ' + message);
   Logger.log('[' + corrId + '] ' + context + ' (execution: ' + executionTime + 'ms)');
   return { success: false, error: message, correlationId: corrId, executionTimeMs: executionTime };
 }
@@ -196,7 +196,7 @@ const RATE_LIMITER = {
       const email = SESSION_SERVICE.getCurrentUser().getEmail();
       if (email) return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, email).map(b => (b & 0xFF).toString(16)).slice(0, 8).join('');
     } catch (e) {
-      console.debug("RATE_LIMITER._userId: No user session available");
+      Logger.log("RATE_LIMITER._userId: No user session available");
     }
     return 'anon';
   },
