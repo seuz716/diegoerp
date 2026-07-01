@@ -903,11 +903,7 @@ function removeGeminiKey() {
   return { success: true, message: "API Key eliminada." };
 }
 
-/**
- * Verifies IA configuration: Gemini API key + proxy.
- */
-function verificarConfiguracionIA() {
-  AuthService.checkPermission("ver_configuracion");
+IA_SERVICE.verificarConfiguracion = function () {
   const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
   const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
   return {
@@ -923,7 +919,7 @@ function verificarConfiguracionIA() {
     cache_ttl_ms: IA_SERVICE.CACHE_TTL_MS,
     advertencia: configurada ? "API Key configurada. No se muestra preview por seguridad." : null,
   };
-}
+};
 
 /**
  * Public entry point: analizarConGeminiCompleto()

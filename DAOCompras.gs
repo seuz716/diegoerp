@@ -24,7 +24,7 @@ const DAO_COMPRAS = {
   },
 
   crearMovimientoKardex(movimiento) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(5000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
       const C = DAO_COMPRAS.KARDEX_COL;
@@ -128,7 +128,7 @@ const DAO_COMPRAS = {
   },
 
   crearCompra(registro) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
       const C = DAO_COMPRAS.COMPRAS_COL;
@@ -153,7 +153,7 @@ const DAO_COMPRAS = {
   },
 
   crearDetalleCompra(detalle) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
       const C = DAO_COMPRAS.DETALLE_COL;

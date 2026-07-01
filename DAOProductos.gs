@@ -87,7 +87,7 @@ const DAO_PRODUCTOS = {
   },
 
   crear(datos) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const nombreLimpio = String(datos.nombre || "").trim();
       if (nombreLimpio.length < 1) {
@@ -134,7 +134,7 @@ const DAO_PRODUCTOS = {
   },
 
   actualizar(id, cambios, expectedVersion) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const idLimpio = _sanitizeId(id);
       if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
@@ -219,7 +219,7 @@ incrementarStock(id, cantidad) {
     if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
     const producto = DAO_PRODUCTOS.obtener(idLimpio);
     if (!producto) throw new Error("Producto no encontrado: " + idLimpio);
-    const lock = LOCK_MANAGER.acquireGlobalLock(10000);
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const C = DAO_PRODUCTOS.COL;
