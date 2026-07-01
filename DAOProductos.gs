@@ -177,12 +177,15 @@ const DAO_PRODUCTOS = {
     }
   },
 
-  incrementarStock(id, cantidad) {
-    const lock = LOCK_MANAGER.acquireResourceLock(id);
-    try {
-      const idLimpio = _sanitizeId(id);
-      if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
-      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+incrementarStock(id, cantidad) {
+     const lock = LOCK_MANAGER.acquireResourceLock(id);
+     try {
+       const idLimpio = _sanitizeId(id);
+       if (!idLimpio) throw new Error("ID de producto inválido: " + id);
+       if (typeof cantidad !== 'number' || isNaN(cantidad)) {
+         throw new Error("Cantidad inválida: debe ser un número válido");
+       }
+       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) throw new Error("Producto no encontrado: " + idLimpio);
       const C = DAO_PRODUCTOS.COL;
@@ -191,13 +194,11 @@ const DAO_PRODUCTOS = {
       for (let i = 0; i < data.length; i++) {
         if (String(data[i][C.id] || "").trim() === idLimpio) {
           const rowIdx = i + 2;
-          const stockActual = _parseMoneda(data[i][C.stock], 0);
-          const cant = _parseMoneda(cantidad, NaN);
-          if (isNaN(cant)) throw new Error("Cantidad inválida: debe ser un número");
-          const nuevoStock = stockActual + cant;
-          if (nuevoStock < 0) {
-            throw new Error("Stock insuficiente: disponible " + stockActual + ", solicitado " + (-cant));
-          }
+           const stockActual = _parseMoneda(data[i][C.stock], 0);
+           const nuevoStock = stockActual + cantidad;
+           if (nuevoStock < 0) {
+             throw new Error("Stock insuficiente: disponible " + stockActual + ", solicitado " + (-cantidad));
+           }
           const currentVersion = _parseMoneda(data[i][C.version], 1);
           const rowRange = sheet.getRange(rowIdx, 1, 1, numCols);
           const rowValues = rowRange.getValues()[0];
