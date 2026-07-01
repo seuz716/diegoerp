@@ -356,9 +356,13 @@ invalidateCartera() {
     const timestampKey = kind === 'terceros' ? 'CIRCUIT_OPEN_TERCEROS_TS' : 'CIRCUIT_OPEN_CARTERA_TS';
     const storedTs = Number(props.getProperty(timestampKey) || '0');
     
+    // Validate timestamp: must be numeric and within reasonable window (max 24h)
+    const MAX_BACKOFF_MS = 86400000; // 24h
+    const validTs = !isNaN(storedTs) && storedTs > 0 && storedTs <= Date.now() + MAX_BACKOFF_MS;
+    
     // storedTs is a future timestamp (circuit opened at Date.now() + backoffMs)
     // Circuit can transition to half_open when current time >= storedTs (backoff elapsed)
-    if (state === 'open' && storedTs > 0 && Date.now() >= storedTs) {
+    if (state === 'open' && validTs && Date.now() >= storedTs) {
       console.debug(`[FIX-C-02] Circuit breaker transitioning to HALF_OPEN for ${kind} after backoff elapsed`);
       this._setCircuitState(kind, 'half_open');
       if (kind === 'terceros') {
