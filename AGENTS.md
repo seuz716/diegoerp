@@ -135,3 +135,7 @@ Test Suite (runAllRegressionTests): 30 tests
 - ✅ AuthService logging: removed keyName/secretName from console.log output
 - ✅ API._safeError: removed stack trace from console output
 - ✅ AuditLog error logs: replaced e.toString() with generic messages
+
+### 🔒 Seguridad - Circuit Breaker Hardening
+- ✅ CacheService: Validate timestamps (max 24h window) to prevent corruption
+- ✅ Main.gs: Removed keyLength from checkIAKey output
