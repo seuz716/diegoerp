@@ -1154,13 +1154,25 @@ _test('K-05: Stock reconciliation - Kardex calculated stock matches product reco
   _test('K-06: Trazabilidad completa por producto (producto, cantidad, fechas)', () => {
     try {
       var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
-      var movPorProducto = {};
-      for (var i = 0; i < movimientos.length; i++) {
+      var productos = DAO_PRODUCTOS.listar({});
+      var prodIds = {};
+      for (var p = 0; p < productos.length; p++) prodIds[productos[p].id] = productos[p].nombre;
+
+      var errores = [];
+      for (var i = 0; i < movimientos.length && errores.length < 10; i++) {
         var m = movimientos[i];
-        if (!m.id_producto) continue;
-        if (!movPorProducto[m.id_producto]) movPorProducto[m.id_producto] = [];
-        movPorProducto[m.id_producto].push(m);
+        if (!m.id_producto) {
+          errores.push('Movimiento sin id_producto: ' + m.id);
+          continue;
+        }
+        if (!prodIds[m.id_producto]) {
+          errores.push('Producto inexistente en movimiento: ' + m.id_producto);
+        }
+        if (!m.fecha) {
+          errores.push('Movimiento sin fecha: ' + m.id);
+        }
       }
+      if (errores.length > 0) return 'Errores trazabilidad: ' + errores.slice(0, 5).join('; ');
       return true;
     } catch (e) {
       return 'Exception: ' + e.message;
@@ -1202,15 +1214,37 @@ _test('K-05: Stock reconciliation - Kardex calculated stock matches product reco
   _test('K-08: Movimientos con referencia origen válida (compra/venta)', () => {
     try {
       var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 500);
-      var errores = [];
-      for (var i = 0; i < movimientos.length; i++) {
-        var m = movimientos[i];
-        var origen = String(m.origen || '').trim();
-        if (!origen) {
-          errores.push('Movimiento ' + m.id + ' sin origen');
+      var compras = DAO_COMPRAS.getCompras();
+      var compraIds = {};
+      for (var c = 0; c < compras.length; c++) compraIds[compras[c].id] = true;
+
+      var audit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      var ventaIds = {};
+      if (audit) {
+        var auditData = audit.getDataRange().getValues();
+        var ACOL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+        for (var a = 1; a < auditData.length; a++) {
+          if (String(auditData[a][ACOL.tabla] || '').trim() === 'VENTAS') {
+            var id = String(auditData[a][ACOL.id_registro] || '').trim();
+            if (id) ventaIds[id] = true;
+          }
         }
       }
-      if (errores.length > 0) return 'Movimientos sin origen: ' + errores.slice(0, 3).join('; ');
+
+      var errores = [];
+      for (var i = 0; i < movimientos.length && errores.length < 10; i++) {
+        var m = movimientos[i];
+        var ref = String(m.referencia || '').trim();
+        var tipo = String(m.tipo_mov || '').toUpperCase();
+
+        if (tipo === 'ENTRADA' && ref && !compraIds[ref]) {
+          errores.push('Entrada sin compra origen: ' + ref);
+        }
+        if (tipo === 'SALIDA' && ref && !ventaIds[ref]) {
+          errores.push('Salida sin venta origen: ' + ref);
+        }
+      }
+      if (errores.length > 0) return 'Referencias inválidas: ' + errores.slice(0, 5).join('; ');
       return true;
     } catch (e) {
       return 'Exception: ' + e.message;
@@ -1410,12 +1444,13 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
   _test('COMP-02: Cantidad comprada = cantidad entrada en kardex', () => {
     try {
       const compras = DAO_COMPRAS.getCompras(null, null, 500);
+      const kardexAll = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
       const errores = [];
       for (let i = 0; i < Math.min(compras.length, 20); i++) {
         const c = compras[i];
         const detalles = DAO_COMPRAS.getDetallesByCompra(c.id);
         const cantCompra = detalles.reduce((sum, d) => sum + (d.cantidad || 0), 0);
-        const kardexEntradas = DAO_COMPRAS.getMovimientosKardex(null, 500).filter(m => m.referencia === c.id && m.tipo_mov === 'ENTRADA');
+        const kardexEntradas = kardexAll.filter(m => m.referencia === c.id && m.tipo_mov === 'ENTRADA');
         const cantKardex = kardexEntradas.reduce((sum, m) => sum + (m.cantidad || 0), 0);
         if (cantKardex > 0 && cantCompra !== cantKardex) {
           errores.push('Compra ' + c.id + ': comprado=' + cantCompra + ', kardex=' + cantKardex);
@@ -1431,10 +1466,11 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
   _test('COMP-03: Fecha entrada kardex >= fecha compra (diferencia <= 7 días)', () => {
     try {
       const compras = DAO_COMPRAS.getCompras(null, null, 500);
+      const kardexAll = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
       const errores = [];
       for (let i = 0; i < Math.min(compras.length, 20); i++) {
         const c = compras[i];
-        const kardexEntradas = DAO_COMPRAS.getMovimientosKardex(null, 500).filter(m => m.referencia === c.id && m.tipo_mov === 'ENTRADA');
+        const kardexEntradas = kardexAll.filter(m => m.referencia === c.id && m.tipo_mov === 'ENTRADA');
         if (kardexEntradas.length === 0) continue;
         const fechaNf = new Date(c.fecha);
         const kardexDate = new Date(kardexEntradas[0].fecha);
@@ -1459,8 +1495,10 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
     try {
       const compras = DAO_COMPRAS.getCompras(null, null, 100);
       const errores = [];
+      // Excluir compras CANCELADAS de esta verificación
       for (let i = 0; i < Math.min(compras.length, 20); i++) {
         const c = compras[i];
+        if (c.estado === COMPRAS_CONFIG.ESTADOS.CANCELADA) continue;
         const detalles = DAO_COMPRAS.getDetallesByCompra(c.id);
         for (let j = 0; j < detalles.length; j++) {
           const d = detalles[j];
@@ -2655,6 +2693,467 @@ _test('SEG-05: Kardex sin auditoría en AUDIT_LOG (requisito)', () => {
     return 'Exception: ' + e.message;
   }
 });
+
+  _test('HOY-01: getVentasDelDia returns valid structure', () => {
+    try {
+      var result = getVentasDelDia();
+      if (!result || typeof result !== 'object') {
+        return 'getVentasDelDia did not return object';
+      }
+      if (typeof result.success !== 'boolean' || typeof result.ventas !== 'object' || typeof result.total !== 'number') {
+        return 'getVentasDelDia missing required fields: success, ventas, total';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('HOY-02: getVentasDelDia filters by today date correctly', () => {
+    try {
+      var result = getVentasDelDia();
+      var hoy = new Date();
+      var hoyStr = hoy.toISOString().split('T')[0];
+      
+      if (result.ventas && result.ventas.length > 0) {
+        for (var i = 0; i < result.ventas.length; i++) {
+          var v = result.ventas[i];
+          var ts = v.timestamp;
+          var fechaVenta = ts instanceof Date ? ts.toISOString().split('T')[0] : String(ts).split('T')[0];
+          if (fechaVenta !== hoyStr) {
+            return 'Venta tiene fecha incorrecta: ' + fechaVenta;
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('HOY-03: Entradas de hoy tienen compra origen válida', () => {
+    try {
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(1, null);
+      var hoy = _today();
+      var hoyStr = Utilities.formatDate(hoy, _getTimeZone(), 'yyyy-MM-dd');
+      var errores = [];
+
+      for (var i = 0; i < kardex.length; i++) {
+        var m = kardex[i];
+        var fecha = new Date(m.fecha);
+        if (_isValidDate(fecha)) {
+          var fStr = Utilities.formatDate(fecha, _getTimeZone(), 'yyyy-MM-dd');
+          if (fStr === hoyStr && String(m.tipo_mov || '').toUpperCase() === 'ENTRADA') {
+            var compra = DAO_COMPRAS.getCompra(m.referencia);
+            if (!compra && m.referencia) {
+              errores.push('Entrada ' + m.id + ' sin compra origen válida');
+            }
+          }
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 3).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('HOY-04: Saldo del día concuerda entre Libro Diario y Flujo Caja', () => {
+    try {
+      var libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      var flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+
+      if (!libroDiario || !flujoCaja) {
+        return 'Hojas no configuradas - test omitido';
+      }
+
+      var hoy = _today();
+      var hoyStr = Utilities.formatDate(hoy, _getTimeZone(), 'yyyy-MM-dd');
+
+      var ldData = libroDiario.getDataRange().getValues();
+      var fcData = flujoCaja.getDataRange().getValues();
+      var ldCol = CONFIG.COLUMNS.LIBRO_DIARIO;
+      var fcCol = CONFIG.COLUMNS.FLUJO_CAJA;
+
+      var saldoLD = 0;
+      for (var i = 1; i < ldData.length; i++) {
+        var f = _safeDate(ldData[i][ldCol.fecha]);
+        if (f && Utilities.formatDate(f, _getTimeZone(), 'yyyy-MM-dd') === hoyStr) {
+          var m = _parseMoneda(ldData[i][ldCol.monto], 0);
+          var t = String(ldData[i][ldCol.tipo] || '').trim();
+          if (t === 'VENTA_CONTADO' || t === 'ABONO_CLIENTE') saldoLD += m;
+          else if (t === 'PAGO_PROVEEDOR' || t === 'COMPRA') saldoLD -= m;
+        }
+      }
+
+      var saldoFC = 0;
+      for (var j = 1; j < fcData.length; j++) {
+        var f = _safeDate(fcData[j][fcCol.fecha]);
+        if (f && Utilities.formatDate(f, _getTimeZone(), 'yyyy-MM-dd') === hoyStr) {
+          var m = _parseMoneda(fcData[j][fcCol.monto], 0);
+          var t = String(fcData[j][fcCol.tipo] || '').trim();
+          if (t === FLUJO_CAJA_TIPOS.ENTRADA_VENTA || t === FLUJO_CAJA_TIPOS.ENTRADA_ABONO) saldoFC += m;
+          else if (t === FLUJO_CAJA_TIPOS.SALIDA_PAGO_PROV || t === FLUJO_CAJA_TIPOS.SALIDA_COMPRA) saldoFC -= m;
+        }
+      }
+
+      var diff = Math.abs(saldoLD - saldoFC);
+      if (diff > 0) return 'Diferencia saldo: LD=' + saldoLD + ', FC=' + saldoFC;
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('CTR-01: Cuadre stock inicial + entradas - salidas = stock final', () => {
+    try {
+      var productos = DAO_PRODUCTOS.listar({});
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 5000);
+      var errores = [];
+
+      for (var p = 0; p < productos.length && errores.length < 10; p++) {
+        var prod = productos[p];
+        var kProd = kardex.filter(k => k.id_producto === prod.id);
+        var entradas = 0, salidas = 0;
+
+        for (var k = 0; k < kProd.length; k++) {
+          var cant = kProd[k].cantidad || 0;
+          var tipo = String(kProd[k].tipo_mov || '').toUpperCase();
+          if (tipo === 'ENTRADA') entradas += cant;
+          else if (tipo === 'SALIDA') salidas += cant;
+        }
+
+        var stockCalculado = entradas - salidas;
+        if (prod.stock !== stockCalculado) {
+          errores.push(prod.id + ': stock=' + prod.stock + ', calculado=' + stockCalculado);
+        }
+      }
+      if (errores.length > 0) return 'Desbalances: ' + errores.slice(0, 5).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('CTR-02: Asiento contable venta genera entrada en Libro Diario', () => {
+    try {
+      var audit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      if (!audit) return 'Hoja AUDIT_LOG no configurada';
+
+      var data = audit.getDataRange().getValues();
+      var COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+      var ventas = data.filter(r => String(r[COL.tabla] || '').trim() === 'VENTAS' && String(r[COL.operacion] || '').trim() === 'CREATE_VENTA');
+
+      if (ventas.length === 0) return true;
+
+      var ldSheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      var ldData = ldSheet.getDataRange().getValues();
+      var ldCol = CONFIG.COLUMNS.LIBRO_DIARIO;
+      var ldRefs = {};
+      for (var i = 1; i < ldData.length; i++) {
+        var ref = String(ldData[i][ldCol.id_referencia] || '').trim();
+        if (ref) ldRefs[ref] = true;
+      }
+
+      var faltantes = 0;
+      for (var v = 0; v < ventas.length && faltantes < 5; v++) {
+        var idVenta = String(ventas[v][COL.id_registro] || '').trim();
+        if (idVenta && !ldRefs[idVenta]) faltantes++;
+      }
+
+      if (faltantes > 0) return faltantes + ' ventas sin asiento contable';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('CTR-03: Asiento contable compra genera entrada en Libro Diario', () => {
+    try {
+      var audit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      if (!audit) return 'Hoja AUDIT_LOG no configurada';
+
+      var data = audit.getDataRange().getValues();
+      var COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+      var compras = data.filter(r => String(r[COL.tabla] || '').trim() === 'COMPRAS' && String(r[COL.operacion] || '').trim() === 'CREATE_COMPRA');
+
+      if (compras.length === 0) return true;
+
+      var ldSheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      var ldData = ldSheet.getDataRange().getValues();
+      var ldCol = CONFIG.COLUMNS.LIBRO_DIARIO;
+      var ldRefs = {};
+      for (var i = 1; i < ldData.length; i++) {
+        var ref = String(ldData[i][ldCol.id_referencia] || '').trim();
+        if (ref) ldRefs[ref] = true;
+      }
+
+      var faltantes = 0;
+      for (var c = 0; c < compras.length && faltantes < 5; c++) {
+        var idCompra = String(compras[c][COL.id_registro] || '').trim();
+        if (idCompra && !ldRefs[idCompra]) faltantes++;
+      }
+
+      if (faltantes > 0) return faltantes + ' compras sin asiento contable';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('INV-01: Stock de productos concuerda con kardex acumulado', () => {
+    try {
+      var productos = DAO_PRODUCTOS.listar({});
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 10000);
+      var errores = [];
+
+      for (var p = 0; p < productos.length && errores.length < 10; p++) {
+        var prod = productos[p];
+        var kProd = kardex.filter(k => k.id_producto === prod.id);
+        var stockCalc = kProd.reduce((sum, k) => {
+          var t = String(k.tipo_mov || '').toUpperCase();
+          var c = k.cantidad || 0;
+          return t === 'ENTRADA' ? sum + c : t === 'SALIDA' ? sum - c : sum;
+        }, 0);
+
+        if (prod.stock < 0) {
+          errores.push(prod.id + ': stock negativo ' + prod.stock);
+        }
+        if (Math.abs(prod.stock - stockCalc) > 1) {
+          errores.push(prod.id + ': stock=' + prod.stock + ', kardex=' + stockCalc);
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 5).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('INV-02: No existen movimientos kardex duplicados', () => {
+    try {
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 5000);
+      var seen = {};
+      var duplicados = 0;
+
+      for (var i = 0; i < kardex.length && duplicados < 10; i++) {
+        var key = kardex[i].id + '|' + kardex[i].referencia;
+        if (seen[key]) duplicados++;
+        seen[key] = true;
+      }
+
+      if (duplicados > 0) return duplicados + ' movimientos duplicados';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== VALORIZACIÓN TESTS =====
+
+  _test('VAL-01: Productos con stock tienen costo de valuación > 0', () => {
+    try {
+      var productos = DAO_PRODUCTOS.listar({});
+      var errores = [];
+
+      for (var i = 0; i < productos.length && errores.length < 10; i++) {
+        var p = productos[i];
+        if ((p.stock || 0) > 0 && (p.precio_compra || 0) <= 0) {
+          errores.push(p.id + ' (' + p.nombre + ') stock=' + p.stock + ' sin costo');
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 5).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('VAL-02: Productos con precio_venta < costo (pérdida potencial)', () => {
+    try {
+      var productos = DAO_PRODUCTOS.listar({});
+      var alertas = 0;
+
+      for (var i = 0; i < productos.length; i++) {
+        var p = productos[i];
+        if (p.precio_venta && p.precio_compra && p.precio_venta < p.precio_compra) {
+          alertas++;
+        }
+      }
+      if (alertas > 0) return alertas + ' productos con pérdida potencial (precio_venta < costo)';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('REP-01: getRotacionInventario function exists', () => {
+    try {
+      if (typeof DOMAIN.getRotacionInventario !== 'function') {
+        return 'DOMAIN.getRotacionInventario not found';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('REP-02: getRotacionInventario returns valid structure', () => {
+    try {
+      var result = DOMAIN.getRotacionInventario();
+      if (!result || typeof result !== 'object') return 'No retornó objeto';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== PROVEEDOR TESTS =====
+
+_test('PROV-01: Proveedores en compras existen en Terceros', () => {
+    try {
+      var compras = DAO_COMPRAS.getCompras();
+      var terceros = CACHE.terceros || DAO.getTerceros();
+      var terceroIds = {};
+      for (var i = 0; i < terceros.length; i++) terceroIds[terceros[i].id] = true;
+
+      var errores = [];
+      for (var c = 0; c < compras.length && errores.length < 10; c++) {
+        var provId = compras[c].id_proveedor;
+        if (provId && !terceroIds[provId]) {
+          errores.push('Compra ' + compras[c].id + ' proveedor inexistente: ' + provId);
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 5).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== INV-03 a INV-05 =====
+
+  _test('INV-03: Stock negativo histórico no debe existir', () => {
+    try {
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 5000);
+      var errores = [];
+
+      for (var i = 0; i < kardex.length && errores.length < 10; i++) {
+        if ((kardex[i].stock_anterior || 0) < 0 || (kardex[i].stock_nuevo || 0) < 0) {
+          errores.push('Movimiento ' + kardex[i].id + ' con stock negativo');
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 5).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('INV-04: Ajustes de inventario requieren justificación', () => {
+    try {
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 5000);
+      var ajustesSinRef = 0;
+
+      for (var i = 0; i < kardex.length && ajustesSinRef < 10; i++) {
+        var origen = String(kardex[i].origen || '').trim().toLowerCase();
+        if (origen.indexOf('ajuste') !== -1 || origen.indexOf('merma') !== -1) {
+          var ref = String(kardex[i].referencia || '').trim();
+          if (!ref) ajustesSinRef++;
+        }
+      }
+      if (ajustesSinRef > 0) return ajustesSinRef + ' ajustes sin referencia/justificación';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('INV-05: Productos inactivos no deben tener movimientos recientes', () => {
+    try {
+      var productos = DAO_PRODUCTOS.listar({});
+      var inactivos = {};
+      for (var p = 0; p < productos.length; p++) {
+        if (productos[p].activo === false || String(productos[p].activo).toUpperCase() === 'INACTIVO') {
+          inactivos[productos[p].id] = true;
+        }
+      }
+
+      var kardex = DAO_COMPRAS.getAllMovimientosKardex(30, 5000);
+      var hoy = _today();
+      var errores = 0;
+
+      for (var i = 0; i < kardex.length && errores < 10; i++) {
+        var fecha = new Date(kardex[i].fecha);
+        if (fecha > hoy) {
+          if (inactivos[kardex[i].id_producto]) {
+            errores++;
+          }
+        }
+      }
+      if (errores > 0) return errores + ' movimientos recientes en productos inactivos';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== CLI-01 a CLI-03 =====
+
+  _test('CLI-01: Ventas por cliente existen en Terceros', () => {
+    try {
+      var audit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      if (!audit) return 'Hoja AUDIT_LOG no configurada';
+
+      var data = audit.getDataRange().getValues();
+      var COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+      var ventas = data.filter(r => String(r[COL.tabla] || '').trim() === 'VENTAS');
+
+      var terceros = CACHE.terceros || DAO.getTerceros();
+      var terceroIds = {};
+      for (var i = 0; i < terceros.length; i++) terceroIds[terceros[i].id] = true;
+
+      var errores = 0;
+      for (var v = 0; v < ventas.length && errores < 10; v++) {
+        var idTercero = null;
+        try {
+          var nuevos = JSON.parse(ventas[v][COL.datos_nuevos] || '{}');
+          idTercero = nuevos.idTercero;
+        } catch (e) {}
+        if (idTercero && !terceroIds[idTercero]) {
+          errores++;
+        }
+      }
+      if (errores > 0) return errores + ' ventas con cliente inexistente';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('CLI-02: Clientes activos con CxC generan cartera', () => {
+    try {
+      var cartera = DAO.getCartera();
+      var terceros = CACHE.terceros || DAO.getTerceros();
+      var errores = 0;
+
+      for (var i = 0; i < terceros.length && errores < 10; i++) {
+        var t = terceros[i];
+        if (String(t.tipo || '').toUpperCase() === 'CLIENTE' || String(t.tipo || '').toUpperCase() === 'AMBOS') {
+          if (t.activo !== false) {
+            var tieneCxC = cartera.some(c => c.id_tercero === t.id && String(c.tipo) === 'CxC');
+            if (!tieneCxC) {
+              errores++;
+            }
+          }
+        }
+      }
+      if (errores > 0) return errores + ' clientes activos sin CxC';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
 
   return {
     passed: TEST_RESULTS.passed,

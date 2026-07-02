@@ -334,6 +334,11 @@ const DAO_COMPRAS = {
    * @returns {Array<Object>} List of detail items.
    */
   getDetallesByCompra(idCompra) {
+    return this._getDetallesByCompra(idCompra);
+  },
+
+  // Alias para compatibilidad con tests
+  _getDetallesByCompra(idCompra) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];

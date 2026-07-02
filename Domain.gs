@@ -1794,8 +1794,8 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         const detalles = DAO_COMPRAS.getDetallesByCompra(idLimpio);
         
         // Obtener movimientos de kardex ENTRADA asociados a esta compra
-        const kardexEntradas = DAO_COMPRAS.getMovimientosKardex(null, 500)
-          .filter(m => m.referencia === idLimpio && m.tipo_mov === 'ENTRADA');
+        const kardexAll = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+        const kardexEntradas = kardexAll.filter(m => m.referencia === idLimpio && m.tipo_mov === 'ENTRADA');
 
         // Revertir stock: generar SALIDAS en kardex
         const C = CONFIG.COLUMNS.PRODUCTOS;
@@ -1845,8 +1845,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
         tx.commit();
 
-        CACHE.invalidateCartera();
-        CACHE.invalidateProductos();
+        CACHE.invalidate();
 
         LOG_ENGINE.logEvent("CANCEL_COMPRA", "COMPRAS", idLimpio,
           { estado: estadoActual, total: compra.total },
@@ -1994,5 +1993,187 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       tipo: c.tipo,
       activo: c.activo
     }));
+  },
+
+  /**
+   * Ranking ABC de productos por valor de ventas/inventario.
+   * Clasifica productos según su aporte al valor total (80/15/5 rule).
+   * @param {string} [tipo='valor'] - 'valor' para valor monetario, 'cantidad' para unidades
+   * @returns {Object} { A: [], B: [], C: [] } productos clasificados
+   */
+  getRankingABC(tipo) {
+    const usarValor = tipo !== 'cantidad';
+    const movimientos = DAO_COMPRAS.getAllMovimientosKardex(365, 5000);
+    const productos = DAO_PRODUCTOS.listar({});
+
+    // Calcular valor total vendido por producto
+    const ventasPorProducto = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      if (String(m.tipo_mov || "").toUpperCase() !== 'SALIDA') continue;
+      const prodId = m.id_producto;
+      const cantidad = m.cantidad || 0;
+      if (!ventasPorProducto[prodId]) {
+        ventasPorProducto[prodId] = { cantidad: 0, valor: 0 };
+      }
+      ventasPorProducto[prodId].cantidad += cantidad;
+    }
+
+    // Asignar precios
+    const productoMap = {};
+    for (let i = 0; i < productos.length; i++) {
+      const p = productos[i];
+      productoMap[p.id] = p;
+      if (!ventasPorProducto[p.id]) {
+        ventasPorProducto[p.id] = { cantidad: 0, valor: 0 };
+      }
+      if (usarValor) {
+        ventasPorProducto[p.id].valor = ventasPorProducto[p.id].cantidad * (p.precio_venta || 0);
+      }
+    }
+
+    // Calcular total
+    let total = 0;
+    for (const prodId in ventasPorProducto) {
+      const key = usarValor ? 'valor' : 'cantidad';
+      total += ventasPorProducto[prodId][key] || 0;
+    }
+    if (total === 0) return { A: [], B: [], C: [] };
+
+    // Ordenar por valor descendente
+    const ordenados = Object.entries(ventasPorProducto)
+      .map(([prodId, datos]) => ({
+        id: prodId,
+        nombre: (productoMap[prodId] && productoMap[prodId].nombre) || prodId,
+        cantidad: datos.cantidad,
+        valor: datos.valor
+      }))
+      .sort((a, b) => usarValor ? b.valor - a.valor : b.cantidad - a.cantidad);
+
+    // Clasificar ABC (acumulado)
+    let acumulado = 0;
+    const key = usarValor ? 'valor' : 'cantidad';
+    const result = { A: [], B: [], C: [] };
+
+    for (const prod of ordenados) {
+      acumulado += prod[key];
+      const porcentaje = acumulado / total;
+      if (porcentaje <= 0.80) {
+        result.A.push(prod);
+      } else if (porcentaje <= 0.95) {
+        result.B.push(prod);
+      } else {
+        result.C.push(prod);
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Detecta quiebres de stock (productos con stock = 0 y ventas recientes).
+   * @param {number} [diasVentas=30] - Días atrás para buscar ventas
+   * @returns {Array} Productos con quiebre de stock
+   */
+  detectarQuiebresStock(diasVentas) {
+    const dias = parseInt(diasVentas) || 30;
+    const productos = DAO_PRODUCTOS.listar({});
+    const hoy = _today();
+    const fechaLimite = new Date(hoy.getTime() - (dias * 86400000));
+
+    const kardex = DAO_COMPRAS.getAllMovimientosKardex(dias, 5000);
+    const ventasRecientes = {};
+
+    // Identificar productos con ventas recientes
+    for (let i = 0; i < kardex.length; i++) {
+      const m = kardex[i];
+      if (String(m.tipo_mov || "").toUpperCase() === 'SALIDA') {
+        const f = new Date(m.fecha);
+        if (f >= fechaLimite) {
+          ventasRecientes[m.id_producto] = true;
+        }
+      }
+    }
+
+    // Productos con stock 0 y ventas recientes = quiebre
+    return productos.filter(p =>
+      ((p.stock || 0) === 0 || (p.stock || 0) < 0) &&
+      ventasRecientes[p.id]
+    ).map(p => ({
+      id: p.id,
+      nombre: p.nombre || p.id,
+      stock: p.stock || 0,
+      tieneVentasRecientes: true
+    }));
+  },
+
+  /**
+   * Detecta exceso de inventario (stock > 10x promedio mensual de salidas).
+   * @param {number} [factor=10] - Multiplicador del promedio (default 10x)
+   * @returns {Array} Productos con exceso de inventario
+   */
+  detectarExcesoInventario(factor) {
+    const mult = parseInt(factor) || 10;
+    const movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 5000);
+    const productos = DAO_PRODUCTOS.listar({});
+
+    // Calcular salidas promedio mensuales
+    const salidasMensuales = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      if (String(m.tipo_mov || "").toUpperCase() !== 'SALIDA') continue;
+      const prodId = m.id_producto;
+      if (!salidasMensuales[prodId]) salidasMensuales[prodId] = 0;
+      salidasMensuales[prodId] += m.cantidad || 0;
+    }
+
+    // Productos con stock > 10x promedio
+    return productos.filter(p => {
+      const promedioMensual = salidasMensuales[p.id] || 0;
+      const umbral = promedioMensual * mult;
+      return (p.stock || 0) > umbral && umbral > 0;
+    }).map(p => ({
+      id: p.id,
+      nombre: p.nombre || p.id,
+      stock: p.stock || 0,
+      salidasMensuales: salidasMensuales[p.id] || 0,
+      umbral: (salidasMensuales[p.id] || 0) * mult
+    }));
+  },
+
+  /**
+   * Calcula margen por producto (precio_venta - precio_compra) / precio_venta.
+   * @param {number} [umbralMargen=0.10] - Umbral de margen (default 10%)
+   * @returns {Object} { margenBajo: [], margenAlto: [] } productos clasificados
+   */
+  getMargenProductos(umbralMargen) {
+    const umbral = parseFloat(umbralMargen) || 0.10;
+    const productos = DAO_PRODUCTOS.listar({});
+
+    const result = { margenBajo: [], margenAlto: [] };
+
+    for (let i = 0; i < productos.length; i++) {
+      const p = productos[i];
+      const precioVenta = p.precio_venta || 0;
+      const precioCompra = p.precio_compra || 0;
+
+      if (precioVenta > 0) {
+        const margen = (precioVenta - precioCompra) / precioVenta;
+        const productoInfo = {
+          id: p.id,
+          nombre: p.nombre || p.id,
+          precio_venta: precioVenta,
+          precio_compra: precioCompra,
+          margen: Math.round(margen * 10000) / 100
+        };
+        if (margen < umbral) {
+          result.margenBajo.push(productoInfo);
+        } else {
+          result.margenAlto.push(productoInfo);
+        }
+      }
+    }
+
+    return result;
   },
 };
