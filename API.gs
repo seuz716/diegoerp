@@ -320,6 +320,7 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
+      LogService.logError("Resultado inválido de DOMAIN.getCartera", { functionName: 'getCartera', details: { result: result } });
       return { items: [], nextPageToken: null, error: "Error al obtener cartera. Intente de nuevo.", correlationId, executionTimeMs: Date.now() - startTime };
     }
     
