@@ -1,11 +1,4 @@
 ﻿<script>
-/* â”€â”€ GAS IFRAME FIX â”€â”€
-   En GAS, el HTML se sirve dentro de un iframe. El <meta viewport>
-   del HTML interno NO controla el zoom del navegador porque el viewport
-   solo aplica al documento raÃ­z. Este script:
-   1. Fuerza font-size base en mÃ³vil (JS tiene mÃ¡s especificidad que CSS heredado)
-   2. Notifica al host de GAS cambios de altura via ResizeObserver
-*/
 (function(){
   var ua = navigator.userAgent;
   var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
@@ -19,8 +12,6 @@
     }).observe(document.body);
   }
 })();
-
-// Pull to refresh hint (mobile only)
 function mostrarHintRefrescar() {
   var hint = document.getElementById('refresh-hint');
   if (!hint || window.innerWidth >= 769) return;
@@ -28,8 +19,6 @@ function mostrarHintRefrescar() {
   clearTimeout(hint._timer);
   hint._timer = setTimeout(function() { hint.classList.remove('show'); }, 2000);
 }
-
-// Scroll restoration
 var scrollPositions = {};
 function guardarScroll(viewId) {
   var main = document.getElementById('main');
@@ -39,15 +28,11 @@ function restaurarScroll(viewId) {
   var main = document.getElementById('main');
   if (main) main.scrollTop = scrollPositions[viewId] || 0;
 }
-
-// Live region for screen reader announcements
 var liveRegion = document.createElement('div');
 liveRegion.setAttribute('aria-live', 'polite');
 liveRegion.setAttribute('aria-atomic', 'true');
 liveRegion.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
 document.body.appendChild(liveRegion);
-
-// NavegaciÃ³n
 document.querySelectorAll('.nav-item').forEach(function (btn) {
   btn.addEventListener('click', function () {
     var currentView = document.querySelector('.view.active');
@@ -60,7 +45,6 @@ document.querySelectorAll('.nav-item').forEach(function (btn) {
     btn.setAttribute('aria-current', 'page');
     btn.classList.add('is-loading');
     var viewId = btn.dataset.view;
-    // Push state navegacion histórica
     history.pushState({ view: viewId }, "", "?view=" + viewId);
     document.querySelectorAll('.view').forEach(function (v) {
       v.classList.remove('active');
@@ -76,7 +60,6 @@ var view = document.getElementById('view-' + viewId);
     var viewTitles = { dashboard: 'Panel', cartera: 'Cartera', terceros: 'Terceros', abonos: 'Pagos', ventas: 'Venta', compras: 'Compras', productos: 'Productos', inventario: 'Inventario', vencimientos: 'Vencimientos' };
     document.title = 'MicroERP Â· ' + (viewTitles[viewId] || viewId);
     mostrarHintRefrescar();
-
     var fnMap = { dashboard: cargarDashboard, cartera: cargarCartera, terceros: cargarTerceros, abonos: cargarAbonoSelect, ventas: cargarVentas, compras: cargarCompras, productos: cargarProductos, inventario: cargarProductos, vencimientos: cargarVencimientos };
     var loadFn = fnMap[viewId];
     if (loadFn) {
@@ -89,8 +72,6 @@ var view = document.getElementById('view-' + viewId);
     } else {
       btn.classList.remove('is-loading');
     }
-
-    // Focus and announce
     if (view) {
       view.setAttribute('tabindex', '-1');
       view.focus();
@@ -98,13 +79,9 @@ var view = document.getElementById('view-' + viewId);
     liveRegion.textContent = 'Vista ' + (viewTitles[viewId] || viewId) + ' cargada';
   });
 });
-
-// Adaptive debounce para mobile
 function getDebounceDelay() {
   return window.innerWidth < 768 ? 150 : 300;
 }
-
-// InformaciÃ³n de usuario
 function cargarUserInfo() {
   var userEl = document.getElementById('sidebar-user');
   App.api.getUserInfo()
@@ -128,8 +105,6 @@ function cargarUserInfo() {
       userEl.innerHTML = '<div class="user-error">Acceso denegado</div>';
     });
 }
-
-// DelegaciÃ³n venta-tipo
 document.addEventListener('change', function (e) {
   if (e.target.id === 'venta-tipo') {
     var isCredito = e.target.value === 'CxC';
@@ -137,9 +112,16 @@ document.addEventListener('change', function (e) {
     document.getElementById('venta-dias-row').style.display = isCredito ? 'block' : 'none';
   }
 });
-
-// DOMContentLoaded
 document.addEventListener('DOMContentLoaded', function () {
+  var urlParams = new URLSearchParams(window.location.search);
+  var viewParam = urlParams.get('view');
+  if (viewParam) {
+    var targetNav = document.querySelector('.nav-item[data-view="' + viewParam + '"]');
+    if (targetNav) {
+      targetNav.click();
+      return;
+    }
+  }
   (function() {
     var activeView = document.querySelector('#sidebar .nav-item.active');
     if (activeView) {
@@ -148,18 +130,15 @@ document.addEventListener('DOMContentLoaded', function () {
       if (bottomItem) bottomItem.classList.add('active');
     }
   })();
-
   cargarUserInfo();
   cargarDashboard();
   mostrarHintRefrescar();
-
   document.querySelector('#view-terceros .btn-accent').addEventListener('click', abrirModalTercero);
   document.getElementById('btn-tercero-cancelar').addEventListener('click', cerrarModalTercero);
   document.getElementById('btn-tercero-guardar').addEventListener('click', guardarTercero);
   document.getElementById('modal-tercero').addEventListener('click', function (e) {
     if (e.target === this) cerrarModalTercero();
   });
-
   var busquedaTerceros = document.getElementById('busqueda-terceros');
   if (busquedaTerceros) {
     busquedaTerceros.addEventListener('input', function() {
@@ -167,7 +146,6 @@ document.addEventListener('DOMContentLoaded', function () {
       busquedaTerceros._timer = setTimeout(cargarTerceros, getDebounceDelay());
     });
   }
-
   document.getElementById('btn-nueva-compra').addEventListener('click', abrirModalNuevaCompra);
   document.getElementById('btn-compra-cancelar').addEventListener('click', cerrarModalNuevaCompra);
   document.getElementById('btn-compra-guardar').addEventListener('click', guardarCompra);
@@ -177,13 +155,10 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('modal-pago-compra').addEventListener('click', function (e) { if (e.target === this) cerrarModalPagoCompra(); });
   document.getElementById('compras-filter-prov').addEventListener('change', cargarCompras);
   document.getElementById('compras-filter-estado').addEventListener('change', cargarCompras);
-
-  // Productos
   document.getElementById('btn-nuevo-producto').addEventListener('click', function () { abrirModalProducto(null); });
   document.getElementById('btn-producto-cancelar').addEventListener('click', cerrarModalProducto);
   document.getElementById('btn-producto-guardar').addEventListener('click', guardarProducto);
   document.getElementById('modal-producto').addEventListener('click', function (e) { if (e.target === this) cerrarModalProducto(); });
-  // Delegation for producto actions (editar/toggle)
   document.getElementById('productos-body').addEventListener('click', function (e) {
     var btn = e.target.closest('.btn-editar-producto');
     if (btn) {
@@ -208,7 +183,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
   });
-  // Live search/filter productos
   var productosSearch = document.getElementById('productos-search');
   if (productosSearch) {
     productosSearch.addEventListener('input', function () {
@@ -220,24 +194,18 @@ document.addEventListener('DOMContentLoaded', function () {
   if (productosFilterCat) {
     productosFilterCat.addEventListener('change', cargarProductos);
   }
-
-  // Compra items: delegaciÃ³n para botÃ³n agregar y nuevo producto
   document.getElementById('btn-agregar-item-compra').addEventListener('click', agregarFilaItemCompra);
   document.getElementById('btn-nuevo-producto-compra').addEventListener('click', function () {
     abrirModalProducto(null);
-    // After save, the product select will be refreshed on next open
   });
-  // Detectar ediciÃ³n manual del total
   var compraTotal = document.getElementById('compra-total');
   if (compraTotal) {
     compraTotal.addEventListener('input', function () {
       this.dataset.userEdited = 'true';
     });
   }
-
   document.getElementById('btn-actualizar-venc').addEventListener('click', cargarVencimientos);
 document.getElementById('venc-dias').addEventListener('change', cargarVencimientos);
-  // Numeric validation for cents-only fields
   document.querySelectorAll('input[type="number"][data-cents-only]').forEach(function(input) {
     input.addEventListener('input', function() {
       if (this.value.includes('.') || this.value.includes(',')) {
@@ -251,8 +219,6 @@ document.getElementById('venc-dias').addEventListener('change', cargarVencimient
     });
   });
 });
-
-// Event listeners sueltos
 document.getElementById('btn-analizar-ia').addEventListener('click', analizarConGeminiFresco);
 document.getElementById('btn-analizar-completo').addEventListener('click', analizarConGeminiFresco);
 document.getElementById('btn-exportar-libro').addEventListener('click', exportarLibroDiarioCSV);
@@ -262,8 +228,6 @@ document.getElementById('btn-registrar-venta').addEventListener('click', registr
 document.getElementById('btn-agregar-producto').addEventListener('click', agregarFilaProducto);
 document.getElementById('filter-tipo').addEventListener('change', cargarCartera);
 document.getElementById('filter-estado').addEventListener('change', cargarCartera);
-
-// Theme toggle
 function actualizarLabelTema(){
   var label=document.getElementById('theme-toggle-label');
   if(label) label.textContent=document.documentElement.dataset.theme==='dark'?'Oscuro':'Claro';
@@ -275,8 +239,6 @@ document.getElementById('theme-toggle').addEventListener('click',function(){
   localStorage.setItem('theme',next);
   actualizarLabelTema();
 });
-
-// Offline detection
 var offlineBanner = document.getElementById('offline-banner');
 function actualizarEstadoRed() {
   if (offlineBanner) offlineBanner.style.display = navigator.onLine ? 'none' : 'block';
@@ -284,8 +246,6 @@ function actualizarEstadoRed() {
 actualizarEstadoRed();
 window.addEventListener('online', actualizarEstadoRed);
 window.addEventListener('offline', actualizarEstadoRed);
-
-// Back to top
 var btnBackTop = document.getElementById('btn-back-top');
 if (btnBackTop) {
   var mainEl = document.getElementById('main');
@@ -299,14 +259,10 @@ if (btnBackTop) {
   }
   scrollTargets.forEach(function(t) { t.addEventListener('scroll', onScroll, { passive: true }); });
 }
-
-// Keyboard shortcuts for power users
 document.addEventListener('keydown', function(e) {
-  // Ignore if typing in input
   if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
     return;
   }
-
   var shortcuts = {
     'd': 'dashboard',
     'c': 'cartera',
@@ -317,14 +273,11 @@ document.addEventListener('keydown', function(e) {
     'i': 'productos',
     'e': 'vencimientos'
   };
-
   if (e.ctrlKey && shortcuts[e.key.toLowerCase()]) {
     e.preventDefault();
     var navItem = document.querySelector('.nav-item[data-view="' + shortcuts[e.key.toLowerCase()] + '"]');
     if (navItem) navItem.click();
   }
-
-  // Escape key
   if (e.key === 'Escape') {
     var modals = ['modal-pago-compra', 'modal-compra', 'modal-tercero', 'modal-producto'];
     for (var i = 0; i < modals.length; i++) {
@@ -339,16 +292,12 @@ document.addEventListener('keydown', function(e) {
     }
   }
 });
-
-// Presentation mode toggle
-// Popstate handler for back/forward buttons
 window.addEventListener("popstate", function(e) {
   if (e.state && e.state.view) {
     var navItem = document.querySelector(".nav-item[data-view=" + e.state.view + "]");
     if (navItem) navItem.click();
   }
 });
-
 var btnPresentation = document.getElementById('btn-presentation');
 if (btnPresentation) {
   btnPresentation.addEventListener('click', function() {
@@ -357,5 +306,3 @@ if (btnPresentation) {
   });
 }
 </script>
-
-

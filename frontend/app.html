@@ -1,43 +1,182 @@
 <script>
 'use strict';
 var App = App || {};
-
-// #38: Timeout constants with readable expressions
 App.TIMEOUTS = {
-  analizarConGeminiFresco: 3 * 60 * 1000,  // 3 min
-  getDashboardCartera: 60 * 1000,          // 1 min
-  getCartera: 45 * 1000,                   // 45s
+  analizarConGeminiFresco: 3 * 60 * 1000,
+  getDashboardCartera: 60 * 1000,
+  getCartera: 45 * 1000,
 };
-App.DEFAULT_TIMEOUT = 30 * 1000;           // 30s
-
-// #36: Namespaced global state
+App.DEFAULT_TIMEOUT = 30 * 1000;
+App.ERROR_MAP = {
+  OPTIMISTIC_LOCK_FAILURE: {
+    icon: '⟳',
+    message: 'Los datos se actualizaron mientras editabas. Tus cambios se han guardado localmente.',
+    action: '¿Deseas fusionarlos?',
+    cssClass: 'toast-conflict',
+    autoRecover: false,
+  },
+  ERR_CIRCUIT_OPEN: {
+    icon: '○',
+    message: 'El sistema de IA está saturado. Tu solicitud se ha encolado automáticamente.',
+    action: 'Se procesará en 30s.',
+    cssClass: 'toast-warning',
+    autoRecover: true,
+  },
+  ERR_RATE_LIMIT: {
+    icon: '◷',
+    message: 'Demasiadas solicitudes rápidas.',
+    action: 'Hemos pausado tus acciones por 1 minuto para proteger tu cuenta.',
+    cssClass: 'toast-warning',
+    autoRecover: true,
+  },
+  RATE_LIMITED: {
+    icon: '◷',
+    message: 'Demasiadas solicitudes rápidas.',
+    action: 'Hemos pausado tus acciones por 1 minuto para proteger tu cuenta.',
+    cssClass: 'toast-warning',
+    autoRecover: true,
+  },
+  ERR_LOCK_TIMEOUT: {
+    icon: '○',
+    message: 'Otro usuario está editando este registro.',
+    action: 'Inténtalo en unos segundos.',
+    cssClass: 'toast-info',
+    autoRecover: true,
+  },
+  TIMEOUT: {
+    icon: '◷',
+    message: 'El servidor tardó demasiado en responder.',
+    action: 'Reintentando automáticamente...',
+    cssClass: 'toast-warning',
+    autoRecover: true,
+  },
+  NETWORK: {
+    icon: '⚠',
+    message: 'Error de conexión con el servidor.',
+    action: 'Verifica tu conexión e inténtalo de nuevo.',
+    cssClass: 'toast-error',
+    autoRecover: false,
+  },
+  SHEET_WRITE_FAILURE: {
+    icon: '⛔',
+    message: 'Error al escribir en la base de datos.',
+    action: 'Contacta soporte si persiste.',
+    cssClass: 'toast-error',
+    autoRecover: false,
+  },
+  AUTH_ERROR: {
+    icon: '🔒',
+    message: 'No tienes permisos para esta acción.',
+    action: 'Contacta al administrador.',
+    cssClass: 'toast-error',
+    autoRecover: false,
+  },
+  SERVER_ERROR: {
+    icon: '⛔',
+    message: 'Error interno del servidor.',
+    action: 'Contacta soporte si persiste.',
+    cssClass: 'toast-error',
+    autoRecover: false,
+  },
+};
+App._conflictBuffer = {
+  _store: {},
+  save: function (key, userData) {
+    this._store[key] = { userData: JSON.parse(JSON.stringify(userData)), timestamp: Date.now() };
+  },
+  get: function (key) {
+    var entry = this._store[key];
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > 120000) { delete this._store[key]; return null; }
+    return entry.userData;
+  },
+  has: function (key) { return !!this._store[key] && (Date.now() - this._store[key].timestamp) < 120000; },
+  clear: function (key) { delete this._store[key]; },
+};
+App._healthState = {
+  tercerosCircuit: 'closed',
+  carteraCircuit: 'closed',
+  _timerId: null,
+  _listeners: [],
+  subscribe: function (fn) { this._listeners.push(fn); return fn; },
+  unsubscribe: function (fn) {
+    var idx = this._listeners.indexOf(fn);
+    if (idx > -1) this._listeners.splice(idx, 1);
+  },
+  _notify: function () {
+    for (var i = 0; i < this._listeners.length; i++) this._listeners[i](this);
+  },
+  update: function (health) {
+    var changed = false;
+    if (health && health.terceros) {
+      if (this.tercerosCircuit !== health.terceros.circuitState) { changed = true; this.tercerosCircuit = health.terceros.circuitState; }
+    }
+    if (health && health.cartera) {
+      if (this.carteraCircuit !== health.cartera.circuitState) { changed = true; this.carteraCircuit = health.cartera.circuitState; }
+    }
+    if (changed) this._notify();
+  },
+  isAnyOpen: function () { return this.tercerosCircuit === 'open' || this.carteraCircuit === 'open'; },
+  isAnyHalfOpen: function () { return this.tercerosCircuit === 'half_open' || this.carteraCircuit === 'half_open'; },
+  isDegraded: function () { return this.isAnyOpen() || this.isAnyHalfOpen(); },
+  start: function () {
+    var self = this;
+    if (this._timerId) return;
+    this._timerId = setInterval(function () {
+      App.api.getCacheHealth().then(function (r) {
+        if (r && r.staleness) self.update(r.staleness);
+      }).catch(function () {});
+    }, 15000);
+  },
+  stop: function () {
+    if (this._timerId) { clearInterval(this._timerId); this._timerId = null; }
+  },
+};
+App._refreshBulkButtons = function () {
+  var disabled = App._healthState.isDegraded();
+  var btns = document.querySelectorAll('[data-bulk-action]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].disabled = disabled;
+    btns[i].title = disabled ? 'Funcionalidad pausada temporalmente por estabilidad del sistema.' : '';
+    btns[i].classList.toggle('is-disabled-circuit', disabled);
+  }
+};
+App._validateIASampleSize = function (funcName, args) {
+  if (funcName === 'analizarConGeminiFresco' || funcName === 'analizarConGeminiCompleto') {
+    if (App.state.cartera && App.data.cartera && App.data.cartera.items && App.data.cartera.items.length > 500) {
+      throw { code: 'RATE_LIMITED', message: 'La cartera supera el límite de 500 registros. Filtra los datos antes de analizar.', funcName: funcName };
+    }
+  }
+};
 App.state = {
   cartera: { pageToken: 0, pageSize: 100 },
   pagos: { compraId: null },
   compras: { list: [] },
   productos: { cache: [], lastFetch: 0 },
 };
-
-/**
- * Calls a Google Apps Script function with timeout and error handling.
- * @param {string} funcName - The name of the GAS function to call
- * @param {...*} args - Arguments to pass to the function
- * @returns {Promise<*>} The result from the server
- */
 function callServer(funcName) {
   var args = Array.prototype.slice.call(arguments, 1);
   var timeoutMs = App.TIMEOUTS[funcName] || App.DEFAULT_TIMEOUT;
-
   return new Promise(function (resolve, reject) {
+    try { App._validateIASampleSize(funcName, args); } catch (e) { reject(e); return; }
     var timer = setTimeout(function () {
       var errorMsg = 'El servidor tard\u00f3 demasiado en responder para la operaci\u00f3n: ' + funcName + ' (L\u00edmite: ' + (timeoutMs / 1000) + 's).';
       App.logError(errorMsg, funcName);
       reject({ code: 'TIMEOUT', message: errorMsg, funcName: funcName });
     }, timeoutMs);
-
     google.script.run
       .withSuccessHandler(function (result) {
         clearTimeout(timer);
+        if (result && result._optimisticLockConflict) {
+          var conflictKey = funcName + ':' + (result._recordId || 'unknown');
+          App._conflictBuffer.save(conflictKey, result._userData);
+          var mapped = App.ERROR_MAP.OPTIMISTIC_LOCK_FAILURE;
+          var msg = mapped.icon + ' ' + mapped.message;
+          showToast(msg, 'conflict', 8000);
+          App._softRefresh(result._recordId, conflictKey);
+          reject({ code: 'OPTIMISTIC_LOCK_FAILURE', message: mapped.message + ' ' + mapped.action, funcName: funcName, _softRefreshed: true });
+          return;
+        }
         if (result && result.suggestedTimeout && result.suggestedTimeout > App.DEFAULT_TIMEOUT) {
           App.TIMEOUTS[funcName] = result.suggestedTimeout;
         }
@@ -53,12 +192,6 @@ function callServer(funcName) {
       [funcName].apply(null, args);
   });
 }
-
-/**
- * @namespace App.api
- * @description Frontend API wrapper for Google Apps Script endpoints.
- * Each method wraps callServer() and returns a Promise.
- */
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
   getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
@@ -92,13 +225,6 @@ App.api = {
   getKardexProducto: function (idProducto, limit) { return callServer('getKardexProducto', idProducto, limit); },
   getKardex: function (limit) { return callServer('getKardex', limit); },
 };
-
-// #43: Adapter layer — normalizes backend responses with defaults
-/**
- * @namespace App.adapters
- * @description Normalizes inconsistent backend responses into consistent frontend models.
- * Each adapter handles error cases, type coercion, and provides sensible defaults.
- */
 App.adapters = {
   dashboard: function (raw) {
     if (!raw || raw.success === false) return { error: raw ? (raw.error || raw.message || 'Error desconocido') : 'Sin respuesta', porCobrar: 0, porPagar: 0, vencidaCxC: 0, vencidaCxP: 0, alertas: [] };
@@ -227,12 +353,10 @@ App.adapters = {
     };
   },
 };
-
 App.formatearMoneda = function (centavos) {
   if (centavos == null || isNaN(centavos)) return '$0';
   return (centavos / 100).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
 };
-
 App.toCents = function (amount) {
   var num = Number(amount);
   if (isNaN(num) || num < 0) return 0;
@@ -242,7 +366,6 @@ App.toCents = function (amount) {
   if (num > 9007199254740991) { return 0; }
   return Math.round(num * 100);
 };
-
 App.formatearFecha = function (dateObj) {
   if (!dateObj) return '\u2014';
   var d = dateObj instanceof Date ? dateObj : new Date(dateObj);
@@ -250,15 +373,10 @@ App.formatearFecha = function (dateObj) {
   var meses = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
   return d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
 };
-
 App.mapearEstadoCartera = function (estado) {
   var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-partial' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
   return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
 };
-
-/**
- * Mostrar respuesta del servidor para diagnóstico
- */
 function mostrarRespuestaServidor(res, container) {
   container.innerHTML = '';
   var pre = document.createElement('pre');
@@ -266,12 +384,10 @@ function mostrarRespuestaServidor(res, container) {
   pre.textContent = JSON.stringify(res, null, 2);
   container.appendChild(pre);
 }
-
 App.mapearTipoTercero = function (tipo) {
   var map = { CLIENTE: { label: 'Cliente', cls: 'badge-open' }, PROVEEDOR: { label: 'Proveedor', cls: '' }, AMBOS: { label: 'Ambos', cls: 'badge-open' } };
   return map[tipo] || { label: tipo || '\u2014', cls: 'badge-done' };
 };
-
 function mostrarLoader(contenedor) {
   contenedor.innerHTML = '';
   var div = document.createElement('div');
@@ -281,7 +397,6 @@ function mostrarLoader(contenedor) {
   div.setAttribute('aria-live', 'polite');
   contenedor.appendChild(div);
 }
-
 function mostrarError(contenedor, mensaje) {
   contenedor.innerHTML = '';
   var div = document.createElement('div');
@@ -289,7 +404,6 @@ function mostrarError(contenedor, mensaje) {
   div.textContent = mensaje;
   contenedor.appendChild(div);
 }
-
 function mostrarVacio(contenedor, mensaje) {
   contenedor.innerHTML = '';
   var div = document.createElement('div');
@@ -297,14 +411,6 @@ function mostrarVacio(contenedor, mensaje) {
   div.textContent = mensaje;
   contenedor.appendChild(div);
 }
-
-/**
- * @namespace App.validate
- * @description Client-side validation layer mirroring backend INPUT_VALIDATOR.
- * @param {string} value - Value to validate
- * @param {string} [label] - Field label for error messages
- * @returns {string} Error message or empty string if valid
- */
 App.validate = {
   required: function (value, fieldName) { if (!value || !value.toString().trim()) return 'El campo ' + fieldName + ' es obligatorio.'; return ''; },
   nit: function (value) { if (!value || !value.toString().trim()) return 'El NIT es obligatorio.'; if (!/^[\d-]+$/.test(value.toString().trim())) return 'El NIT solo puede contener d\u00edgitos y guiones.'; return ''; },
@@ -319,28 +425,19 @@ App.validate = {
     return '';
   },
 };
-
-/**
- * @namespace App.data
- * @description Client-side cache with TTL management for API responses.
- * Provides ultra-short TTL (30s) for immediate UX, while backend has longer TTL.
- */
 App.data = (function () {
   var CACHE_TTL = { dashboard: 30 * 1000, cartera: 20 * 1000, terceros: 30 * 1000 };
   var _store = { dashboard: null, cartera: null, terceros: null };
   var _timestamps = { dashboard: 0, cartera: 0, terceros: 0 };
   var _deps = { cartera: ['dashboard'], dashboard: [], terceros: [] };
-
   function _isStale(key) {
     return !_store[key] || (Date.now() - _timestamps[key] > CACHE_TTL[key]);
   }
-
   function _invalidate(key) {
     _store[key] = null;
     _timestamps[key] = 0;
     (_deps[key] || []).forEach(function (dep) { _store[dep] = null; _timestamps[dep] = 0; });
   }
-
   return {
     get dashboard() { return _isStale('dashboard') ? null : _store.dashboard; },
     set dashboard(v) { _store.dashboard = v; _timestamps.dashboard = Date.now(); },
@@ -354,7 +451,6 @@ App.data = (function () {
       _store.cartera = null; _timestamps.cartera = 0;
       _store.terceros = null; _timestamps.terceros = 0;
     },
-    // #46: refresh methods apply adapters before caching
     refreshDashboard: function () {
       var self = this;
       return App.api.getDashboard().then(function (d) {
@@ -381,7 +477,6 @@ App.data = (function () {
     },
   };
 })();
-
 function escapeHtml(str) {
   if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
     return DOMPurify.sanitize(String(str), {ALLOWED_TAGS: []});
@@ -390,11 +485,9 @@ function escapeHtml(str) {
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
 }
-
 function escapeAttr(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
 function safeInnerHTML(el, html) {
   if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
     el.innerHTML = DOMPurify.sanitize(html, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo', 'data-saldo', 'id']} );
@@ -402,10 +495,8 @@ function safeInnerHTML(el, html) {
     console.error('[SECURITY] DOMPurify no disponible - se omite innerHTML para prevenir XSS');
   }
 }
-
 // Hierarchy of error types for differentiated feedback
 var ERROR_TYPES = { NETWORK: 'network', VALIDATION: 'validation', SERVER: 'server' };
-
 function showError(msg, type) {
   type = type || ERROR_TYPES.SERVER;
   var banner = document.getElementById('error-banner');
@@ -422,15 +513,19 @@ function showError(msg, type) {
     showToast(msg, type);
   }
 }
-
-function showToast(msg, type) {
-  type = type || ERROR_TYPES.SERVER;
+function mapErrorCode(code) {
+  var mapped = App.ERROR_MAP[code];
+  if (mapped) return mapped;
+  if (code === 'TIMEOUT') return App.ERROR_MAP.TIMEOUT;
+  return App.ERROR_MAP.SERVER_ERROR;
+}
+function showToast(msg, type, duration) {
+  duration = duration || 5000;
   var container = document.getElementById('toast-container');
   var el = document.createElement('div');
-  el.className = 'toast ' + type;
-  var icons = { network: '⚠', validation: '✕', server: '⛔' };
+  el.className = 'toast ' + (type || 'server');
   el.innerHTML = '<span>' + msg + '</span><button class="toast-close" aria-label="Cerrar">×</button>';
-  if (type === 'error' || type === ERROR_TYPES.SERVER) el.setAttribute('role', 'alert');
+  if (type === 'error' || type === 'server') el.setAttribute('role', 'alert');
   container.appendChild(el);
   el.querySelector('.toast-close').addEventListener('click', function() {
     el.style.animation = 'toast-out .3s ease forwards';
@@ -439,15 +534,35 @@ function showToast(msg, type) {
   setTimeout(function () {
     el.style.animation = 'toast-out .3s ease forwards';
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
-  }, 5000);
+  }, duration);
 }
-
+function showErrorCode(code, customMsg) {
+  var mapped = mapErrorCode(code);
+  var icon = mapped.icon || '⛔';
+  var msg = customMsg || mapped.message;
+  var action = mapped.action || '';
+  showToast(icon + ' ' + msg + (action ? '<br><small>' + action + '</small>' : ''), mapped.cssClass || 'server', 8000);
+}
+// Soft refresh: re-fetches a single record after optimistic lock conflict
+App._softRefresh = function (recordId, conflictKey) {
+  if (!recordId) return;
+  var userData = App._conflictBuffer.get(conflictKey);
+  App.api.getCartera(null, null, 1, 0).then(function (res) {
+    if (res && res.items) {
+      for (var i = 0; i < res.items.length; i++) {
+        if (res.items[i].id === recordId || res.items[i].rowIndex === recordId) {
+          App.data.invalidate('cartera');
+          break;
+        }
+      }
+    }
+  }).catch(function () {});
+};
 App.logError = function (message, context) {
   var tag = '[' + (context || 'App') + '] ' + (message || 'Error desconocido');
   console.error(tag);
   try { showToast(context ? message : 'Error: ' + message, 'error'); } catch (e) {}
 };
-
 function generarIdTemporal() {
   return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
 }

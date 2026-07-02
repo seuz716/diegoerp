@@ -33,7 +33,10 @@ function doGet(e) {
   } catch (err) {
     Logger.log("ERROR doGet: " + err.message);
     const html = HtmlService.createHtmlOutput(
-      '<html><body><h2>Error de configuración</h2>' +
+      '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+      '<title>Error - MicroERP</title><meta name="robots" content="noindex, nofollow">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '</head><body><h2>Error de configuración</h2>' +
       '<p>' + err.message + '</p>' +
       '<p><strong>Solución:</strong> Visita esta URL con el parámetro ssid:</p>' +
       '<code>https://script.google.com/macros/s/AKfycbzM7IMFbsWlzD3tmDgQtD6FytBpxEQupohTMylvH7I/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
@@ -113,7 +116,12 @@ function handleHealthCheck() {
     checks.status = "DEGRADED";
   }
 
-  const output = HtmlService.createHtmlOutput(JSON.stringify(checks, null, 2));
+  const output = HtmlService.createHtmlOutput(
+    '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
+    '<title>Health Check - MicroERP</title><meta name="robots" content="noindex, nofollow">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '</head><body><pre>' + JSON.stringify(checks, null, 2) + '</pre></body></html>'
+  );
   output.setTitle("MicroERP · Health Check");
   return output;
 }

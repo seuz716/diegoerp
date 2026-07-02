@@ -5,9 +5,7 @@
 <title><?= pageTitle ?></title>
 <meta name="description" content="Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos. Integra IA para optimizar tu flujo de caja y mejorar la liquidez.">
 <meta name="author" content="César A. Abadía">
-<meta name="robots" content="index, follow">
-<!-- canonical removida: app privada GAS, no aplica SEO externo -->
-<link rel="alternate" hreflang="es-CO" href="?m=1">
+<meta name="robots" content="noindex, nofollow">
 <meta property="og:title" content="<?= ogTitle ?>">
 <meta property="og:description" content="<?= ogDescription ?>">
 <meta property="og:type" content="website">
@@ -34,6 +32,7 @@
 <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Libre+Baskerville:ital,wght@0,700;1,400&family=Sora:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
 <script>(function(){var e=localStorage.getItem('theme'),t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=e||t||'dark';window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(m){if(!localStorage.getItem('theme'))document.documentElement.dataset.theme=m.matches?'dark':'light';});})();</script>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/styles').getContent() ?>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer" async></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -735,27 +734,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 <button id="btn-presentation" class="btn-presentation" aria-label="Modo presentaci\xF3n" title="Modo presentaci\xF3n">\x0A  ╓\x0A</button>\x0A\x0A<button id="btn-back-top" aria-label="Volver al inicio" title="Volver al inicio">â†‘</button>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha512-L3tHkKTmFgBnyEDYPUC8RFeaQ1+pkBy74sN6CxBSfmHg3Oz3s5FT1Kw4nfC8gUrtDCszq+m7/kYpno0MMqTy8w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script>
-// No fallback - DOMPurify must load or app will fail fast
-</script>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/app').getContent() ?>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/views').getContent() ?>
 <?!= HtmlService.createHtmlOutputFromFile('frontend/init').getContent() ?>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

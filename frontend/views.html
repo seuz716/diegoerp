@@ -1,18 +1,90 @@
 <script>
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// VIEWS â€” Controladores de vista del frontend MicroERP
-// ExtraÃ­do de index_v3_SaaS.html
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 1. DASHBOARD
-// Helper: removes loading overlay from a view
+function _showSkeleton(container, type) {
+  container.innerHTML = '';
+  var div = document.createElement('div');
+  if (type === 'table') {
+    div.className = 'skeleton-table';
+    for (var i = 0; i < 5; i++) {
+      var row = document.createElement('div');
+      row.className = 'skeleton-row';
+      for (var j = 0; j < 4; j++) {
+        var cell = document.createElement('div');
+        cell.className = 'skeleton-cell skeleton';
+        row.appendChild(cell);
+      }
+      div.appendChild(row);
+    }
+  } else if (type === 'block') {
+    div.className = 'skeleton-placeholder';
+    var title = document.createElement('div'); title.className = 'skeleton-title skeleton'; div.appendChild(title);
+    var stats = document.createElement('div'); stats.className = 'skeleton-stats';
+    for (var s = 0; s < 3; s++) { var stat = document.createElement('div'); stat.className = 'skeleton-stat skeleton'; stats.appendChild(stat); }
+    div.appendChild(stats);
+    var section = document.createElement('div'); section.className = 'skeleton-section skeleton'; div.appendChild(section);
+  } else {
+    div.className = 'loader-brutal';
+    div.textContent = 'Cargando';
+    div.setAttribute('role', 'status');
+    div.setAttribute('aria-live', 'polite');
+  }
+  container.appendChild(div);
+}
+function _showProgressBar(pct, text) {
+  var bar = document.getElementById('top-progress-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'top-progress-bar';
+    bar.className = 'progress-container';
+    bar.innerHTML = '<div id="top-progress-inner" class="progress-bar"></div><div id="top-progress-text" class="progress-text"></div>';
+    document.body.insertBefore(bar, document.body.firstChild);
+  }
+  var inner = document.getElementById('top-progress-inner');
+  var txt = document.getElementById('top-progress-text');
+  if (pct === 'indeterminate') {
+    inner.className = 'progress-bar indeterminate';
+    inner.style.width = '';
+  } else {
+    inner.className = 'progress-bar';
+    inner.style.width = Math.min(pct, 100) + '%';
+  }
+  txt.textContent = text || '';
+  bar.style.display = 'block';
+}
+function _hideProgressBar() {
+  var bar = document.getElementById('top-progress-bar');
+  if (bar) bar.style.display = 'none';
+}
+App._longOpTimeoutId = null;
+App._longOpResolve = null;
+function _startLongOpTimeout(onUserSaysYes) {
+  App._cancelLongOpTimeout();
+  App._longOpTimeoutId = setTimeout(function() {
+    var msg = 'La operación está tomando más tiempo de lo esperado.';
+    var el = document.createElement('div');
+    el.id = 'long-op-notice';
+    el.className = 'conflict-notice';
+    el.innerHTML = '<span class="conflict-icon">◷</span><div class="conflict-body"><div class="conflict-title">' + msg + '</div><div>¿Quieres seguir esperando?</div><div class="conflict-actions"><button class="btn btn-sm btn-accent" id="btn-longop-yes">Sí, seguir esperando</button><button class="btn btn-sm btn-outline" id="btn-longop-no">No, cancelar</button></div></div>';
+    var container = document.getElementById('toast-container');
+    if (container) container.appendChild(el);
+    App._longOpResolve = function(yes) {
+      if (el.parentNode) el.parentNode.removeChild(el);
+      if (yes) { if (onUserSaysYes) onUserSaysYes(); }
+      else { App._longOpResolve = null; }
+    };
+    document.getElementById('btn-longop-yes').addEventListener('click', function() { if (App._longOpResolve) App._longOpResolve(true); });
+    document.getElementById('btn-longop-no').addEventListener('click', function() { if (App._longOpResolve) App._longOpResolve(false); });
+  }, 45000);
+}
+function _cancelLongOpTimeout() {
+  if (App._longOpTimeoutId) { clearTimeout(App._longOpTimeoutId); App._longOpTimeoutId = null; }
+  var el = document.getElementById('long-op-notice');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+  App._longOpResolve = null;
+}
 function _cleanupView(view) {
   view.classList.remove('is-loading');
   view.removeAttribute('aria-busy');
 }
-
-// Helper: renders alert rows into container
 function _renderAlertas(container, alertas) {
   container.innerHTML = '';
   if (alertas.length === 0) {
@@ -50,15 +122,16 @@ function _renderAlertas(container, alertas) {
     container.appendChild(row);
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function cargarDashboard() {
   var view = document.getElementById('view-dashboard');
   view.classList.add('is-loading');
   view.setAttribute('aria-busy', 'true');
   var alertsBody = document.getElementById('alerts-body');
-  mostrarLoader(alertsBody);
+  _showSkeleton(alertsBody, 'block');
+  App._healthState.start();
+  App._healthState.subscribe(function(health) {
+    App._refreshBulkButtons();
+  });
   var promise = App.data.dashboard ? Promise.resolve(App.data.dashboard) : App.api.getDashboard();
   return promise.then(function (data) {
     if (!App.data.dashboard) App.data.dashboard = data;
@@ -96,16 +169,11 @@ function cargarDashboard() {
     _renderAlertas(alertsBody, data.alertas);
   }).catch(function (err) {
     mostrarError(alertsBody, err.message || err);
-    showError(err.message || err);
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
   }).then(function () {
     _cleanupView(view);
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 2. IA
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function crearSeccionIA(labelText) {
   var sec = document.createElement('div');
   sec.className = 'ir-section';
@@ -117,25 +185,21 @@ function crearSeccionIA(labelText) {
   }
   return sec;
 }
-
 function renderizarAnalisis(analisis) {
   var c = document.getElementById('ia-results');
   c.textContent = '';
-
   var secResumen = crearSeccionIA('Resumen ejecutivo');
   var valResumen = document.createElement('div');
   valResumen.className = 'ir-value';
   valResumen.textContent = analisis.resumen_ejecutivo || '';
   secResumen.appendChild(valResumen);
   c.appendChild(secResumen);
-
   var secConfianza = crearSeccionIA(null);
   var badge = document.createElement('div');
   badge.className = 'ir-badge';
   badge.textContent = 'Confianza: ' + (analisis.nivel_confianza_general || 0) + '%';
   secConfianza.appendChild(badge);
   c.appendChild(secConfianza);
-
   if (analisis.alertas_criticas && analisis.alertas_criticas.length) {
     var secAlertas = crearSeccionIA('Alertas crÃ­ticas');
     analisis.alertas_criticas.forEach(function (a) {
@@ -146,7 +210,6 @@ function renderizarAnalisis(analisis) {
     });
     c.appendChild(secAlertas);
   }
-
   if (analisis.analisis_riesgo_cartera) {
     var r = analisis.analisis_riesgo_cartera;
     var secRiesgo = crearSeccionIA('AnÃ¡lisis de riesgo');
@@ -180,7 +243,6 @@ function renderizarAnalisis(analisis) {
     secRiesgo.appendChild(grid);
     c.appendChild(secRiesgo);
   }
-
   if (analisis.segmentacion_terceros) {
     var s = analisis.segmentacion_terceros;
     var secSeg = crearSeccionIA('SegmentaciÃ³n');
@@ -214,7 +276,6 @@ function renderizarAnalisis(analisis) {
     secSeg.appendChild(gridSeg);
     c.appendChild(secSeg);
   }
-
   if (analisis.anomalias_detectadas && analisis.anomalias_detectadas.length) {
     var secAno = crearSeccionIA('AnomalÃ­as detectadas');
     analisis.anomalias_detectadas.forEach(function (a) {
@@ -225,7 +286,6 @@ function renderizarAnalisis(analisis) {
     });
     c.appendChild(secAno);
   }
-
   if (analisis.recomendaciones_accionables && analisis.recomendaciones_accionables.length) {
     var secRec = crearSeccionIA('Recomendaciones');
     analisis.recomendaciones_accionables.forEach(function (r) {
@@ -247,32 +307,33 @@ function renderizarAnalisis(analisis) {
     });
     c.appendChild(secRec);
   }
-
   c.style.display = 'block';
 }
-
 function analizarConGeminiFresco() {
   var btnHeader = document.getElementById('btn-analizar-ia');
   var btnPanel = document.getElementById('btn-analizar-completo');
   var results = document.getElementById('ia-results');
   var textoOriginalH = btnHeader.textContent;
   var textoOriginalP = btnPanel.textContent;
-
   btnHeader.disabled = true;
   btnHeader.textContent = 'â—ˆ Analizando...';
   btnPanel.disabled = true;
   btnPanel.textContent = 'â—ˆ Analizando...';
   results.style.display = 'none';
-
   var progressBar = document.getElementById('ia-progress');
   var progressBarInner = document.getElementById('ia-progress-bar');
   var progressText = document.getElementById('ia-progress-text');
   progressBar.style.display = 'block';
   progressBarInner.className = 'ia-progress-bar-active';
   progressText.textContent = 'Consultando Gemini 2.5 Flash...';
-
+  _startLongOpTimeout(function() {
+    progressText.textContent = 'Continuando...';
+  });
+  _showProgressBar('indeterminate', 'Analizando cartera con IA...');
   App.api.analizarConGeminiFresco()
     .then(function (resp) {
+      _cancelLongOpTimeout();
+      _hideProgressBar();
       progressBarInner.className = '';
       progressBarInner.style.width = '100%';
       setTimeout(function(){ progressBar.style.display = 'none'; }, 500);
@@ -283,27 +344,25 @@ function analizarConGeminiFresco() {
         if (resp && resp.correlationId) {
           errorMsg += ' (Ref: ' + resp.correlationId + ')';
         }
-        showError(errorMsg);
+        showErrorCode('SERVER_ERROR', errorMsg);
       }
     })
     .catch(function (err) {
+      _cancelLongOpTimeout();
+      _hideProgressBar();
       progressBarInner.className = '';
       progressBar.style.display = 'none';
-      var msg = err.message || err || 'Error al conectar con el servicio de IA.';
-      if (msg.indexOf('rate') > -1 || msg.indexOf('lÃ­mite') > -1) {
-        msg = 'LÃ­mite de uso alcanzado. Intenta de nuevo en unos minutos.';
-      } else if (msg.indexOf('timeout') > -1 || msg.indexOf('tiempo') > -1) {
-        msg = 'La solicitud tardÃ³ demasiado. Intenta de nuevo.';
-      }
       var iaEl = document.getElementById('ia-results');
       iaEl.textContent = '';
       var errDiv = document.createElement('div');
       errDiv.className = 'error-banner show';
       errDiv.style.margin = '0';
-      errDiv.textContent = msg;
+      var errCode = err.code || 'SERVER_ERROR';
+      var mapped = App.ERROR_MAP[errCode] || App.ERROR_MAP.SERVER_ERROR;
+      errDiv.textContent = mapped.icon + ' ' + mapped.message;
       iaEl.appendChild(errDiv);
       iaEl.style.display = 'block';
-      showToast(msg, 'error');
+      showErrorCode(errCode);
     })
     .then(function () {
       btnHeader.disabled = false;
@@ -312,18 +371,11 @@ function analizarConGeminiFresco() {
       btnPanel.textContent = textoOriginalP;
     });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 3. EXPORTACIONES CSV
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function exportarLibroDiarioCSV() {
   var btn = document.getElementById('btn-exportar-libro');
   var textoOriginal = btn.textContent;
-  
   btn.disabled = true;
   btn.textContent = 'Exportando...';
-  
   App.api.exportarLibroDiario()
     .then(function (resp) {
       if (resp && resp.success) {
@@ -347,14 +399,11 @@ function exportarLibroDiarioCSV() {
       btn.textContent = textoOriginal;
     });
 }
-
 function exportarFlujoCajaCSV() {
   var btn = document.getElementById('btn-exportar-flujo');
   var textoOriginal = btn.textContent;
-  
   btn.disabled = true;
   btn.textContent = 'Exportando...';
-  
   App.api.exportarFlujoCaja()
     .then(function (resp) {
       if (resp && resp.success) {
@@ -378,13 +427,6 @@ function exportarFlujoCajaCSV() {
       btn.textContent = textoOriginal;
     });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 4. CARTERA
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-// State now in App.state — see app.html
-
 function _renderLoadMore(nextToken) {
   var loadMoreRow = document.getElementById('row-cargar-mas');
   if (loadMoreRow) loadMoreRow.remove();
@@ -406,7 +448,6 @@ function _renderLoadMore(nextToken) {
   tr.appendChild(td);
   return tr;
 }
-
 function _showRetry(container, fn) {
   var btn = document.createElement('button');
   btn.className = 'btn btn-sm';
@@ -415,37 +456,30 @@ function _showRetry(container, fn) {
   btn.addEventListener('click', fn);
   container.querySelector('.error-banner').appendChild(btn);
 }
-
 function cargarCartera(append) {
   var view = document.getElementById('view-cartera');
   view.classList.add('is-loading');
   view.setAttribute('aria-busy', 'true');
   var tbody = document.querySelector('#view-cartera .data-table tbody');
   var tableSection = view.querySelector('.table-section');
-
   if (append !== true) {
     App.state.cartera.pageToken = 0;
-    tbody.innerHTML = '';
+    _showSkeleton(tbody, 'table');
     tableSection.classList.remove('scroll-hint');
-    setTimeout(function() {
-      if (tableSection.scrollWidth > tableSection.clientWidth) {
-        tableSection.classList.add('scroll-hint');
-      }
-    }, 500);
   } else {
     var loadMoreRow = document.getElementById('row-cargar-mas');
     if (loadMoreRow) loadMoreRow.remove();
   }
-
   var filterTipoEl = document.getElementById('filter-tipo');
   var filterEstadoEl = document.getElementById('filter-estado');
   var filtroTipo = filterTipoEl.value || null;
   var filtroEstado = filterEstadoEl.value || null;
-
+  var isCircuitDegraded = App._healthState.isDegraded();
+  filterTipoEl.disabled = isCircuitDegraded;
+  filterEstadoEl.title = isCircuitDegraded ? 'Funcionalidad pausada por estabilidad del sistema.' : '';
   return App.api.getCartera(filtroTipo, filtroEstado, App.state.cartera.pageSize, App.state.cartera.pageToken)
     .then(function (res) {
       if (append !== true) tbody.innerHTML = '';
-
       if (!res || (typeof res === 'object' && !res.items)) {
         var errorMsg = 'Respuesta vac\u00eda del servidor<br><span style="font-size:var(--text-micro);color:var(--muted);">';
         App.api.getCarteraDebug(filtroTipo, filtroEstado)
@@ -478,15 +512,12 @@ function cargarCartera(append) {
           });
         return;
       }
-      
       if (res.error) {
         mostrarError(tbody, res.error);
         return;
       }
-
       var data = res.items || [];
       var nextToken = res.nextPageToken;
-
       if (!append && data.length === 0) {
         var td = document.createElement('td');
         td.colSpan = 5;
@@ -499,13 +530,15 @@ function cargarCartera(append) {
           var estadoInfo = App.mapearEstadoCartera(item.estado);
           var isVencida = item.estado === 'VENCIDA';
           var tr = document.createElement('tr');
+          var ver = Number(item.version) || 0;
+          tr.dataset.version = ver;
+          if (item.id) tr.dataset.recordId = item.id;
+          if (item.rowIndex) tr.dataset.rowIndex = item.rowIndex;
           if (isVencida) tr.className = 'row-red';
-
           var tdFecha = document.createElement('td');
           tdFecha.className = 'td-mono td-muted';
           tdFecha.textContent = App.formatearFecha(item.fecha);
           tr.appendChild(tdFecha);
-
           var tdTercero = document.createElement('td');
           var nombreDiv = document.createElement('div');
           nombreDiv.className = 'td-bold';
@@ -516,20 +549,17 @@ function cargarCartera(append) {
           tdTercero.appendChild(nombreDiv);
           tdTercero.appendChild(idTerceroDiv);
           tr.appendChild(tdTercero);
-
           var tdSaldo = document.createElement('td');
           tdSaldo.className = 'td-mono td-bold';
           if (isVencida) tdSaldo.style.color = 'var(--red)';
           tdSaldo.textContent = App.formatearMoneda(item.saldo);
           tr.appendChild(tdSaldo);
-
           var tdEstado = document.createElement('td');
           var badgeSpan = document.createElement('span');
           badgeSpan.className = 'badge ' + estadoInfo.cls;
           badgeSpan.textContent = estadoInfo.label;
           tdEstado.appendChild(badgeSpan);
           tr.appendChild(tdEstado);
-
           var tdVenc = document.createElement('td');
           if (item.fecha_vencimiento) {
             if (isVencida && item.dias_vencido > 0) {
@@ -558,13 +588,16 @@ function cargarCartera(append) {
             tdVenc.appendChild(vencDashSpan);
           }
           tr.appendChild(tdVenc);
-
           tbody.appendChild(tr);
         });
-
         if (nextToken != null) {
           tbody.appendChild(_renderLoadMore(nextToken));
         }
+        setTimeout(function() {
+          if (tableSection.scrollWidth > tableSection.clientWidth) {
+            tableSection.classList.add('scroll-hint');
+          }
+        }, 500);
       }
     })
     .catch(function (err) {
@@ -575,11 +608,6 @@ function cargarCartera(append) {
       _cleanupView(view);
     });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 5. ABONOS / PAGOS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function cargarAbonoSelect() {
   var select = document.getElementById('abono-cliente');
   select.innerHTML = '<option value="">Seleccione un tercero...</option>';
@@ -601,28 +629,23 @@ function cargarAbonoSelect() {
       showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
     });
 }
-
 function ejecutarAbono() {
   var btn = document.getElementById('btn-ejecutar-abono');
   var errorEl = document.getElementById('abono-error');
   errorEl.classList.remove('show');
   errorEl.textContent = '';
-
   var idTercero = document.getElementById('abono-cliente').value;
   var tipo = document.getElementById('abono-tipo').value;
   var montoInput = document.getElementById('abono-monto').value;
   var centavos = App.toCents(montoInput);
   var referencia = document.getElementById('abono-referencia').value.trim();
-
   if (!idTercero) { errorEl.textContent = 'Seleccione un tercero.'; errorEl.classList.add('show'); return; }
   if (!centavos || centavos < 100) { errorEl.textContent = 'Ingrese un monto vÃ¡lido (mÃ­nimo $1, sin decimales).'; errorEl.classList.add('show'); return; }
   if (!referencia) { errorEl.textContent = 'Ingrese una referencia.'; errorEl.classList.add('show'); return; }
-
   confirmarAccion(['Â¿Confirmar el registro de este movimiento?', 'Monto: ' + App.formatearMoneda(centavos), 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.classList.add('is-processing');
   btn.textContent = 'â†’ Procesando...';
-
   App.api.registrarAbono(idTercero, centavos, referencia, tipo)
     .then(function (r) {
       btn.disabled = false;
@@ -648,16 +671,12 @@ function ejecutarAbono() {
       btn.disabled = false;
       btn.classList.remove('is-processing');
       btn.textContent = 'â†’ Ejecutar movimiento';
-      errorEl.textContent = err.message || err || 'Error al registrar el abono.';
+      showErrorCode(err.code || 'SERVER_ERROR', err.message);
+      errorEl.textContent = App.ERROR_MAP[err.code || 'SERVER_ERROR'] ? App.ERROR_MAP[err.code || 'SERVER_ERROR'].message : (err.message || 'Error al registrar el abono.');
       errorEl.classList.add('show');
     });
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 6. TERCEROS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function cargarTerceros() {
   var view = document.getElementById('view-terceros');
   view.classList.add('is-loading');
@@ -665,9 +684,7 @@ function cargarTerceros() {
   var tbody = document.querySelector('#view-terceros .data-table tbody');
   var busquedaInput = document.getElementById('busqueda-terceros');
   var filtroBusqueda = busquedaInput ? busquedaInput.value.toLowerCase().trim() : '';
-  
-  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>';
-
+  _showSkeleton(tbody, 'table');
   return App.api.getTerceros(null)
     .then(function (data) {
       tbody.innerHTML = '';
@@ -684,7 +701,6 @@ function cargarTerceros() {
           return (t.id && t.id.toLowerCase().includes(filtroBusqueda)) ||
                  (t.nombre && t.nombre.toLowerCase().includes(filtroBusqueda));
         }) : items;
-        
         if (datosFiltrados.length === 0 && filtroBusqueda) {
           var td2 = document.createElement('td');
           td2.colSpan = 5;
@@ -696,33 +712,27 @@ function cargarTerceros() {
           datosFiltrados.forEach(function (item) {
             var tipoInfo = App.mapearTipoTercero(item.tipo);
             var tr = document.createElement('tr');
-
           var tdId = document.createElement('td');
           tdId.className = 'td-mono td-muted';
           tdId.textContent = item.id || '\u2014';
           tr.appendChild(tdId);
-
           var tdNombre = document.createElement('td');
           tdNombre.style.fontWeight = '500';
           tdNombre.textContent = item.nombre || '\u2014';
           tr.appendChild(tdNombre);
-
           var tdTipo = document.createElement('td');
           var tipoSpan = document.createElement('span');
           tipoSpan.className = 'badge ' + tipoInfo.cls;
           tipoSpan.textContent = tipoInfo.label;
           tdTipo.appendChild(tipoSpan);
           tr.appendChild(tdTipo);
-
           var tdLimite = document.createElement('td');
           tdLimite.className = 'td-mono';
           tdLimite.textContent = App.formatearMoneda(item.limite_credito);
           tr.appendChild(tdLimite);
-
           var tdAcciones = document.createElement('td');
           tdAcciones.style.display = 'none';
           tr.appendChild(tdAcciones);
-
           tbody.appendChild(tr);
         });
       }
@@ -735,12 +745,10 @@ function cargarTerceros() {
       _cleanupView(view);
     });
 }
-
 function _announce(msg) {
   var el = document.getElementById('view-announcements');
   if (el) el.textContent = msg;
 }
-
 function _trapFocus(modal) {
   var focusables = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   var first = focusables[0];
@@ -762,14 +770,12 @@ function _trapFocus(modal) {
   modal._trap = trap;
   modal._opener = document.activeElement;
 }
-
 function _untrapFocus(modal) {
   if (modal._trap) modal.removeEventListener('keydown', modal._trap);
   if (modal._opener) modal._opener.focus();
   modal._trap = null;
   modal._opener = null;
 }
-
 function abrirModalTercero() {
   var modal = document.getElementById('modal-tercero');
   document.getElementById('tercero-nombre').value = '';
@@ -784,7 +790,6 @@ function abrirModalTercero() {
   _trapFocus(modal);
   _announce('Modal nuevo tercero abierto');
 }
-
 function cerrarModalTercero() {
   var modal = document.getElementById('modal-tercero');
   modal.classList.remove('active');
@@ -793,7 +798,6 @@ function cerrarModalTercero() {
   document.getElementById('main').removeAttribute('aria-hidden');
   _announce('Modal tercero cerrado');
 }
-
 function confirmarAccion(lineas, onConfirm) {
   var modal = document.getElementById('modal-confirm');
   var msgEl = document.getElementById('modal-confirm-msg');
@@ -833,7 +837,6 @@ function confirmarAccion(lineas, onConfirm) {
   modal.addEventListener('click', onOverlayClick);
   modal.addEventListener('keydown', onKeydown);
 }
-
 function guardarTercero() {
   var btnGuardar = document.getElementById('btn-tercero-guardar');
   var errorEl = document.getElementById('tercero-error');
@@ -843,7 +846,6 @@ function guardarTercero() {
   var limiteRaw = document.getElementById('tercero-limite').value;
   var telefono = document.getElementById('tercero-telefono').value.trim();
   var activo = document.getElementById('tercero-activo').checked;
-
   if (!nit) {
     errorEl.textContent = 'El NIT / identificaciÃ³n es obligatorio.';
     errorEl.style.display = 'block';
@@ -868,7 +870,6 @@ function guardarTercero() {
   errorEl.style.display = 'none';
   btnGuardar.disabled = true;
   btnGuardar.textContent = 'Guardando...';
-
   App.api.saveTercero({
     id: nit,
     nombre: nombre,
@@ -889,17 +890,12 @@ function guardarTercero() {
   }).catch(function (err) {
     btnGuardar.disabled = false;
     btnGuardar.textContent = 'Guardar';
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
     errorEl.textContent = err.message || err || 'Error al guardar tercero.';
     errorEl.style.display = 'block';
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 7. VENTAS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 App.state.productos.cache = [];
-
 async function cargarVentas() {
   App.state.productos.cache = [];
   await cargarVentasProductos();
@@ -914,7 +910,6 @@ async function cargarVentas() {
   agregarFilaProducto();
   calcularTotalVenta();
 }
-
 function cargarVentasProductos() {
   return App.api.getProductos().then(function (data) {
     App.state.productos.cache = (data && data.productos) || data || [];
@@ -927,7 +922,6 @@ function cargarVentasProductos() {
     showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
   });
 }
-
 function llenarSelectProductos(sel, includeNuevo) {
   var current = sel.value;
   sel.innerHTML = '<option value="">Seleccionar...</option>';
@@ -946,7 +940,6 @@ function llenarSelectProductos(sel, includeNuevo) {
   });
   if (current) sel.value = current;
 }
-
 function cargarVentasTerceros() {
   var select = document.getElementById('venta-cliente');
   select.innerHTML = '<option value="">Seleccione un cliente...</option>';
@@ -965,7 +958,6 @@ function cargarVentasTerceros() {
     showToast('Error cargando datos: ' + (err.message || err) + '. Intente nuevamente.', 'error');
   });
 }
-
 function agregarFilaProducto() {
   var container = document.getElementById('venta-productos');
   var template = document.getElementById('row-template');
@@ -997,7 +989,6 @@ function agregarFilaProducto() {
   });
   calcularTotalVenta();
 }
-
 function calcularTotalVenta() {
   var total = 0;
   document.querySelectorAll('.venta-producto-row').forEach(function (row) {
@@ -1007,7 +998,6 @@ function calcularTotalVenta() {
   });
   document.getElementById('venta-total').textContent = App.formatearMoneda(total * 100);
 }
-
 function registrarVenta() {
   var btn = document.getElementById('btn-registrar-venta');
   var errorEl = document.getElementById('venta-error');
@@ -1015,11 +1005,9 @@ function registrarVenta() {
   errorEl.classList.remove('show');
   errorEl.textContent = '';
   successEl.style.display = 'none';
-
   var tipo = document.getElementById('venta-tipo').value;
   var idTercero = document.getElementById('venta-cliente').value;
   var diasCredito = parseInt(document.getElementById('venta-dias').value, 10) || 30;
-
   var carrito = [];
   var precioError = false;
   document.querySelectorAll('.venta-producto-row').forEach(function (row) {
@@ -1035,25 +1023,21 @@ function registrarVenta() {
       carrito.push({ id: id, cantidad: cantidad, precio: precio });
     }
   });
-
   if (precioError) {
     errorEl.textContent = 'Los precios no deben contener decimales. Ingrese valores enteros.';
     errorEl.classList.add('show');
     return;
   }
-
   if (carrito.length === 0) {
     errorEl.textContent = 'Agregue al menos un producto al carrito.';
     errorEl.classList.add('show');
     return;
   }
-
   if (tipo === 'CxC' && !idTercero) {
     errorEl.textContent = 'Seleccione un cliente para ventas a crÃ©dito.';
     errorEl.classList.add('show');
     return;
   }
-
   if (tipo === 'CxC' && idTercero) {
     var totalVentaCentavos = 0;
     for (var iC = 0; iC < carrito.length; iC++) {
@@ -1064,7 +1048,6 @@ function registrarVenta() {
     for (var iT = 0; iT < itemsT.length; iT++) {
       if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
     }
-    // === FIX: Validar crÃ©dito disponible (lÃ­mite - saldo actual) ===
     if (cliente && cliente.limite_credito > 0) {
       var saldoActual = 0;
       var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
@@ -1081,15 +1064,12 @@ function registrarVenta() {
         return;
       }
     }
-    // === FIN FIX ===
   }
-
   var totalStr = document.getElementById('venta-total').textContent;
   confirmarAccion(['Â¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.classList.add('is-processing');
   btn.textContent = 'â†’ Procesando...';
-
   App.api.procesarVenta(carrito, { tipo: tipo, idTercero: idTercero || null, diasCredito: diasCredito })
     .then(function (r) {
       btn.disabled = false;
@@ -1116,32 +1096,24 @@ function registrarVenta() {
       btn.disabled = false;
       btn.classList.remove('is-processing');
       btn.textContent = 'â†’ Registrar venta';
+      showErrorCode(err.code || 'SERVER_ERROR', err.message);
       errorEl.textContent = err.message || err || 'Error al registrar venta.';
       errorEl.classList.add('show');
     });
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 7b. PRODUCTOS / INVENTARIO
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function cargarProductos() {
   var body = document.getElementById('productos-body');
   if (!body) return;
-  body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando productos...</td></tr>';
-
+  _showSkeleton(body, 'table');
   var busqueda = document.getElementById('productos-search') ? document.getElementById('productos-search').value.trim() : '';
   var categoria = document.getElementById('productos-filter-categoria') ? document.getElementById('productos-filter-categoria').value : '';
-
   var filtros = {};
   if (busqueda) filtros.busqueda = busqueda;
   if (categoria) filtros.categoria = categoria;
-
   return App.api.getProductos().then(function (resFull) {
     var allItems = (resFull && resFull.productos) || [];
     App.state.productos.cache = allItems;
-    // Poblar combo de categorÃ­as
     var catSelect = document.getElementById('productos-filter-categoria');
     if (catSelect) {
       var cats = {};
@@ -1158,7 +1130,6 @@ function cargarProductos() {
         catSelect.appendChild(opt);
       });
     }
-    // Filtrar localmente (o pedir al server si hay filtros)
     var items = allItems;
     if (filtros.busqueda || filtros.categoria) {
       items = allItems.filter(function (p) {
@@ -1198,14 +1169,13 @@ function cargarProductos() {
       body.appendChild(tr);
     });
   }).catch(function (err) {
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--red);font-size:var(--text-sm);">' + escapeHtml(err.message || 'Error al cargar productos') + '</td></tr>';
+    mostrarError(body, err.message || err);
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
   });
 }
-
 function abrirModalProducto(producto) {
   var modal = document.getElementById('modal-producto');
   document.getElementById('producto-error').style.display = 'none';
-
   if (producto) {
     document.getElementById('modal-producto-title').textContent = 'Editar producto';
     document.getElementById('producto-id').value = producto.id;
@@ -1225,14 +1195,12 @@ function abrirModalProducto(producto) {
     document.getElementById('producto-precio-compra').value = '0';
     document.getElementById('producto-precio-venta').value = '0';
   }
-
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
   _trapFocus(modal);
   _announce('Modal producto ' + (producto ? 'editar' : 'nuevo') + ' abierto');
 }
-
 function cerrarModalProducto() {
   var modal = document.getElementById('modal-producto');
   modal.classList.remove('active');
@@ -1241,7 +1209,6 @@ function cerrarModalProducto() {
   document.getElementById('main').removeAttribute('aria-hidden');
   _announce('Modal producto cerrado');
 }
-
 function guardarProducto() {
   var btn = document.getElementById('btn-producto-guardar');
   var errorEl = document.getElementById('producto-error');
@@ -1251,12 +1218,10 @@ function guardarProducto() {
   var stock = parseInt(document.getElementById('producto-stock').value, 10) || 0;
   var precioCompra = parseInt(document.getElementById('producto-precio-compra').value, 10) || 0;
   var precioVenta = parseInt(document.getElementById('producto-precio-venta').value, 10) || 0;
-
   if (!nombre) { errorEl.textContent = 'El nombre es obligatorio.'; errorEl.style.display = 'block'; return; }
   errorEl.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Guardando...';
-
   var promise;
   if (id) {
     promise = App.api.actualizarProducto(id, {
@@ -1268,7 +1233,6 @@ function guardarProducto() {
   } else {
     promise = App.api.crearProducto(nombre, App.toCents(precioCompra), App.toCents(precioVenta), categoria);
   }
-
   return promise.then(function (res) {
     btn.disabled = false;
     btn.textContent = 'Guardar';
@@ -1281,7 +1245,6 @@ function guardarProducto() {
     cargarProductos();
     App.api.getProductos().then(function (data) {
       App.state.productos.cache = (data && data.productos) || data || [];
-      // Refrescar selects de compra si el modal estÃ¡ abierto
       document.querySelectorAll('.compra-producto-select').forEach(function (s) {
         llenarSelectProductos(s, true);
       });
@@ -1294,38 +1257,25 @@ function guardarProducto() {
     errorEl.style.display = 'block';
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 8. COMPRAS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-// State now in App.state — see app.html
-
 function cargarCompras(append) {
   var body = document.getElementById('compras-body');
   if (!body) return;
-
   if (!append) {
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando compras...</td></tr>';
+    _showSkeleton(body, 'table');
   }
-
   var filtroProv = document.getElementById('compras-filter-prov') ? document.getElementById('compras-filter-prov').value || null : null;
   var filtroEstado = document.getElementById('compras-filter-estado') ? document.getElementById('compras-filter-estado').value || null : null;
-
   return App.api.getCompras(filtroProv, filtroEstado).then(function (res) {
     if (!res || res.success === false) {
       mostrarError(body, (res && res.error) || 'Error al cargar compras');
       return;
     }
     App.state.compras.list = res.items || [];
-
     if (!append) body.innerHTML = '';
-
     if (App.state.compras.list.length === 0) {
       body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin compras registradas</td></tr>';
       return;
     }
-
     App.state.compras.list.forEach(function (c) {
       if (append && body.querySelector('[data-id="' + escapeAttr(c.id) + '"]')) return;
       var tr = document.createElement('tr');
@@ -1334,15 +1284,12 @@ function cargarCompras(append) {
       var venc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
       var hoy = new Date();
       var vencida = venc && (venc - hoy < 0) && estado !== 'PAGADA';
-
       var rowClass = '';
       if (estado === 'PAGADA') rowClass = 'row-green';
       else if (estado === 'PENDIENTE') rowClass = 'row-red';
       else if (estado === 'PARCIAL') rowClass = 'row-yellow';
       if (vencida && estado !== 'PAGADA') rowClass = 'row-red';
-
       if (rowClass) tr.className = rowClass;
-
       var htmlStr =
         '<td style="font-family:var(--mono);font-size:var(--text-sm);">' + escapeHtml(c.id_factura || c.id || 'â€”') + '</td>' +
         '<td>' + escapeHtml(c.nombre_proveedor || c.id_proveedor || 'â€”') + '</td>' +
@@ -1356,12 +1303,9 @@ function cargarCompras(append) {
             ? '<button class="btn btn-sm btn-accent btn-pagar-compra" data-id="' + escapeAttr(c.id) + '" data-saldo="' + escapeAttr(c.saldo || 0) + '" style="font-size:var(--text-micro);">Pagar</button>'
             : '') +
         '</td>';
-
       safeInnerHTML(tr, htmlStr);
-
       body.appendChild(tr);
     });
-
     body.querySelectorAll('.btn-pagar-compra').forEach(function (btn) {
       btn.addEventListener('click', function () {
         abrirModalPagoCompra(btn.dataset.id, btn.dataset.saldo);
@@ -1369,9 +1313,12 @@ function cargarCompras(append) {
     });
   }).catch(function (err) {
     mostrarError(body, err.message || err);
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
   });
 }
 
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// 9. VENCIMIENTOS
 function abrirModalNuevaCompra() {
   var modal = document.getElementById('modal-compra');
   document.getElementById('compra-error').style.display = 'none';
@@ -1396,7 +1343,6 @@ function abrirModalNuevaCompra() {
   var list = document.getElementById('compra-items-list');
   list.innerHTML = '';
   agregarFilaItemCompra();
-  // Cargar cache de productos si es necesario
   if (!App.state.productos.cache || App.state.productos.cache.length === 0) {
     App.api.getProductos().then(function (data) {
       App.state.productos.cache = (data && data.productos) || data || [];
@@ -1415,7 +1361,6 @@ function abrirModalNuevaCompra() {
   _trapFocus(modal);
   _announce('Modal nueva compra abierto');
 }
-
 function cerrarModalNuevaCompra() {
   var modal = document.getElementById('modal-compra');
   modal.classList.remove('active');
@@ -1424,24 +1369,20 @@ function cerrarModalNuevaCompra() {
   document.getElementById('main').removeAttribute('aria-hidden');
   _announce('Modal compra cerrado');
 }
-
 function agregarFilaItemCompra() {
   var container = document.getElementById('compra-items-list');
   var template = document.getElementById('compra-item-template');
   var fragment = template.content.cloneNode(true);
   container.appendChild(fragment);
   var row = container.lastElementChild;
-
   var select = row.querySelector('.compra-producto-select');
   llenarSelectProductos(select, true);
-
   select.addEventListener('change', function () {
     var inputNuevo = row.querySelector('.compra-producto-nuevo');
     inputNuevo.style.display = this.value === '__NUEVO__' ? 'block' : 'none';
     if (this.value === '__NUEVO__') inputNuevo.focus();
     calcularTotalCompra();
   });
-
   row.querySelector('.compra-cantidad').addEventListener('input', calcularTotalCompra);
   row.querySelector('.compra-precio').addEventListener('input', calcularTotalCompra);
   row.querySelector('.btn-remove-item').addEventListener('click', function () {
@@ -1452,7 +1393,6 @@ function agregarFilaItemCompra() {
   });
   calcularTotalCompra();
 }
-
 function calcularTotalCompra() {
   var total = 0;
   document.querySelectorAll('.compra-item-row').forEach(function (row) {
@@ -1465,15 +1405,12 @@ function calcularTotalCompra() {
     totalField.value = total || '';
   }
 }
-
 function guardarCompra() {
   var proveedorId = document.getElementById('compra-proveedor').value;
   var factura = document.getElementById('compra-factura').value.trim();
   var vencimiento = document.getElementById('compra-vencimiento').value;
   var errEl = document.getElementById('compra-error');
-
   if (!proveedorId) { errEl.textContent = 'Seleccione un proveedor'; errEl.style.display = 'block'; return; }
-
   var items = [];
   var totalDesdeItems = 0;
   document.querySelectorAll('.compra-item-row').forEach(function (row) {
@@ -1489,17 +1426,13 @@ function guardarCompra() {
     }
     totalDesdeItems += cant * prec;
   });
-
   if (items.length === 0) { errEl.textContent = 'Agregue al menos un item vÃ¡lido (producto + cantidad + precio).'; errEl.style.display = 'block'; return; }
-
   var total = parseInt(document.getElementById('compra-total').value, 10) || totalDesdeItems;
   if (total < 1) { errEl.textContent = 'El total debe ser mayor a 0.'; errEl.style.display = 'block'; return; }
-
   errEl.style.display = 'none';
   var btn = document.getElementById('btn-compra-guardar');
   btn.disabled = true;
   btn.textContent = 'Guardando...';
-
   App.api.registrarCompra(proveedorId, items, total, vencimiento || null, factura || null).then(function (res) {
     btn.disabled = false;
     btn.textContent = 'Guardar compra';
@@ -1510,7 +1443,6 @@ function guardarCompra() {
     }
     document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
     document.getElementById('compra-success').style.display = 'block';
-    // Refrescar cache de productos despuÃ©s de compra (posibles creaciones inline)
     App.api.getProductos().then(function (data) {
       App.state.productos.cache = (data && data.productos) || data || [];
     });
@@ -1519,13 +1451,11 @@ function guardarCompra() {
   }).catch(function (err) {
     btn.disabled = false;
     btn.textContent = 'Guardar compra';
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
     errEl.textContent = err.message || err;
     errEl.style.display = 'block';
   });
 }
-
-// State now in App.state — see app.html
-
 function abrirModalPagoCompra(idCompra, saldo) {
   var modal = document.getElementById('modal-pago-compra');
   App.state.pagos.compraId = idCompra;
@@ -1539,7 +1469,6 @@ function abrirModalPagoCompra(idCompra, saldo) {
   _trapFocus(modal);
   _announce('Modal pago de compra abierto');
 }
-
 function cerrarModalPagoCompra() {
   var modal = document.getElementById('modal-pago-compra');
   modal.classList.remove('active');
@@ -1549,20 +1478,16 @@ function cerrarModalPagoCompra() {
   App.state.pagos.compraId = null;
   _announce('Modal pago cerrado');
 }
-
 function ejecutarPagoCompra() {
   var montoInput = document.getElementById('pago-compra-monto').value;
   var montoCentavos = App.toCents(montoInput);
   var ref = document.getElementById('pago-compra-ref').value.trim();
   var errEl = document.getElementById('pago-compra-error');
-
   if (!montoCentavos || montoCentavos < 100) { errEl.textContent = 'Ingrese un monto vÃ¡lido (mÃ­nimo $1).'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
-
   var btn = document.getElementById('btn-pago-compra-ejecutar');
   btn.disabled = true;
   btn.textContent = 'Procesando...';
-
   App.api.registrarPagoProveedor(App.state.pagos.compraId, montoCentavos, ref || 'Pago manual').then(function (res) {
     btn.disabled = false;
     btn.textContent = 'Pagar';
@@ -1577,23 +1502,16 @@ function ejecutarPagoCompra() {
   }).catch(function (err) {
     btn.disabled = false;
     btn.textContent = 'Pagar';
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
     errEl.textContent = err.message || err;
     errEl.style.display = 'block';
   });
 }
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// 9. VENCIMIENTOS
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 function cargarVencimientos() {
   var body = document.getElementById('venc-body');
   if (!body) return;
-
-  body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando vencimientos...</td></tr>';
-
+  _showSkeleton(body, 'table');
   var dias = parseInt(document.getElementById('venc-dias').value || '30', 10);
-
   return App.api.getProximosVencimientos(dias).then(function (res) {
     if (!res || res.success === false) {
       mostrarError(body, (res && res.error) || 'Error al cargar vencimientos');
@@ -1601,13 +1519,11 @@ function cargarVencimientos() {
     }
     var items = res.items || [];
     document.getElementById('venc-total').textContent = App.formatearMoneda(res.total || 0);
-
     body.innerHTML = '';
     if (items.length === 0) {
       body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Sin vencimientos prÃ³ximos</td></tr>';
       return;
     }
-
     items.forEach(function (v) {
       var tr = document.createElement('tr');
       var tipo = v.tipo || v.origen || 'CxC';
@@ -1618,14 +1534,12 @@ function cargarVencimientos() {
         '<td class="cell-mono">' + App.formatearMoneda(v.saldo) + '</td>' +
         '<td>' + escapeHtml(String(v.dias_para_vencer || 0)) + ' d' + '</td>' +
         '<td style="font-size:var(--text-sm);">' + (v.fecha_vencimiento ? new Date(v.fecha_vencimiento).toLocaleDateString('es-CO') : 'â€”') + '</td>';
-
       safeInnerHTML(tr, vencHtml);
       body.appendChild(tr);
     });
   }).catch(function (err) {
     mostrarError(body, err.message || err);
+    showErrorCode(err.code || 'SERVER_ERROR', err.message);
   });
 }
-
 </script>
-
