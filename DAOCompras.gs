@@ -115,10 +115,12 @@ const DAO_COMPRAS = {
     return result;
   },
 
-  getAllMovimientosKardex(dias) {
+  getAllMovimientosKardex(dias, limit) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];
+    // MAX_LIMIT for performance - prevent loading > 500 records
+    limit = Math.min(parseInt(limit) || 500, 500);
     const C = DAO_COMPRAS.KARDEX_COL;
     const numCols = Math.max.apply(null, Object.values(C)) + 1;
     const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
@@ -132,6 +134,7 @@ const DAO_COMPRAS = {
       }
     }
     result.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    if (result.length > limit) result.length = limit;
     return result;
   },
 

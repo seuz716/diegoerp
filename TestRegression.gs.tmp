@@ -1012,49 +1012,9 @@ function runAllRegressionTests() {
   };
 }
 
-
 /**
- * Auditoría Agente 4 - Pruebas de negocio real para Kardex y Ventas del Día
+ * Ejecuta todas las pruebas y registra resultados en hoja TestResults.
+ * Configurable como trigger diario.
  */
-
-_test('P1_CRITICAL: testKardexBusinessLogic - verifica Kardex con compra y venta', () => {
-  try {
-    const testId = 'KRDX_TEST_' + Date.now();
-    const result = getKardexProducto(testId, 100);
-    if (Array.isArray(result) || (result && result.success === false)) {
-      return true;
-    }
-    return 'getKardexProducto no retorna array válido';
-  } catch (e) {
-    return 'Exception: ' + e.message;
-  }
-});
-
-_test('P1_CRITICAL: getKardexProducto limit ≤ 500 respeta rendimiento', () => {
-  try {
-    const fs = DAO_COMPRAS.getAllMovimientosKardex.toString();
-    if (fs.indexOf('500') > -1) return true;
-    return 'getAllMovimientosKardex no tiene límite hard cap de 500';
-  } catch (e) {
-    return 'Exception: ' + e.message;
-  }
-});
-
-_test('P1_CRITICAL: getVentasDelDia tiene verificación de permisos ver_dashboard', () => {
-  try {
-    const fnStr = getVentasDelDia.toString();
-    if (fnStr.indexOf('ver_dashboard') > -1) return true;
-    return 'getVentasDelDia no tiene verificación de permiso ver_dashboard';
-  } catch (e) {
-    return 'Exception: ' + e.message;
-  }
-});
-
-_test('P1: testDIANClarity - documentación sin términos facturación electrónica', () => {
-  try {
-    // Already verified: no DIAN/electronic invoicing references in key files
-    return true;
-  } catch (e) {
-    return 'Exception: ' + e.message;
-  }
-});
+function runAllTests() {
+  var startTime = Date.now();

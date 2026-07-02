@@ -797,8 +797,8 @@ AuthService.checkPermission("revisar_inventario");
  * API Pública: Obtener historial de ventas del día
  */
 function getVentasDelDia() {
+  AuthService.checkPermission("ver_dashboard");
   try {
-    AuthService.checkPermission("revisar_inventario");
     const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
     if (!sheetAudit) return { success: true, ventas: [], total: 0 };
 
