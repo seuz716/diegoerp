@@ -90,6 +90,7 @@ let CACHE = {
       this._metricsLoaded = true;
     } catch (e) {
       Logger.log("CACHE: Error loading metrics: " + e.toString());
+      LogService.logWarn("Error loading metrics", { functionName: '_loadMetrics', error: e });
     }
   },
 
