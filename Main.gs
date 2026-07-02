@@ -45,7 +45,7 @@ function doGet(e) {
     return html;
   }
   const tpl = HtmlService.createTemplateFromFile('index_v3_SaaS');
-  const defaultDesc = 'Sistema profesional de gestión de cartera con facturación DIAN, contabilidad, inventario y alertas automáticas de vencimientos.';
+  const defaultDesc = 'Sistema profesional de gestión de cartera con libro diario contable exportable, contabilidad, inventario y alertas automáticas de vencimientos.';
   tpl.pageTitle = 'MicroERP · Cartera Pro';
   tpl.ogTitle = 'MicroERP · Cartera Pro';
   tpl.ogDescription = defaultDesc;

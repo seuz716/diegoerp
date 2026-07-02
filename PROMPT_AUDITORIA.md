@@ -9,7 +9,7 @@ Eres un experto senior en ciberseguridad, arquitectura de software en la nube y 
 
 Tu misión es realizar una **Auditoría Técnica Profunda e Integral (Código, Seguridad, Concurrencia y Rendimiento)** sobre el proyecto **DiegoERP / MicroERP · Cartera Pro**.
 
-Este proyecto es un sistema de cartera comercial y facturación ligero estructurado con **Google Apps Script (GAS) en el Backend**, **Google Sheets como Base de Datos**, una SPA monolítica en **HTML + CSS + Javascript Vainilla en el Frontend** (que se comunica mediante `google.script.run`), e integración directa con **Gemini 2.5 Flash** para analítica financiera predictiva.
+Este proyecto es un sistema de cartera comercial y libro diario contable ligero estructurado con **Google Apps Script (GAS) en el Backend**, **Google Sheets como Base de Datos**, una SPA monolítica en **HTML + CSS + Javascript Vainilla en el Frontend** (que se comunica mediante `google.script.run`), e integración directa con **Gemini 2.5 Flash** para analítica financiera predictiva.
 
 El proyecto está compuesto por los siguientes archivos que deberás analizar a fondo:
 1. Config.gs: Constantes globales, jerarquía de roles (ADMIN, OPERATOR, VIEWER) y mapeo de columnas/esquemas.
