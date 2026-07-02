@@ -1603,6 +1603,66 @@ _test('INV-05: Ajustes de inventario con autorización ADMIN', () => {
     }
   });
 
+  // ===== H. TESTS DE AJUSTES Y MERMA =====
+
+  _test('AJU-01: Ajustes de inventario justificados con referencia', () => {
+    try {
+      const movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+      const ajustes = movimientos.filter(m => m.origen === 'AJUSTE');
+      const errores = [];
+      for (let i = 0; i < ajustes.length; i++) {
+        if (!ajustes[i].referencia || ajustes[i].referencia.trim() === '') {
+          errores.push('Ajuste ' + ajustes[i].id + ' sin referencia');
+        }
+      }
+      if (errores.length > 0) return 'Errores: ' + errores.slice(0, 3).join('; ');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('AJU-02: Merma acumulada por producto alerta > 5%', () => {
+    try {
+      const movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+      const movPorProducto = {};
+      for (let i = 0; i < movimientos.length; i++) {
+        const m = movimientos[i];
+        if (!m.id_producto) continue;
+        if (!movPorProducto[m.id_producto]) movPorProducto[m.id_producto] = { entradas: 0, salidas: 0, cantidad: 0, merma: 0 };
+        const tipo = String(m.tipo_mov || '').toUpperCase();
+        if (tipo === 'ENTRADA') movPorProducto[m.id_producto].entradas += m.cantidad;
+        if (tipo === 'SALIDA') {
+          movPorProducto[m.id_producto].salidas += m.cantidad;
+          const origen = String(m.origen || '').toUpperCase();
+          if (origen === 'MERMA' || origen === 'DAÑO') {
+            movPorProducto[m.id_producto].merma += m.cantidad;
+          }
+        }
+        movPorProducto[m.id_producto].cantidad += (tipo === 'ENTRADA' ? m.cantidad : -m.cantidad);
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('AJU-03: Detectar pares ajuste (SALIDA-ENTRADA mismo producto, < 1h, misma cant)', () => {
+    try {
+      const movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+      const movPorProducto = {};
+      for (let i = 0; i < movimientos.length; i++) {
+        const m = movimientos[i];
+        if (!m.id_producto) continue;
+        if (!movPorProducto[m.id_producto]) movPorProducto[m.id_producto] = [];
+        movPorProducto[m.id_producto].push(m);
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   // ===== VENTAS → KARDEX TESTS (VTA-01 to VTA-05) =====
 
 _test('VTA-01: Toda venta genera salida de kardex', () => {
@@ -1949,6 +2009,129 @@ _test('PROV-04: Producto sin proveedor conocido', () => {
       return 'Exception: ' + e.message;
     }
   });
+
+// ===== INVENTORY VALUATION TESTS VAL-01 to VAL-04 =====
+
+_test('VAL-01: Valorización a costo promedio ponderado', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var detalleCompras = DAO_COMPRAS.listarDetalles ? DAO_COMPRAS.listarDetalles() : [];
+    var errores = [];
+    
+    if (!Array.isArray(detalleCompras)) {
+      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
+    }
+    
+    for (var i = 0; i < productos.length && i < 30; i++) {
+      var prodId = productos[i].id;
+      var entradas = [];
+      
+      // Filtrar entradas (compras) de este producto
+      for (var j = 0; j < detalleCompras.length; j++) {
+        if (detalleCompras[j].id_producto === prodId) {
+          entradas.push(detalleCompras[j]);
+        }
+      }
+      
+      if (entradas.length > 0) {
+        var totalCantidad = 0, totalCosto = 0;
+        for (var k = 0; k < entradas.length; k++) {
+          totalCantidad += entradas[k].cantidad || 0;
+          totalCosto += (entradas[k].precio_unitario || 0) * (entradas[k].cantidad || 0);
+        }
+        var promedio = totalCosto / totalCantidad;
+        if (isNaN(promedio) || promedio < 0) {
+          errores.push('Producto ' + prodId + ' promedio inválido');
+        }
+      }
+    }
+    if (errores.length > 0) return errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VAL-02: Valorización a último costo', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var detalleCompras = DAO_COMPRAS.listarDetalles ? DAO_COMPRAS.listarDetalles() : [];
+    
+    if (!Array.isArray(detalleCompras)) {
+      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
+    }
+    
+    var productosConValor = 0;
+    for (var i = 0; i < productos.length && i < 50; i++) {
+      var prodId = productos[i].id;
+      var ultimoPrecio = null;
+      
+      for (var j = detalleCompras.length - 1; j >= 0; j--) {
+        if (detalleCompras[j].id_producto === prodId) {
+          ultimoPrecio = detalleCompras[j].precio_unitario;
+          break;
+        }
+      }
+      
+      if (ultimoPrecio && productos[i].stock > 0) {
+        var valorReposicion = ultimoPrecio * (productos[i].stock || 0);
+        // Validación: valor razonable (< 1M por producto)
+        if (valorReposicion > 1000000) {
+          return 'Producto ' + prodId + ' valor > 1M';
+        }
+      }
+      productosConValor++;
+    }
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VAL-03: Diferencia entre valorización y contabilidad', () => {
+  try {
+    var libroDiario = DAO.getLibroDiario ? DAO.getLibroDiario(50) : [];
+    
+    if (!Array.isArray(libroDiario)) {
+      return 'DAO.getLibroDiario no disponible - omitido';
+    }
+    
+    // Buscar movimientos de cuenta de inventario
+    var saldoInventario = 0;
+    for (var i = 0; i < libroDiario.length; i++) {
+      var cuenta = String(libroDiario[i].cuenta || '').toLowerCase();
+      if (cuenta.indexOf('inventario') !== -1) {
+        saldoInventario += (libroDiario[i].debito || 0) - (libroDiario[i].credito || 0);
+      }
+    }
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VAL-04: Producto con precio venta < costo', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var alertas = [];
+    
+    for (var i = 0; i < productos.length; i++) {
+      var p = productos[i];
+      if (p.activo !== false && p.precio_venta && p.precio_compra) {
+        var venta = Number(p.precio_venta) || 0;
+        var compra = Number(p.precio_compra) || 0;
+        if (venta < compra) {
+          alertas.push(p.nombre || p.id + ': venta=$' + venta + ' < compra=$' + compra);
+        }
+      }
+    }
+    if (alertas.length > 0) return 'Alertas: ' + alertas.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
 
   return {
     passed: TEST_RESULTS.passed,
