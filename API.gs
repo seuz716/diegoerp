@@ -18,6 +18,13 @@ function generateCorrelationId() {
   return 'REQ-' + Utilities.formatDate(new Date(), timezone, 'yyyyMMdd') + '-' + _apiCallCounter;
 }
 
+/**
+ * Genera respuesta de error segura (sin stack traces) con correlationId.
+ * @param {string} context - Nombre de la operación donde ocurrió el error.
+ * @param {*} error - Objeto error o mensaje.
+ * @param {string} [correlationId] - ID de trazabilidad (se genera uno si no se provee).
+ * @returns {{success: false, error: string, correlationId: string, executionTimeMs: number}}
+ */
 function _safeError(context, error, correlationId) {
   _errorCounter++;
   let tz = 'UTC';
@@ -26,8 +33,7 @@ function _safeError(context, error, correlationId) {
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;
   const executionTime = startTime > 0 ? Date.now() - parseInt(startTime) : 0;
-  Logger.log('[' + corrId + '] ' + context + ': ' + message);
-  Logger.log('[' + corrId + '] ' + context + ' (execution: ' + executionTime + 'ms)');
+  LogService.logError(context + ': ' + message, { functionName: context, correlationId: corrId, error: error });
   return { success: false, error: message, correlationId: corrId, executionTimeMs: executionTime };
 }
 
@@ -851,6 +857,15 @@ function getCarteraDebug(filtroTipo, filtroEstado) {
 // FASE 2: MÓDULO DE COMPRAS
 // ════════════════════════════════════════════
 
+/**
+ * Registra una compra a proveedor: crea items, actualiza inventario, genera CxP.
+ * @param {string} proveedorId - ID del proveedor (debe existir en Terceros como PROVEEDOR/AMBOS).
+ * @param {Array<{id?:string, nombre?:string, cantidad:number, precio_unitario:number}>} items - Productos (usar `nombre` para crear inline).
+ * @param {number} total - Monto total en centavos.
+ * @param {Date|string} [fechaVencimiento] - Opcional; default +30 días.
+ * @param {string} [factura] - Número de factura (opcional, evita duplicados).
+ * @returns {{success: boolean, id?: string, total?: number, correlationId?: string, error?: string}}
+ */
 function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
   const correlationId = generateCorrelationId();
   try {
@@ -867,6 +882,14 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
   }
 }
 
+/**
+ * Obtiene compras con filtros opcionales por proveedor y estado, con paginación.
+ * @param {string} [filtroProveedor] - Filtrar por ID de proveedor.
+ * @param {string} [filtroEstado] - Filtrar por estado (ABIERTA, PARCIAL, CANCELADA, etc.).
+ * @param {number} [page] - Número de página (0-based).
+ * @param {number} [pageSize] - Tamaño de página (max 5000).
+ * @returns {{success: boolean, items: Array, total: number, page: number, pageSize: number, correlationId: string}}
+ */
 function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
   const correlationId = generateCorrelationId();
   try {
@@ -894,6 +917,11 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
   }
 }
 
+/**
+ * Obtiene detalle y pagos de una compra específica.
+ * @param {string} idCompra - ID de la compra.
+ * @returns {{success: boolean, detalles: Array, pagos: Array, correlationId: string}}
+ */
 function getDetalleCompra(idCompra) {
   const correlationId = generateCorrelationId();
   try {
@@ -907,6 +935,13 @@ function getDetalleCompra(idCompra) {
   }
 }
 
+/**
+ * Registra un pago a proveedor contra una compra existente.
+ * @param {string} idCompra - ID de la compra a pagar.
+ * @param {number} monto - Monto del pago en centavos.
+ * @param {string} referencia - Descripción o comprobante del pago.
+ * @returns {{success: boolean, correlationId?: string, error?: string}}
+ */
 function registrarPagoProveedor(idCompra, monto, referencia) {
   const correlationId = generateCorrelationId();
   try {
@@ -926,6 +961,11 @@ function registrarPagoProveedor(idCompra, monto, referencia) {
 // FASE 3: REPORTES AVANZADOS
 // ════════════════════════════════════════════
 
+/**
+ * Obtiene próximos vencimientos de cartera dentro de N días.
+ * @param {number} [dias] - Ventana en días (default 30, max 365).
+ * @returns {{success: boolean, items: Array, total: number, dias: number}}
+ */
 function getProximosVencimientos(dias) {
   try {
     AuthService.checkPermission("ver_vencimientos");
@@ -940,6 +980,11 @@ function getProximosVencimientos(dias) {
   }
 }
 
+/**
+ * Obtener ranking de deudores por saldo vencido.
+ * @param {number} [topN] - Cantidad de deudores a retornar (default 10).
+ * @returns {{success: boolean, items: Array}}
+ */
 function getRankingDeudores(topN) {
   try {
     AuthService.checkPermission("ver_dashboard");
@@ -951,6 +996,10 @@ function getRankingDeudores(topN) {
   }
 }
 
+/**
+ * Obtener concentración de compras por proveedor (top por monto).
+ * @returns {{success: boolean, totalCompras: number, conteo: Object, proveedores: Array}}
+ */
 function getConcentracionProveedores() {
   try {
     AuthService.checkPermission("ver_dashboard");
@@ -965,6 +1014,12 @@ function getConcentracionProveedores() {
 // FASE 4: LIBRO DIARIO CONTABLE - EXPORT
 // ════════════════════════════════════════════
 
+/**
+ * Exporta el libro diario contable como CSV en un rango de fechas.
+ * @param {Date|string} [fechaInicio] - Fecha inicial (opcional).
+ * @param {Date|string} [fechaFin] - Fecha final (opcional).
+ * @returns {{success: boolean, csv?: string, error?: string}}
+ */
 function exportarLibroDiario(fechaInicio, fechaFin) {
   try {
     AuthService.checkPermission("ver_auditoria");
@@ -978,7 +1033,9 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
 }
 
 /**
- * API Pública: Activar/desacticonst producto
+ * Activa o desactiva un producto (toggle).
+ * @param {string} id - ID del producto.
+ * @returns {{success: boolean, id: string, activo: string, correlationId: string}}
  */
 function toggleActivoProducto(id) {
   const correlationId = generateCorrelationId();
@@ -996,6 +1053,11 @@ AuthService.checkPermission("revisar_inventario");
 // FASE 4.5: FLUJO DE CAJA
 // ════════════════════════════════════════════
 
+/**
+ * Obtiene resumen de flujo de caja para los últimos N días.
+ * @param {number} [dias] - Ventana en días (default 30).
+ * @returns {{success: boolean, entradas: number, salidas: number, neto: number, saldo_actual: number}}
+ */
 function getFlujoCajaResumen(dias) {
   try {
     AuthService.checkPermission("ver_dashboard");
@@ -1012,6 +1074,12 @@ function getFlujoCajaResumen(dias) {
   }
 }
 
+/**
+ * Exporta movimientos de flujo de caja como CSV en un rango de fechas.
+ * @param {Date|string} [fechaInicio] - Fecha inicial (opcional).
+ * @param {Date|string} [fechaFin] - Fecha final (opcional).
+ * @returns {{success: boolean, csv?: string, error?: string}}
+ */
 function exportarFlujoCaja(fechaInicio, fechaFin) {
   try {
     AuthService.checkPermission("ver_auditoria");
