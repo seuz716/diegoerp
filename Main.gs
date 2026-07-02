@@ -1,34 +1,53 @@
 
 /**
  * Entry point — GAS Web App
+ * Sanitiza todos los parámetros URL antes de procesarlos.
  */
 function doGet(e) {
   try {
-    // Auto-configurar SPREADSHEET_ID si viene como parámetro en la URL
-    if (e && e.parameter && e.parameter.ssid) {
-      PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", e.parameter.ssid);
-      Logger.log("INFO: SPREADSHEET_ID configurado desde parámetro URL");
+    var params = e && e.parameter ? e.parameter : {};
+    
+    // ====================
+    // 1. SANITIZAR ssid
+    // ====================
+    if (params.ssid) {
+      try {
+        var ssid = INPUT_VALIDATOR.validateId(params.ssid);
+        if (ssid && /^[a-zA-Z0-9-_]+$/.test(ssid)) {
+          PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssid);
+          Logger.log("INFO: SPREADSHEET_ID configurado desde parámetro URL (sanitizado)");
+        } else {
+          Logger.log("WARN: ssid inválido rechazado: " + params.ssid);
+        }
+      } catch (err) {
+        Logger.log("WARN: ssid inválido: " + err.message);
+      }
     }
     
-    // Verificar si ya hay SPREADSHEET_ID configurado
+    // ====================
+    // 2. HEALTH CHECK (solo '1' es válido)
+    // ====================
+    if (params.health === '1') {
+      return handleHealthCheck();
+    }
+    
+    // ====================
+    // 3. OBTENER SPREADSHEET_ID
+    // ====================
     const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
     
-    if (!ssId && !e.parameter?.ssid) {
-      // Intentar obtener del spreadsheet activo si está vinculado
+    if (!ssId) {
       try {
         const activeSs = SpreadsheetApp.getActiveSpreadsheet();
         if (activeSs) {
           PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", activeSs.getId());
           Logger.log("INFO: SPREADSHEET_ID auto-detectado del spreadsheet activo");
         }
-      } catch (e) {
-        Logger.log("WARN: No se pudo obtener spreadsheet activo: " + e.message);
+      } catch (err) {
+        Logger.log("WARN: No se pudo obtener spreadsheet activo: " + err.message);
       }
     }
     
-    if (e && e.parameter && e.parameter.health !== undefined) {
-      return handleHealthCheck();
-    }
     validateAndMapSchemas();
   } catch (err) {
     Logger.log("ERROR doGet: " + err.message);
@@ -53,7 +72,9 @@ function doGet(e) {
   tpl.ogUrl = ScriptApp.getService().getUrl();
   return tpl.evaluate()
     .setTitle('MicroERP · Cartera Pro')
-    .setFaviconUrl('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 64 64\'><rect width=\'64\' height=\'64\' rx=\'12\' fill=\'%233A7B6D\'/><text x=\'32\' y=\'44\' text-anchor=\'middle\' font-size=\'36\' fill=\'white\' font-family=\'system-ui\'>μ</text></svg>');
+    .setFaviconUrl('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 64 64\'><rect width=\'64\' height=\'64\' rx=\'12\' fill=\'%233A7B6D\'/><text x=\'32\' y=\'44\' text-anchor=\'middle\' font-size=\'36\' fill=\'white\' font-family=\'system-ui\'>μ</text></svg>')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY)
+    .setSandboxMode(HtmlService.SandboxMode.STRICT);
 }
 
 function handleHealthCheck() {

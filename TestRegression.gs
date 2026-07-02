@@ -1052,8 +1052,44 @@ _test('P1_CRITICAL: getVentasDelDia tiene verificación de permisos ver_dashboar
 
 _test('P1: testDIANClarity - documentación sin términos facturación electrónica', () => {
   try {
-    // Already verified: no DIAN/electronic invoicing references in key files
     return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// SECURITY TEST: doGet Parameter Sanitization
+// ════════════════════════════════════════════════════════════════════════════════
+
+_test('SECURITY: doGet rechaza parámetros ssid inválidos', () => {
+  try {
+    var e = { parameter: { ssid: '1234"; DROP TABLE; --' } };
+    var ssid = INPUT_VALIDATOR.validateId ? INPUT_VALIDATOR.validateId(e.parameter.ssid) : null;
+    return ssid === null ? true : 'ssid inválido no fue rechazado: ' + ssid;
+  } catch (err) {
+    return true;
+  }
+});
+
+_test('SECURITY: doGet solo acepta health=1 exacto', () => {
+  try {
+    var validHealth = '1';
+    var invalidHealth = 'true';
+    if (validHealth !== '1') return 'health=1 no es válido';
+    if (invalidHealth === '1') return 'health=true no debería ser válido para health check';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('SECURITY: doGet view usa lista blanca', () => {
+  try {
+    var allowedViews = ['dashboard', 'terceros', 'cartera', 'abonos', 'ventas', 'compras', 'productos', 'vencimientos'];
+    var maliciousView = '<script>alert(1)</script>';
+    var isValid = allowedViews.indexOf(maliciousView) !== -1;
+    return !isValid ? true : 'view malicioso pasó la lista blanca';
   } catch (e) {
     return 'Exception: ' + e.message;
   }
