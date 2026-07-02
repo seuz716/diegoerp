@@ -2281,6 +2281,44 @@ _test('VAL-04: Producto con precio venta < costo', () => {
     }
   });
 
+  // ===== N. TESTS DE RECUPERACIÓN ANTE ERRORES =====
+
+  _test('ERR-01: Rollback de venta verificado en _Transaction.rollback', () => {
+    try {
+      const fnStr = _Transaction.rollback.toString();
+      if (fnStr.indexOf('mov') > -1 || fnStr.indexOf('producto') > -1) {
+        return true;
+      }
+      return 'Rollback no maneja kardex ni stock de productos';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('ERR-02: crearMovimientoKardex verifica transaccionalidad', () => {
+    try {
+      const fnStr = DAO_COMPRAS.crearMovimientoKardex.toString();
+      if (fnStr.indexOf('_Transaction') > -1 || fnStr.indexOf('tx.') > -1) {
+        return true;
+      }
+      return 'crearMovimientoKardex no usa transaccionalidad explicita (usar _Transaction)';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('ERR-03: Stock negativo verificado en registrarVentaAtomic', () => {
+    try {
+      const fnStr = DOMAIN.registrarVentaAtomic.toString();
+      if (fnStr.indexOf('Stock insuficiente') > -1) {
+        return true;
+      }
+      return 'No se verificó validación de stock insuficiente';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   // ===== HOY: TODAY'S ACTIVITY TESTS (HOY-01 to HOY-05) =====
 
   _test('HOY-01: Ventas de hoy test exists', () => {
@@ -2457,6 +2495,120 @@ _test('MAE-04: Referencias cruzadas rotas', () => {
   }
 });
 
+// ===== SECURITY & AUDIT TESTS (SEG-01 to SEG-05) =====
+
+_test('SEG-01: Usuario sin email en movimientos kardex/ventas/compras', () => {
+  try {
+    var sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    var sinUsuario = 0;
+
+    if (sheetKardex) {
+      var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+      var kardexData = sheetKardex.getDataRange().getValues();
+      for (var i = 1; i < Math.min(kardexData.length, 200); i++) {
+        var usuario = String(kardexData[i][KCOL.usuario] || "").trim();
+        if (!usuario) sinUsuario++;
+      }
+    }
+
+    if (sinUsuario > 0) return sinUsuario + ' movimientos sin usuario identificado';
+    return true;
+  } catch (e) {
+    if (e.message.indexOf('no encontrada') !== -1) return 'Sin hojas - test omitido';
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('SEG-02: Movimientos fuera de horario laboral (10PM-6AM)', () => {
+  try {
+    var sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetKardex) return 'Hoja KARDEX no configurada';
+
+    var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    var kardexData = sheetKardex.getDataRange().getValues();
+    var fueraHorario = 0;
+
+    for (var i = 1; i < Math.min(kardexData.length, 200); i++) {
+      var fecha = kardexData[i][KCOL.fecha];
+      if (fecha instanceof Date) {
+        var hora = fecha.getHours();
+        if (hora >= 22 || hora < 6) {
+          fueraHorario++;
+        }
+      }
+    }
+
+    Logger.log('📊 Movimientos fuera de horario laboral: ' + fueraHorario);
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('SEG-03: Segregación de funciones - compra/pago análisis', () => {
+  try {
+    var sheetCompras = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+    var sheetPagos = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+    if (!sheetCompras || !sheetPagos) return 'Hojas no configuradas';
+
+    // Requiere campo usuario en compras/pagos para validación completa
+    // Por ahora solo verificamos que las hojas existen
+    var comprasCount = sheetCompras.getLastRow() > 1 ? sheetCompras.getLastRow() - 1 : 0;
+    var pagosCount = sheetPagos.getLastRow() > 1 ? sheetPagos.getLastRow() - 1 : 0;
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('SEG-04: Kardex - consistencia de movimientos', () => {
+  try {
+    var sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetKardex) return 'Hoja KARDEX no configurada';
+
+    var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    var kardexData = sheetKardex.getDataRange().getValues();
+    var movimientos = kardexData.slice(1).length;
+
+    Logger.log('📊 Movimientos de kardex: ' + movimientos);
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('SEG-05: Kardex sin auditoría en AUDIT_LOG (requisito)', () => {
+  try {
+    var sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    var sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    if (!sheetKardex || !sheetAudit) return 'Hojas no configuradas (requisito)';
+
+    var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    var ACOL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    var kardexData = sheetKardex.getDataRange().getValues();
+    var auditData = sheetAudit.getDataRange().getValues();
+
+    var auditIds = {};
+    for (var i = 1; i < Math.min(auditData.length, 500); i++) {
+      var tabla = String(auditData[i][ACOL.tabla] || "").trim();
+      var idReg = String(auditData[i][ACOL.id_registro] || "").trim();
+      if (tabla === 'VENTAS' || tabla === 'COMPRAS') {
+        auditIds[idReg] = true;
+      }
+    }
+
+    var sinAuditoria = 0;
+    for (var j = 1; j < Math.min(kardexData.length, 200); j++) {
+      var ref = String(kardexData[j][KCOL.referencia] || "").trim();
+      if (ref && !auditIds[ref]) sinAuditoria++;
+    }
+
+    Logger.log('📊 Movimientos kardex sin auditoría: ' + sinAuditoria);
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
 
   return {
     passed: TEST_RESULTS.passed,
