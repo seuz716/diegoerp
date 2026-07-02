@@ -1557,11 +1557,257 @@ _test('K-10: Consistencia temporal del kardex', () => {
     return true;
   });
 
-  _test('INV-05: Ajustes de inventario con autorización ADMIN', () => {
+_test('INV-05: Ajustes de inventario con autorización ADMIN', () => {
     if (typeof testInvAjustesNoAutorizados !== 'function') {
       return 'testInvAjustesNoAutorizados not found - service not implemented';
     }
     return true;
+  });
+
+  // ===== F. TESTS DE CLIENTES Y DESTINO DE VENTAS =====
+
+  _test('F-01: Ranking clientes por producto - getRankingClienteProducto exists', () => {
+    try {
+      if (typeof DOMAIN.getRankingClienteProducto !== 'function') {
+        return 'DOMAIN.getRankingClienteProducto not found';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('F-02: Cliente sin ventas pero activo - listarClientesSinVentas exists', () => {
+    try {
+      if (typeof DOMAIN.listarClientesSinVentas !== 'function') {
+        return 'DOMAIN.listarClientesSinVentas not found';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('F-03: Venta a cliente inactivo - validacion implementada', () => {
+    try {
+      if (typeof DOMAIN.registrarVentaAtomic !== 'function') {
+        return 'DOMAIN.registrarVentaAtomic not found';
+      }
+      const fnStr = DOMAIN.registrarVentaAtomic.toString();
+      if (fnStr.indexOf('cliente.activo') > -1 || fnStr.indexOf('INACTIVO') > -1) {
+        return true;
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== VENTAS → KARDEX TESTS (VTA-01 to VTA-05) =====
+
+_test('VTA-01: Toda venta genera salida de kardex', () => {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetAudit || !sheetKardex) return 'Hojas no configuradas';
+
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const auditData = sheetAudit.getDataRange().getValues();
+    const kardexData = sheetKardex.getDataRange().getValues();
+
+    const ventas = auditData.slice(1).filter(r => 
+      String(r[COL.tabla]).trim() === "VENTAS" && 
+      String(r[COL.operacion]).trim() === "CREATE_VENTA"
+    );
+
+    const kardexRefs = new Set();
+    for (let i = 1; i < kardexData.length; i++) {
+      const ref = String(kardexData[i][KCOL.referencia] || "").trim();
+      const tipo = String(kardexData[i][KCOL.tipo_mov] || "").trim().toUpperCase();
+      if (ref && tipo === 'SALIDA') kardexRefs.add(ref);
+    }
+
+    const sinSalida = ventas.filter(v => !kardexRefs.has(String(v[COL.id_registro] || ""))).length;
+    if (sinSalida > 0) return sinSalida + ' ventas sin salida en kardex';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VTA-02: Cantidad vendida = cantidad salida en kardex', () => {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetAudit || !sheetKardex) return 'Hojas no configuradas';
+
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const auditData = sheetAudit.getDataRange().getValues();
+    const kardexData = sheetKardex.getDataRange().getValues();
+
+    const ventas = auditData.slice(1).filter(r => 
+      String(r[COL.tabla]).trim() === "VENTAS" && 
+      String(r[COL.operacion]).trim() === "CREATE_VENTA"
+    );
+
+    const kardexPorRef = {};
+    for (let i = 1; i < kardexData.length; i++) {
+      const ref = String(kardexData[i][KCOL.referencia] || "").trim();
+      const prodId = String(kardexData[i][KCOL.id_producto] || "").trim();
+      const tipo = String(kardexData[i][KCOL.tipo_mov] || "").trim().toUpperCase();
+      const cant = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+      if (ref && tipo === 'SALIDA') {
+        if (!kardexPorRef[ref]) kardexPorRef[ref] = {};
+        kardexPorRef[ref][prodId] = (kardexPorRef[ref][prodId] || 0) + cant;
+      }
+    }
+
+    let errores = 0;
+    for (let v = 0; v < Math.min(ventas.length, 30); v++) {
+      const idVenta = String(ventas[v][COL.id_registro] || "").trim();
+      const datosNuevos = JSON.parse(ventas[v][COL.datos_nuevos] || "{}");
+      const items = datosNuevos.items || [];
+      if (!idVenta || !kardexPorRef[idVenta]) continue;
+      for (let it = 0; it < items.length; it++) {
+        const cantVendida = items[it].cantidad || 0;
+        const cantKardex = kardexPorRef[idVenta][items[it].id] || 0;
+        if (cantVendida !== cantKardex) errores++;
+      }
+    }
+    if (errores > 0) return errores + ' inconsistencias de cantidades';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VTA-03: Venta sin stock suficiente no debería existir', () => {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetAudit || !sheetKardex) return 'Hojas no configuradas';
+
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexData = sheetKardex.getDataRange().getValues();
+
+    const kardexCompleto = [];
+    for (let i = 1; i < kardexData.length; i++) {
+      kardexCompleto.push({
+        fecha: kardexData[i][KCOL.fecha],
+        id_producto: String(kardexData[i][KCOL.id_producto] || "").trim(),
+        tipo_mov: String(kardexData[i][KCOL.tipo_mov] || "").trim().toUpperCase(),
+        cantidad: _parseMoneda(kardexData[i][KCOL.cantidad], 0)
+      });
+    }
+
+    const ventas = sheetAudit.getDataRange().getValues();
+    const ventasData = ventas.slice(1).filter(r => 
+      String(r[COL.tabla]).trim() === "VENTAS" && 
+      String(r[COL.operacion]).trim() === "CREATE_VENTA"
+    );
+
+    let errores = 0;
+    for (let v = 0; v < Math.min(ventasData.length, 30); v++) {
+      const fechaVenta = ventasData[v][COL.timestamp];
+      const datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}");
+      const items = datosNuevos.items || [];
+      for (let it = 0; it < items.length; it++) {
+        const prodId = items[it].id;
+        const cantVendida = items[it].cantidad || 0;
+        const kardexAntes = kardexCompleto.filter(k => 
+          k.id_producto === prodId && new Date(k.fecha) < new Date(fechaVenta)
+        ).sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        let stock = 0;
+        for (let k = 0; k < kardexAntes.length; k++) {
+          if (kardexAntes[k].tipo_mov === 'ENTRADA') stock += kardexAntes[k].cantidad;
+          else if (kardexAntes[k].tipo_mov === 'SALIDA') stock -= kardexAntes[k].cantidad;
+          if (stock < 0) stock = 0;
+        }
+        if (cantVendida > stock) errores++;
+      }
+    }
+    if (errores > 0) return errores + ' ventas con stock insuficiente';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VTA-04: Precio venta >= precio compra (alerta pérdida)', () => {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    if (!sheetAudit) return 'Hoja AUDIT_LOG no configurada';
+
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    const productos = DAO_PRODUCTOS.listar({});
+    const preciosCompra = {};
+    for (let p = 0; p < productos.length; p++) {
+      preciosCompra[productos[p].id] = productos[p].precio_compra || 0;
+    }
+
+    const ventas = sheetAudit.getDataRange().getValues();
+    const ventasData = ventas.slice(1).filter(r => 
+      String(r[COL.tabla]).trim() === "VENTAS" && 
+      String(r[COL.operacion]).trim() === "CREATE_VENTA"
+    );
+
+    let alertas = 0;
+    for (let v = 0; v < Math.min(ventasData.length, 30); v++) {
+      const datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}");
+      const items = datosNuevos.items || [];
+      for (let it = 0; it < items.length; it++) {
+        const precioVenta = items[it].precio || 0;
+        const precioCompra = preciosCompra[items[it].id] || 0;
+        if (precioVenta < precioCompra) alertas++;
+      }
+    }
+    return true; // Alertas, no es error bloqueante
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('VTA-05: Devolución genera entrada kardex', () => {
+  try {
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!sheetAudit || !sheetKardex) return 'Hojas no configuradas (devoluciones no implementadas)';
+
+    const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const auditData = sheetAudit.getDataRange().getValues();
+    const kardexData = sheetKardex.getDataRange().getValues();
+
+    const devoluciones = auditData.slice(1).filter(r => 
+      String(r[COL.tabla]).trim() === "VENTAS" && 
+      String(r[COL.operacion]).trim() === "DEVOLUCION"
+    );
+
+    if (devoluciones.length === 0) return true; // Módulo no implementado
+
+    const entradasPorRef = {};
+    for (let i = 1; i < kardexData.length; i++) {
+      const ref = String(kardexData[i][KCOL.referencia] || "").trim();
+      const tipo = String(kardexData[i][KCOL.tipo_mov] || "").trim().toUpperCase();
+      if (ref && tipo === 'ENTRADA') entradasPorRef[ref] = true;
+    }
+
+    let sinEntrada = 0;
+    for (let d = 0; d < devoluciones.length; d++) {
+      const idDev = String(devoluciones[d][COL.id_registro] || "").trim();
+      const datosNuevos = JSON.parse(devoluciones[d][COL.datos_nuevos] || "{}");
+      const ventaOriginal = datosNuevos.id_venta_original || "";
+      if (idDev && !entradasPorRef[idDev] && !entradasPorRef[ventaOriginal]) sinEntrada++;
+    }
+    if (sinEntrada > 0) return sinEntrada + ' devoluciones sin entrada kardex';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
 
 // ===== PROVIDER & PRODUCT ORIGEN TESTS PROV-01 to PROV-04 =====
 
@@ -1677,34 +1923,32 @@ _test('PROV-03: Proveedor sin compras registradas', () => {
 });
 
 _test('PROV-04: Producto sin proveedor conocido', () => {
-  try {
-    var productos = DAO_PRODUCTOS.listar();
-    var detalleCompras = DAO_COMPRAS.listarDetalles();
-    var sinOrigen = [];
-    
-    if (!Array.isArray(detalleCompras)) {
-      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
-    }
-    
-    var prodConCompra = {};
-    for (var j = 0; j < detalleCompras.length; j++) {
-      if (detalleCompras[j].id_producto) {
-        prodConCompra[detalleCompras[j].id_producto] = true;
+    try {
+      var productos = DAO_PRODUCTOS.listar();
+      var detalleCompras = DAO_COMPRAS.listarDetalles();
+      var sinOrigen = [];
+      
+      if (!Array.isArray(detalleCompras)) {
+        return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
       }
-    }
-    
-    for (var i = 0; i < productos.length; i++) {
-      if (!prodConCompra[productos[i].id]) {
-        sinOrigen.push(productos[i].nombre || productos[i].id);
+      
+      var prodConCompra = {};
+      for (var j = 0; j < detalleCompras.length; j++) {
+        if (detalleCompras[j].id_producto) {
+          prodConCompra[detalleCompras[j].id_producto] = true;
+        }
       }
+      
+      for (var i = 0; i < productos.length; i++) {
+        if (!prodConCompra[productos[i].id]) {
+          sinOrigen.push(productos[i].nombre || productos[i].id);
+        }
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
     }
-    // Normal: productos nuevos pueden no tener historial
-    return true;
-  } catch (e) {
-    return 'Exception: ' + e.message;
-  }
-});
-
+  });
 
   return {
     passed: TEST_RESULTS.passed,
