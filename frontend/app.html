@@ -563,6 +563,171 @@ App.logError = function (message, context) {
   console.error(tag);
   try { showToast(context ? message : 'Error: ' + message, 'error'); } catch (e) {}
 };
+
+// Draft auto-save system — prevención de pérdida de datos
+App.drafts = {
+  _prefix: 'draft_',
+  _timers: {},
+  save: function (formKey, data) {
+    try {
+      var entry = { data: data, timestamp: Date.now(), version: 1 };
+      localStorage.setItem(this._prefix + formKey, JSON.stringify(entry));
+    } catch (e) {}
+  },
+  load: function (formKey) {
+    try {
+      var raw = localStorage.getItem(this._prefix + formKey);
+      if (!raw) return null;
+      var entry = JSON.parse(raw);
+      if (Date.now() - entry.timestamp > 86400000) { this.clear(formKey); return null; }
+      return entry;
+    } catch (e) { return null; }
+  },
+  hasDraft: function (formKey) { return !!this.load(formKey); },
+  clear: function (formKey) { try { localStorage.removeItem(this._prefix + formKey); } catch (e) {} },
+  getAgeMs: function (formKey) { var e = this.load(formKey); return e ? Date.now() - e.timestamp : -1; },
+  getAgeText: function (formKey) {
+    var ms = this.getAgeMs(formKey);
+    if (ms < 0) return '';
+    var min = Math.floor(ms / 60000);
+    if (min < 1) return 'segundos';
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min / 60);
+    return h + 'h ' + (min % 60) + 'm';
+  },
+  autoSave: function (formKey, getDataFn, delay) {
+    delay = delay || 1500;
+    if (this._timers[formKey]) clearTimeout(this._timers[formKey]);
+    var self = this;
+    this._timers[formKey] = setTimeout(function () {
+      var data = getDataFn();
+      if (data) { self.save(formKey, data); self._showIndicator(formKey); }
+    }, delay);
+  },
+  _showIndicator: function (formKey) {
+    var el = document.getElementById('draft-indicator-' + formKey);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'draft-indicator-' + formKey;
+      el.className = 'draft-indicator';
+      el.style.cssText = 'display:none;position:fixed;bottom:var(--space-12,60px);right:var(--space-4,16px);z-index:4000;padding:6px 12px;font-size:var(--text-micro,11px);color:var(--muted);background:var(--bg-1);border:1px solid var(--border);animation:fadeInUp .2s ease;';
+      document.body.appendChild(el);
+    }
+    el.textContent = '\u2713 Borrador guardado ' + this.getAgeText(formKey);
+    el.style.display = 'block';
+    clearTimeout(el._hideTimer);
+    var self = this;
+    el._hideTimer = setTimeout(function () { el.style.display = 'none'; }, 3000);
+  },
+  showRestorePrompt: function (formKey, restoreContainerId, onRestore, onDiscard) {
+    var entry = this.load(formKey);
+    if (!entry) return;
+    var container = restoreContainerId ? document.getElementById(restoreContainerId) : null;
+    if (!container) {
+      container = document.getElementById('draft-prompt-' + formKey);
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'draft-prompt-' + formKey;
+        container.style.cssText = 'margin-bottom:var(--space-3,12px);';
+        var form = document.querySelector('[data-draft="' + formKey + '"]');
+        if (form) form.parentNode.insertBefore(container, form);
+      }
+    }
+    container.innerHTML = '<div class="conflict-notice"><span class="conflict-icon">\u270E</span><div class="conflict-body"><div class="conflict-title">Borrador encontrado</div><div>Guardado ' + this.getAgeText(formKey) + '.</div><div class="conflict-actions"><button class="btn btn-sm btn-accent draft-restore-btn">Restaurar</button><button class="btn btn-sm btn-outline draft-discard-btn">Descartar</button></div></div></div>';
+    container.querySelector('.draft-restore-btn').addEventListener('click', function () {
+      if (onRestore) onRestore(entry.data);
+      container.innerHTML = '';
+    });
+    container.querySelector('.draft-discard-btn').addEventListener('click', function () {
+      App.drafts.clear(formKey);
+      container.innerHTML = '';
+      if (onDiscard) onDiscard();
+    });
+  },
+  clearAll: function () {
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k.indexOf(this._prefix) === 0) keys.push(k);
+      }
+      keys.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) {}
+  },
+  // Wire auto-save to a form's input fields
+  wireForm: function (formKey, selector, getDataFn) {
+    var inputs = document.querySelectorAll(selector);
+    var self = this;
+    for (var i = 0; i < inputs.length; i++) {
+      (function (input) {
+        input.addEventListener('input', function () { self.autoSave(formKey, getDataFn); });
+        input.addEventListener('change', function () { self.autoSave(formKey, getDataFn, 0); });
+      })(inputs[i]);
+    }
+  },
+};
+
+// Retry with exponential backoff - max 3 attempts, delays: 1s, 2s, 4s
+App.retryWithBackoff = function(fn, maxAttempts, attempt) {
+  attempt = attempt || 1;
+  maxAttempts = maxAttempts || 3;
+  var delays = [1000, 2000, 4000];
+  var delay = delays[Math.min(attempt - 1, delays.length - 1)];
+  
+  return new Promise(function(resolve, reject) {
+    fn().then(resolve).catch(function(err) {
+      if (attempt >= maxAttempts) {
+        reject(err);
+        return;
+      }
+      setTimeout(function() {
+        App.retryWithBackoff(fn, maxAttempts, attempt + 1).then(resolve).catch(reject);
+      }, delay);
+    });
+  });
+};
+
+// Show toast with retry button for recoverable errors
+function showToastWithRetry(msg, type, retryFn, duration) {
+  duration = duration || 8000;
+  var container = document.getElementById('toast-container');
+  var el = document.createElement('div');
+  el.className = 'toast ' + (type || 'server');
+  el.innerHTML = '<span>' + msg + '</span><button class="toast-close" aria-label="Cerrar">×</button><button class="toast-retry" aria-label="Reintentar">↻</button>';
+  if (type === 'error' || type === 'server') el.setAttribute('role', 'alert');
+  container.appendChild(el);
+  
+  var retryClicked = false;
+  var retryBtn = el.querySelector('.toast-retry');
+  var closeBtn = el.querySelector('.toast-close');
+  
+  retryBtn.addEventListener('click', function() {
+    if (retryClicked) return;
+    retryClicked = true;
+    retryBtn.disabled = true;
+    retryBtn.textContent = '⏳';
+    App.retryWithBackoff(retryFn).then(function() {
+      el.style.animation = 'toast-out .3s ease forwards';
+      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+    }).catch(function() {
+      retryBtn.textContent = '↻';
+      retryBtn.disabled = false;
+    });
+  });
+  
+  closeBtn.addEventListener('click', function() {
+    el.style.animation = 'toast-out .3s ease forwards';
+    setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+  });
+  
+  setTimeout(function() {
+    if (el.parentNode) {
+      el.style.animation = 'toast-out .3s ease forwards';
+      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+    }
+  }, duration);
+}
+
 function generarIdTemporal() {
   return 'TMP-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6).toUpperCase();
 }

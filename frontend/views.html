@@ -784,6 +784,33 @@ function abrirModalTercero() {
   document.getElementById('tercero-telefono').value = '';
   document.getElementById('tercero-activo').checked = true;
   document.getElementById('tercero-error').style.display = 'none';
+  // Draft prompt container
+  var draftContainer = document.getElementById('draft-prompt-tercero');
+  if (!draftContainer) {
+    draftContainer = document.createElement('div');
+    draftContainer.id = 'draft-prompt-tercero';
+    document.getElementById('tercero-error').parentNode.insertBefore(draftContainer, document.getElementById('tercero-error'));
+  }
+  draftContainer.innerHTML = '';
+  // Check for unsaved draft
+  App.drafts.showRestorePrompt('tercero_new', null, function (data) {
+    if (data.nombre) document.getElementById('tercero-nombre').value = data.nombre;
+    if (data.tipo) document.getElementById('tercero-tipo').value = data.tipo;
+    if (data.limite) document.getElementById('tercero-limite').value = data.limite;
+    if (data.telefono) document.getElementById('tercero-telefono').value = data.telefono;
+    if (data.activo !== undefined) document.getElementById('tercero-activo').checked = data.activo;
+    App.drafts._showIndicator('tercero_new');
+  });
+  // Wire auto-save
+  App.drafts.wireForm('tercero_new', '#modal-tercero input, #modal-tercero select, #modal-tercero textarea', function () {
+    return {
+      nombre: document.getElementById('tercero-nombre').value,
+      tipo: document.getElementById('tercero-tipo').value,
+      limite: document.getElementById('tercero-limite').value,
+      telefono: document.getElementById('tercero-telefono').value,
+      activo: document.getElementById('tercero-activo').checked,
+    };
+  });
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
@@ -884,6 +911,7 @@ function guardarTercero() {
       errorEl.textContent = r.message || 'Error al guardar tercero.';
       errorEl.style.display = 'block';
     } else {
+      App.drafts.clear('tercero_new');
       cerrarModalTercero();
       cargarTerceros();
     }
