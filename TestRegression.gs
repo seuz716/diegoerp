@@ -1302,10 +1302,117 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
         // Should return the ID (possibly cleaned) but not throw
       }
       return true;
-    } catch (e) {
-      return 'Exception: ' + e.message;
+
+// ===== KARDEX INTEGRITY TESTS K-06 TO K-10 =====
+
+_test('K-06: Trazabilidad completa por producto', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 500);
+    var errores = [];
+    for (var i = 0; i < movimientos.length && i < 100; i++) {
+      var m = movimientos[i];
+      if (!m.id_producto) errores.push('mov ' + i + ': sin id_producto');
+      if (!m.fecha) errores.push('mov ' + i + ': sin fecha');
+      if (m.tipo_mov !== 'ENTRADA' && m.tipo_mov !== 'SALIDA') {
+        errores.push('mov ' + i + ': tipo_mov inválido ' + m.tipo_mov);
+      }
+      if (Math.abs(m.cantidad) <= 0) errores.push('mov ' + i + ': cantidad <= 0');
+      if (!m.referencia) errores.push('mov ' + i + ': sin referencia');
+      if (!m.origen) errores.push('mov ' + i + ': sin origen');
+      if (!m.usuario) errores.push('mov ' + i + ': sin usuario');
     }
-  });
+    if (errores.length > 0) return 'Errores de trazabilidad: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-07: Kardex sin saltos de stock', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    var movPorProducto = {};
+    for (var i = 0; i < movimientos.length; i++) {
+      var m = movimientos[i];
+      var prodId = m.id_producto;
+      if (!prodId) continue;
+      if (!movPorProducto[prodId]) movPorProducto[prodId] = [];
+      movPorProducto[prodId].push(m);
+    }
+    var errores = [];
+    for (var prodId in movPorProducto) {
+      var movs = movPorProducto[prodId].sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); });
+      for (var j = 0; j < movs.length - 1; j++) {
+        var stockActual = movs[j].stock_nuevo;
+        var stockSiguiente = movs[j+1].stock_anterior;
+        if (stockActual !== stockSiguiente) {
+          errores.push('Producto ' + prodId + ' salto stock en movimiento ' + j);
+        }
+      }
+    }
+    if (errores.length > 0) return 'Saltos detectados: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-08: Movimientos huérfanos sin producto maestro', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    var productos = {};
+    var todosProductos = DAO_PRODUCTOS.listar();
+    for (var p = 0; p < todosProductos.length; p++) {
+      productos[todosProductos[p].id] = true;
+    }
+    var huérfanos = [];
+    for (var i = 0; i < movimientos.length; i++) {
+      if (!productos[movimientos[i].id_producto]) {
+        huérfanos.push(movimientos[i].id_producto);
+      }
+    }
+    if (huérfanos.length > 0) return 'Huérfanos encontrados: ' + huérfanos.slice(0, 5).join(', ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-09: Validación de tipo de movimiento', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 500);
+    var tiposValidos = ['ENTRADA', 'SALIDA'];
+    var tiposInvalidos = [];
+    for (var i = 0; i < movimientos.length; i++) {
+      if (tiposValidos.indexOf(movimientos[i].tipo_mov) === -1) {
+        tiposInvalidos.push(movimientos[i].tipo_mov);
+      }
+    }
+    if (tiposInvalidos.length > 0) return 'Tipos inválidos: ' + tiposInvalidos.slice(0, 5).join(', ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-10: Consistencia temporal del kardex', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 500);
+    var hoy = new Date();
+    var errores = [];
+    for (var i = 0; i < movimientos.length; i++) {
+      var f = new Date(movimientos[i].fecha);
+      if (f > hoy) {
+        errores.push('Movimiento ' + i + ' con fecha futura: ' + movimientos[i].fecha);
+      }
+    }
+    if (errores.length > 0) return errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
 
   return {
     passed: TEST_RESULTS.passed,
