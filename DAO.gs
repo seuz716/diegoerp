@@ -4,6 +4,12 @@
  * - #2: Escrito optimizado limitando getDataRange (Cuotas Scripting).
  */
 
+/**
+ * Custom error for DAO layer operations.
+ * @param {string} message - Error description.
+ * @param {string} code - Error code (e.g. SHEET_WRITE_FAILURE).
+ * @param {*} [details] - Additional error context.
+ */
 class DAOError extends Error {
   constructor(message, code, details) {
     super(message);
@@ -39,6 +45,7 @@ const DAO = {
       sheet.getRange(row, 1, rows.length, rows[0].length).setValues(rows);
     } catch (e) {
       Logger.log(`[DAO.batchInsert] Error: Error en operación`);
+      LogService.logError('Error en batchInsert', { functionName: 'batchInsert', error: e });
     } finally {
       // === INICIO FIX RACE-CONDITION ===
       if (lock) lock.releaseLock();
@@ -46,16 +53,33 @@ const DAO = {
     }
   },
 
+  /**
+   * Retrieves a tercero by ID from cache.
+   * @param {string} id - Tercero identifier.
+   * @returns {Object|null} Tercero object or null if not found.
+   */
   getTerceroById(id) {
     const idClean = _sanitizeId(id);
     if (!idClean) return null;
     return CACHE.getTerceroRAW(idClean);
   },
 
+  /**
+   * Retrieves the base cartera list from cache.
+   * @returns {Array<Object>} List of cartera items.
+   */
   getCarteraBase() {
     return CACHE.getCarteraBase();
   },
 
+  /**
+   * Retrieves paginated cartera records with optional filters.
+   * @param {string|null} [filtroTipo] - Filter by type (CxC/CxP).
+   * @param {string|null} [filtroEstado] - Filter by estado.
+   * @param {number} [pageSize=5000] - Max items per page (max 5000).
+   * @param {number} [pageToken=0] - Zero-based offset for pagination.
+   * @returns {{items: Array<Object>, nextPageToken: (number|null)}} Paginated results.
+   */
   getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
     pageSize = Math.min(5000, pageSize);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
@@ -112,6 +136,12 @@ const DAO = {
     return { items, nextPageToken };
   },
 
+  /**
+   * Retrieves active non-canceled cartera items for a tercero and type with saldo > 0.
+   * @param {string} idTercero - Tercero ID.
+   * @param {string} tipoLimpio - Tipo (CxC/CxP).
+   * @returns {Array<Object>} Filtered cartera items.
+   */
   getCarteraByTerceroAndTipo(idTercero, tipoLimpio) {
     const base = CACHE.getCarteraBase();
     if (base && base.length > 0) {
@@ -233,20 +263,16 @@ const DAO = {
   },
 
   /**
-   * Escenarios donde el self-healing puede fallar incluso con este parche:
-   * 1. Circuit breaker abierto — _refreshTerceros() falla y el caché no
-   *    se puede restaurar; todos los reintentos lanzarán el mismo error.
-   * 2. Hoja de cálculo (sheet) inaccesible o con datos corruptos —
-   *    ensureIntegrity detecta checksum mismatch tras refresh y activa
-   *    recoverFromStale(), que a su vez falla si la hoja origen no responde.
-   * 3. Race condition entre ejecuciones GAS distintas — el lock
-   *    _refreshingTerceros solo protege dentro de una misma ejecución;
-   *    dos usuarios en paralelo pueden disparar _refreshTerceros()
-   *    independientes, duplicando lecturas a la hoja (sin corrupción
-   *    de datos, pero con mayor latencia y consumo de cuota API).
-   * 4. La fila fue insertada por otra ejecución entre el refresh y el
-    *    sheet.getRange() — el rowIndex cacheado apunta a una fila que
-   *    ya no corresponde, causando una sobreescritura incorrecta.
+   * Saves or updates a tercero record with retry logic and cache integrity checks.
+   * @param {Object} tercero - Tercero data object.
+   * @param {string} id - Tercero ID.
+   * @param {string} nombre - Tercero name.
+   * @param {string} telefono - Phone number.
+   * @param {string} tipo - Tercero type.
+   * @param {number} limite - Credit limit.
+   * @param {boolean} activo - Active status.
+   * @returns {{isUpdate: boolean}} Whether an existing record was updated.
+   * @throws {Error} If integrity check fails or retries exhausted.
    */
   saveTerceroImpl(tercero, id, nombre, telefono, tipo, limite, activo) {
     const MAX_RETRIES = 5;
