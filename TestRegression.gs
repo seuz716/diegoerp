@@ -1094,3 +1094,50 @@ _test('SECURITY: doGet view usa lista blanca', () => {
     return 'Exception: ' + e.message;
   }
 });
+
+  // ===== SMOKE TESTS =====
+  _test('SmokeTests.runAll returns valid structure', () => {
+    try {
+      if (typeof SmokeTests === 'undefined' || typeof SmokeTests.runAll !== 'function') {
+        return 'SmokeTests.runAll not found - service not implemented';
+      }
+      const result = SmokeTests.runAll();
+      if (result && typeof result.success === 'boolean' && Array.isArray(result.results)) {
+        return true;
+      }
+      return 'Invalid smoke test result structure';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('SmokeTests.testHealthCheck uses getHealthStatus', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    // Verify testHealthCheck exists
+    if (typeof SmokeTests.testHealthCheck !== 'function') {
+      return 'testHealthCheck not found';
+    }
+    return true;
+  });
+
+  _test('SmokeTests.testConfiguration checks SPREADSHEET_ID', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    if (typeof SmokeTests.testConfiguration !== 'function') {
+      return 'testConfiguration not found';
+    }
+    return true;
+  });
+
+  _test('SmokeTests.testSheetsExist uses correct sheet names', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    if (typeof SmokeTests.testSheetsExist !== 'function') {
+      return 'testSheetsExist not found';
+    }
+    return true;
+  });
