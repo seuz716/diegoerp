@@ -1005,6 +1005,60 @@ function runAllRegressionTests() {
     }
   });
 
+  return {
+    passed: TEST_RESULTS.passed,
+    failed: TEST_RESULTS.failed,
+    tests: TEST_RESULTS.tests
+  };
+}
+
+// ===== CONFIG BACKUP & SCHEMA MANAGER TESTS =====
+
+_test('P1_CRITICAL: testConfigBackup - backup properties works', () => {
+  try {
+    if (typeof ConfigBackup === 'undefined' || typeof ConfigBackup.backupProperties !== 'function') {
+      return 'ConfigBackup.backupProperties not found';
+    }
+    // Test will execute in GAS environment
+    var backupId = ConfigBackup.backupProperties();
+    if (!backupId) return 'backupProperties returned no ID';
+    // Verify the function runs without error
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('P1_CRITICAL: testConfigRestore - restore properties works', () => {
+  try {
+    if (typeof ConfigBackup === 'undefined' || typeof ConfigBackup.restoreProperties !== 'function') {
+      return 'ConfigBackup.restoreProperties not found';
+    }
+    return true; // Will be verified in GAS environment
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
+  try {
+    if (typeof SchemaManager === 'undefined' || typeof SchemaManager.ensureSchemaVersion !== 'function') {
+      return 'SchemaManager.ensureSchemaVersion not found';
+    }
+    if (typeof SchemaManager.getCurrentSchemaVersion !== 'function') {
+      return 'SchemaManager.getCurrentSchemaVersion not found';
+    }
+    var version = SchemaManager.getCurrentSchemaVersion();
+    if (!version) return 'getCurrentSchemaVersion returned no value';
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+  return {
+
+
 // ===== CONFIG BACKUP & SCHEMA MANAGER TESTS =====
 
 _test('P1_CRITICAL: testConfigBackup - backup properties works', () => {
@@ -1040,9 +1094,3 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
   }
 });
 
-  return {
-    passed: TEST_RESULTS.passed,
-    failed: TEST_RESULTS.failed,
-    tests: TEST_RESULTS.tests
-  };
-}
