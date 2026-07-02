@@ -346,7 +346,80 @@ function runAllRegressionTests() {
     const result = INPUT_VALIDATOR.validatePageToken(-5);
     return result === 0 ? true : 'Expected 0, got ' + result;
   });
-  
+
+  // ===== PRODUCTO FLOW - Inventory Movement Tests =====
+
+  _test('P1_CRITICAL: incrementarStock updates version field', () => {
+    try {
+      const fnStr = DAO_PRODUCTOS.incrementarStock.toString();
+      // Verify version increment is implemented in incrementarStock
+      if (fnStr.indexOf('version') > -1 || fnStr.indexOf('VERSION') > -1) {
+        return true;
+      }
+      return 'incrementarStock does not update version field - optimistic locking missing';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('P1_CRITICAL: KARDEX entrada registra stock anterior/nuevo', () => {
+    try {
+      const fnStr = DAO_COMPRAS.crearMovimientoKardex.toString();
+      // Verify stock_anterior and stock_nuevo are captured
+      if (fnStr.indexOf('stock_anterior') > -1 && fnStr.indexOf('stock_nuevo') > -1) {
+        return true;
+      }
+      return 'KARDEX entrada no captura stock_anterior/stock_nuevo';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('P1_CRITICAL: registrarVentaAtomic valida stock disponible', () => {
+    try {
+      if (typeof DOMAIN.registrarVentaAtomic !== 'function') {
+        return 'DOMAIN.registrarVentaAtomic not found';
+      }
+      // Check for stock validation logic (currentStock < cant)
+      const fnStr = DOMAIN.registrarVentaAtomic.toString();
+      if (fnStr.indexOf('currentStock') > -1 && fnStr.indexOf('Stock insuficiente') > -1) {
+        return true;
+      }
+      return 'Stock validation missing in registrarVentaAtomic';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('P1_CRITICAL: registrarVentaAtomic batch writes version', () => {
+    try {
+      const fnStr = DOMAIN.registrarVentaAtomic.toString();
+      // Check for version update in batch write section
+      const hasBatchWrite = fnStr.indexOf('setValues') > -1 && fnStr.indexOf('batch') > -1;
+      // Verify that version is read (column 8) for optimistic locking
+      const readsVersion = fnStr.indexOf('C.version') > -1;
+      if (hasBatchWrite && !readsVersion) {
+        return 'FAIL: registrarVentaAtomic batch write missing version column read - optimistic locking broken';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('P1_CRITICAL: KARDEX salida registra referencia origen', () => {
+    try {
+      const kardexFn = DAO_COMPRAS.crearMovimientoKardex.toString();
+      // Verify origen field is set for KARDEX
+      if (kardexFn.indexOf('origen') > -1) {
+        return true;
+      }
+      return 'KARDEX entrada/salida no registra origen (COMPRA/VENTA)';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

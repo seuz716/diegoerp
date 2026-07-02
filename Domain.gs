@@ -1188,16 +1188,20 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           CACHE.recoverFromStale();
         }
 
-        // OPTIMIZED: Read only ID and Stock columns from product sheet
+        // OPTIMIZED: Read ID, Stock and Version columns for optimistic locking
         const C = CONFIG.COLUMNS.PRODUCTOS;
         const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
         const lastRow = prodSheet.getLastRow();
-        const colCount = Math.max(C.id, C.stock) + 1;
+        const colCount = C.version + 1; // Include version column for optimistic locking
         const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
+        const prodVersions = {};
         const prodIndex = {};
         for (let p = 0; p < prodData.length; p++) {
           const pid = String(prodData[p][C.id] || "").trim();
-          if (pid) prodIndex[pid] = p;
+          if (pid) {
+            prodIndex[pid] = p;
+            prodVersions[pid] = parseInt(prodData[p][C.version]) || 1;
+          }
         }
 
         // Verificar stock disponible y reducir (in-memory)
@@ -1219,11 +1223,13 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           }
 
             const currentStock = parseInt(prodData[p][C.stock]) || 0;
+            const currentVersion = prodVersions[prodId] || 1;
             if (currentStock < cant) {
             return _error("Stock insuficiente para producto " + prodId + ". Disponible: " + currentStock + ", Solicitado: " + cant);
           }
             const nuevoStock = currentStock - cant;
             prodData[p][C.stock] = nuevoStock;
+            prodData[p][C.version] = currentVersion + 1; // Optimistic locking version increment
            changedRows[p + 2] = true;
 
           // Registrar salida en kardex
@@ -1243,15 +1249,48 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           });
         }
 
-        // Batch write all stock changes at once
+        // Verify optimistic locking - check versions haven't changed since read
+        const prodSheetFresh = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const freshCount = prodSheetFresh.getLastRow();
+        if (freshCount !== lastRow) {
+          const lockErr = new Error("OptimisticLockError: La tabla de productos cambió durante la operación.");
+          lockErr.type = 'OPTIMISTIC_LOCK_FAILURE';
+          lockErr.retryable = true;
+          throw lockErr;
+        }
+        const freshData = prodSheetFresh.getRange(2, 1, lastRow - 1, C.version + 1).getValues();
+        for (const r of Object.keys(changedRows).map(Number)) {
+          const idx = r - 2;
+          const prodId = String(prodData[idx][C.id]).trim();
+          const actualVer = parseInt(freshData[idx][C.version]) || 1;
+          const expectedVer = prodVersions[prodId];
+          if (expectedVer !== undefined && actualVer !== expectedVer) {
+            const lockErr = new Error(
+              "OptimisticLockError: Producto " + prodId + " fue modificado concurrentemente " +
+              "(esperada v" + expectedVer + ", actual v" + actualVer + "). Reintente."
+            );
+            lockErr.type = 'OPTIMISTIC_LOCK_FAILURE';
+            lockErr.retryable = true;
+            throw lockErr;
+          }
+        }
+
+        // Batch write all stock changes at once with version (optimistic locking)
          const rowNums = Object.keys(changedRows).map(Number).sort((a, b) => a - b);
          if (rowNums.length > 0) {
            const batchData = [];
            for (const r of rowNums) {
              const idx = r - 2; // Convert row index to prodData index
-             batchData.push([prodData[idx][C.stock]]);
+             // Write both stock and version columns
+             batchData.push([prodData[idx][C.stock], prodData[idx][C.version]]);
            }
-           prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(batchData);
+           // Write to columns stock (2) and version (8) - need separate ranges for non-contiguous
+           prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(
+             batchData.map(row => [row[0]])
+           );
+           prodSheet.getRange(rowNums[0], C.version + 1, batchData.length, 1).setValues(
+             batchData.map(row => [row[1]])
+           );
          }
 
         // Crear registro de venta en cartera
