@@ -163,6 +163,7 @@ const CRYPTO_SERVICE = {
       return JSON.stringify({ c: encoded, i: iv, s: salt, h: hmac, v: this.TAG });
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.encrypt error:", e.message);
+      LogService.logError("encrypt error", { functionName: 'encrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en cifrado");
     }
   },
@@ -204,6 +205,7 @@ const CRYPTO_SERVICE = {
       return Utilities.newBlob(plaintext).getDataAsString();
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.decrypt error:", e.message);
+      LogService.logError("decrypt error", { functionName: 'decrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en descifrado");
     }
   },
@@ -285,6 +287,7 @@ const secureValue = this._loadKey(keyName);
     const validation = SCHEMA_VALIDATOR.validateRoleMap(raw);
     if (!validation.valid) {
       Logger.log("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
+      LogService.logError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
       throw new Error("Configuración de usuarios corrupta: " + validation.error);
     }
     
@@ -307,6 +310,7 @@ const normalized = email.toLowerCase().trim();
     
     if (!email && isSafeAction) {
       Logger.log('[PERMISSION] Ejecución de acción segura "' + accion + '" sin identidad (trigger)');
+      LogService.logInfo('Ejecución de acción segura sin identidad (trigger)', { functionName: 'checkPermission', details: { accion: accion } });
       return;
     }
     
