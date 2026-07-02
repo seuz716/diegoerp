@@ -1221,6 +1221,31 @@ function _sendTestAlert(results) {
     }
   });
 
+  // ===== AGENTE 3 - getVentasDelDia Test =====
+
+  _test('A3: getVentasDelDia exists and returns valid structure', () => {
+    if (typeof App.api.getVentasDelDia !== 'function') {
+      return 'App.api.getVentasDelDia no está definida en el frontend';
+    }
+    var result = getVentasDelDia();
+    if (!result || typeof result !== 'object') {
+      return 'getVentasDelDia no devolvió un objeto válido';
+    }
+    if (!('ventas' in result) || !('total' in result)) {
+      return 'getVentasDelDia no tiene propiedades ventas/total: ' + JSON.stringify(result);
+    }
+    if (!Array.isArray(result.ventas)) {
+      return 'result.ventas no es un array';
+    }
+    if (typeof result.total !== 'number') {
+      return 'result.total no es un número';
+    }
+    if (result.success === false && !result.error) {
+      return 'getVentasDelDia falló sin mensaje de error';
+    }
+    return true;
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

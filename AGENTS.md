@@ -171,3 +171,9 @@ Test Suite (runAllRegressionTests): 30 tests
 | toggleActivo() | App.api.toggleActivoProducto() | DAO_PRODUCTOS.toggleActivo() | ✅ | Cambia estado ACTIVO/INACTIVO |
 | (No UI directa) | getKardexProducto(id, limit) | DOMAIN.getKardexProducto(id, limit) | ✅ CORRECTO | Historial movimientos inventario por producto específico |
 | (No UI directa) | getKardex(limit) | DOMAIN.getKardex(limit) | ✅ CORRECTO | Kardex global: movimientos todos productos últimos 30 día |
+
+## MATRIZ DE CORRELACIÓN - DASHBOARD (Sección 8)
+
+| Función Frontend | Backend Call | Función Backend | Estado | Observaciones |
+|-----------------|--------------|-----------------|--------|---------------|
+| (No UI directa) | App.api.getVentasDelDia() | getVentasDelDia() | ✅ CORRECTO | Reporte de ventas del día actual. Útil para corte de caja diario. Retorna total y lista de ventas. |
