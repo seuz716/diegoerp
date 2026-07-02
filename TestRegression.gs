@@ -994,7 +994,7 @@ function runAllRegressionTests() {
     }
   });
 
-  _test('I-01b: analizarConGeminiFresco existe y no lanza sin parámetros', () => {
+_test('I-01b: analizarConGeminiFresco existe y no lanza sin parámetros', () => {
     try {
       if (typeof analizarConGeminiFresco !== 'function') return 'analizarConGeminiFresco no es función';
       var res = analizarConGeminiFresco();
@@ -1004,6 +1004,150 @@ function runAllRegressionTests() {
       return 'lanzó excepción inesperada: ' + e.message;
     }
   });
+
+// ===== KARDEX INTEGRITY TESTS (AGENTE 1) =====
+
+_test('K-01: FIFO integrity - each sale has prior purchase (stock sufficiency)', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    if (movimientos.length === 0) return true;
+    var movPorProducto = {};
+    for (var i = 0; i < movimientos.length; i++) {
+      var m = movimientos[i];
+      var prodId = m.id_producto;
+      if (!prodId) continue;
+      if (!movPorProducto[prodId]) movPorProducto[prodId] = [];
+      movPorProducto[prodId].push(m);
+    }
+    var errores = [];
+    for (var prodId in movPorProducto) {
+      var movs = movPorProducto[prodId].sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); });
+      var stock = 0;
+      for (var j = 0; j < movs.length; j++) {
+        var mov = movs[j];
+        var tipo = String(mov.tipo_mov || '').toUpperCase();
+        var cantidad = mov.cantidad || 0;
+        if (tipo === 'ENTRADA') stock += cantidad;
+        else if (tipo === 'SALIDA') {
+          if (stock < cantidad) {
+            errores.push(prodId + ': salida sin entrada previa - ' + cantidad + ' unidades, stock anterior: ' + stock);
+          }
+          stock -= cantidad;
+          if (stock < 0) stock = 0;
+        }
+      }
+    }
+    if (errores.length > 0) return 'Errores FIFO: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-02: Cost consistency - products with stock must have purchase price > 0', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar({});
+    var errores = [];
+    for (var i = 0; i < productos.length; i++) {
+      var p = productos[i];
+      var stock = p.stock || 0;
+      var costo = p.precio_compra || 0;
+      if (stock > 0 && costo <= 0) {
+        errores.push(p.id + ' (' + p.nombre + '): stock=' + stock + ', costo=0');
+      }
+    }
+    if (errores.length > 0) return 'Productos con stock pero costo cero: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-03: Orphan movements - Kardex movements must have valid product ID', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    var productos = DAO_PRODUCTOS.listar({});
+    var idsValidos = {};
+    for (var i = 0; i < productos.length; i++) {
+      idsValidos[productos[i].id] = true;
+    }
+    var huerfanos = [];
+    for (var j = 0; j < movimientos.length; j++) {
+      var m = movimientos[j];
+      var prodId = m.id_producto;
+      if (prodId && !idsValidos[prodId]) {
+        huerfanos.push(prodId);
+      }
+    }
+    if (huerfanos.length > 0) return 'Movimientos huérfanos: ' + huerfanos.slice(0, 5).join(', ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-04: Logical dates - Kardex movements must have valid dates', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    var errores = [];
+    var hoy = new Date();
+    var hace5Anios = new Date(hoy.getFullYear() - 5, hoy.getMonth(), hoy.getDate());
+    for (var i = 0; i < movimientos.length; i++) {
+      var m = movimientos[i];
+      var fecha = new Date(m.fecha);
+      if (isNaN(fecha.getTime())) {
+        errores.push('Fecha inválida en movimiento: ' + m.id);
+        continue;
+      }
+      if (fecha > hoy) {
+        errores.push('Fecha futura: ' + m.fecha + ' - ' + m.id_producto);
+      }
+      if (fecha < hace5Anios) {
+        errores.push('Fecha antigua (>5 años): ' + m.fecha + ' - ' + m.id_producto);
+      }
+    }
+    if (errores.length > 0) return 'Fechas inválidas: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('K-05: Stock reconciliation - Kardex calculated stock matches product record', () => {
+  try {
+    var movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+    var movPorProducto = {};
+    for (var i = 0; i < movimientos.length; i++) {
+      var m = movimientos[i];
+      var prodId = m.id_producto;
+      if (!prodId) continue;
+      if (!movPorProducto[prodId]) movPorProducto[prodId] = [];
+      movPorProducto[prodId].push(m);
+    }
+    var errores = [];
+    for (var prodId in movPorProducto) {
+      var movs = movPorProducto[prodId].sort(function(a,b) { return new Date(a.fecha) - new Date(b.fecha); });
+      var stock = 0;
+      for (var j = 0; j < movs.length; j++) {
+        var tipo = String(movs[j].tipo_mov || '').toUpperCase();
+        var cant = movs[j].cantidad || 0;
+        if (tipo === 'ENTRADA') stock += cant;
+        else if (tipo === 'SALIDA') stock -= cant;
+      }
+      var producto = DAO_PRODUCTOS.obtener(prodId);
+      if (producto) {
+        var stockRegistrado = producto.stock || 0;
+        if (stock !== stockRegistrado) {
+          errores.push(prodId + ': calculado=' + stock + ', registrado=' + stockRegistrado);
+        }
+      }
+    }
+    if (errores.length > 0) return 'Stock no concuerda: ' + errores.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
 
 // ===== CONFIG BACKUP & SCHEMA MANAGER TESTS =====
 

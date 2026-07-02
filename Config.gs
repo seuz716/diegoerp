@@ -63,6 +63,15 @@ const CONFIG = {
     FLUJO_CAJA: { id: 0, fecha: 1, tipo: 2, concepto: 3, monto: 4, referencia: 5, usuario: 6 },
   },
   STOCK_MINIMO: 5,
+  MATERIALITY_THRESHOLD: 100000, // 1,000 COP en centavos
+
+  // Sanitización segura de celdas para evitar errores de tipo
+  _sanitizeCell(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return v;
+    return String(v);
+  },
   SCHEMA_definitions: {
     TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
     CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
