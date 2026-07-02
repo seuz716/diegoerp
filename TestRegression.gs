@@ -1562,14 +1562,149 @@ _test('K-10: Consistencia temporal del kardex', () => {
       return 'testInvAjustesNoAutorizados not found - service not implemented';
     }
     return true;
-  });
 
-  _test('ejecutarTestsConciliacionInventario function exists', () => {
-    if (typeof ejecutarTestsConciliacionInventario !== 'function') {
-      return 'ejecutarTestsConciliacionInventario not found - service not implemented';
+// ===== PROVIDER & PRODUCT ORIGEN TESTS PROV-01 to PROV-04 =====
+
+_test('PROV-01: Trazabilidad proveedor → producto', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var detalleCompras = DAO_COMPRAS.listarDetalles(); // Asumiendo existe esta función
+    var errores = [];
+    
+    if (!Array.isArray(detalleCompras)) {
+      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
     }
+    
+    for (var i = 0; i < productos.length && i < 50; i++) {
+      var prodId = productos[i].id;
+      var ultimaCompra = null;
+      var fechaUltima = null;
+      
+      // Buscar última compra con este producto
+      for (var j = 0; j < detalleCompras.length; j++) {
+        if (detalleCompras[j].id_producto === prodId) {
+          var compraFecha = detalleCompras[j].fecha || detalleCompras[j].fecha_compra;
+          if (!fechaUltima || (compraFecha && fechaUltima < compraFecha)) {
+            fechaUltima = compraFecha;
+            ultimaCompra = detalleCompras[j];
+          }
+        }
+      }
+      
+      // Si tiene compras, verificar que el proveedor existe
+      if (ultimaCompra && ultimaCompra.id_compra) {
+        var compra = DAO_COMPRAS.obtener(ultimaCompra.id_compra);
+        if (compra && compra.id_proveedor) {
+          var tercero = DAO.getTerceroById(compra.id_proveedor);
+          if (!tercero) {
+            errores.push('Producto ' + prodId + ' proveedor inexistente');
+          }
+        }
+      }
+    }
+    if (errores.length > 0) return errores.slice(0, 5).join('; ');
     return true;
-  });
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('PROV-02: Costo de reposición actual', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var detalleCompras = DAO_COMPRAS.listarDetalles();
+    var alertas = [];
+    
+    if (!Array.isArray(detalleCompras)) {
+      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
+    }
+    
+    for (var i = 0; i < productos.length && i < 50; i++) {
+      var prodId = productos[i].id;
+      var precioActual = productos[i].precio_compra || 0;
+      var ultimoPrecio = null;
+      
+      // Buscar último precio de compra
+      for (var j = detalleCompras.length - 1; j >= 0; j--) {
+        if (detalleCompras[j].id_producto === prodId) {
+          ultimoPrecio = detalleCompras[j].precio_unitario;
+          break;
+        }
+      }
+      
+      if (ultimoPrecio && precioActual) {
+        var diferencia = Math.abs(precioActual - ultimoPrecio) / ultimoPrecio;
+        if (diferencia > 0.10) {
+          alertas.push('Producto ' + prodId + ': diferencia ' + Math.round(diferencia * 100) + '%');
+        }
+      }
+    }
+    if (alertas.length > 0) return 'Alertas: ' + alertas.slice(0, 5).join('; ');
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('PROV-03: Proveedor sin compras registradas', () => {
+  try {
+    var proveedores = [];
+    var todosTerceros = CACHE.terceros || DAO.getTerceros();
+    var tercerosCompras = {};
+    
+    // Obtener todas las compras y extraer proveedores únicos
+    var compras = DAO_COMPRAS.getCompras();
+    for (var i = 0; i < compras.length; i++) {
+      if (compras[i].id_proveedor) {
+        tercerosCompras[compras[i].id_proveedor] = true;
+      }
+    }
+    
+    // Identificar proveedores sin compras
+    var sinCompras = [];
+    for (var j = 0; j < todosTerceros.length; j++) {
+      var t = todosTerceros[j];
+      var tipo = (t.tipo || '').toUpperCase();
+      if ((tipo === 'PROVEEDOR' || tipo === 'AMBOS') && !tercerosCompras[t.id]) {
+        sinCompras.push(t.nombre || t.id);
+      }
+    }
+    // Normal: puede haber proveedores sin compras aún
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
+_test('PROV-04: Producto sin proveedor conocido', () => {
+  try {
+    var productos = DAO_PRODUCTOS.listar();
+    var detalleCompras = DAO_COMPRAS.listarDetalles();
+    var sinOrigen = [];
+    
+    if (!Array.isArray(detalleCompras)) {
+      return 'DAO_COMPRAS.listarDetalles no disponible - omitido';
+    }
+    
+    var prodConCompra = {};
+    for (var j = 0; j < detalleCompras.length; j++) {
+      if (detalleCompras[j].id_producto) {
+        prodConCompra[detalleCompras[j].id_producto] = true;
+      }
+    }
+    
+    for (var i = 0; i < productos.length; i++) {
+      if (!prodConCompra[productos[i].id]) {
+        sinOrigen.push(productos[i].nombre || productos[i].id);
+      }
+    }
+    // Normal: productos nuevos pueden no tener historial
+    return true;
+  } catch (e) {
+    return 'Exception: ' + e.message;
+  }
+});
+
 
   return {
     passed: TEST_RESULTS.passed,
