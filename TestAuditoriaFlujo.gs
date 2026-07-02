@@ -14,10 +14,11 @@ function testConciliacionSaldoCaja() {
   Logger.log("=== TEST CONCILIACIÓN SALDO DE CAJA ===");
   
   try {
-    const libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
-    const flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
-    
-    if (!libroDiario || !flujoCaja) {
+    let libroDiario, flujoCaja;
+    try {
+      libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+    } catch (sheetErr) {
       Logger.log('⚠️ Hojas de libro diario o flujo de caja no encontradas (omitir test)');
       return { success: true, message: 'Sin hojas para conciliar (no configuradas)' };
     }
@@ -99,14 +100,14 @@ function testConciliacionSaldoCaja() {
 function testConciliacionTransacciones() {
   Logger.log("=== TEST CONCILIACIÓN TRANSACCIONES ===");
   
+  let libroDiario, flujoCaja;
   try {
-    const libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
-    const flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
-    
-    if (!libroDiario || !flujoCaja) {
-      Logger.log('⚠️ Hojas de libro diario o flujo de caja no encontradas (omitir test)');
-      return { success: true, message: 'Sin hojas para conciliar' };
-    }
+    libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+    flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+  } catch (sheetErr) {
+    Logger.log('⚠️ Hojas de libro diario o flujo de caja no encontradas (omitir test)');
+    return { success: true, message: 'Sin hojas para conciliar' };
+  }
 
     // 1. Obtener transacciones de libro diario que afectan caja (últimas 20)
     const ldData = libroDiario.getDataRange().getValues();
@@ -201,12 +202,13 @@ function testConciliacionTransacciones() {
 function testFlujoCajaSinNegativos() {
   Logger.log("=== TEST FLUJO DE CAJA SIN NEGATIVOS ===");
   
+  let flujoCaja;
   try {
-    const flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
-    if (!flujoCaja) {
-      Logger.log('⚠️ Hoja de flujo de caja no encontrada (omitir test)');
-      return { success: true, message: 'Sin hoja de flujo de caja' };
-    }
+    flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+  } catch (sheetErr) {
+    Logger.log('⚠️ Hoja de flujo de caja no encontrada (omitir test)');
+    return { success: true, message: 'Sin hoja de flujo de caja' };
+  }
 
     const fcData = flujoCaja.getDataRange().getValues();
     const fcCol = CONFIG.COLUMNS.FLUJO_CAJA;
