@@ -367,6 +367,13 @@ function inicializarSistema() {
     Logger.log("[MIGRACION] reloadSchema ejecutado: " + JSON.stringify(resultado));
     const reporte = CONFIG.getSchemaReport();
     Logger.log("[MIGRACION] Reporte de esquemas: " + JSON.stringify(reporte));
+    
+    // Setup backup and export triggers
+    if (typeof setupBackupAndExports === 'function') {
+      setupBackupAndExports();
+      Logger.log("[MIGRACION] Triggers de backup y export configurados");
+    }
+    
     Logger.log("[MIGRACION] Sistema inicializado correctamente.");
     return {
       success: true,

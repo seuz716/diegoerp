@@ -1026,6 +1026,14 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
     if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
     const csv = LIBRO_DIARIO.exportarCSV(fechaInicio, fechaFin);
+    // Also save to Drive for audit trail
+    if (ExportService && ExportService._saveCSVToDrive) {
+      try {
+        ExportService._saveCSVToDrive(csv, 'libro_diario_' + ExportService._getDateStr() + '.csv');
+      } catch (driveErr) {
+        Logger.log("Failed to save libro diario to Drive: " + driveErr.message);
+      }
+    }
     return { success: true, csv: csv };
   } catch (e) {
     return _safeError("exportarLibroDiario", e);
@@ -1086,6 +1094,14 @@ function exportarFlujoCaja(fechaInicio, fechaFin) {
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
     if (fechaFin) INPUT_VALIDATOR.validateDate(fechaFin, 'Fecha fin');
     const csv = FLUJO_CAJA.exportarCSV(fechaInicio, fechaFin);
+    // Also save to Drive for audit trail
+    if (ExportService && ExportService._saveCSVToDrive) {
+      try {
+        ExportService._saveCSVToDrive(csv, 'flujo_caja_' + ExportService._getDateStr() + '.csv');
+      } catch (driveErr) {
+        Logger.log("Failed to save flujo caja to Drive: " + driveErr.message);
+      }
+    }
     return { success: true, csv: csv };
   } catch (e) {
     return _safeError("exportarFlujoCaja", e);

@@ -328,6 +328,21 @@ function _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia) {
 }
 
 const DOMAIN = {
+  /**
+   * Creates or updates a third party record (CLIENTE/PROVEEDOR/AMBOS).
+   * Validates ID format, credit limit, and initial balance.
+   * Acquires distributed lock, snapshots existing row for rollback,
+   * persists via DAO, logs the event, and invalidates cache.
+   * @param {Object} tercero - Third party data object
+   * @param {string} tercero.id - Unique identifier (RUT/CC)
+   * @param {string} [tercero.nombre] - Full name or business name
+   * @param {string} [tercero.telefono] - Contact phone number
+   * @param {string} [tercero.tipo] - Type: CLIENTE, PROVEEDOR, or AMBOS
+   * @param {number} [tercero.limite_credito] - Credit limit in currency units
+   * @param {number} [tercero.saldo_inicial] - Initial balance
+   * @param {boolean} [tercero.activo] - Active status flag
+   * @returns {{success: boolean, id: string}} Result with success flag and tercero ID
+   */
   saveTercero(tercero) {
     let lockAcquired = null;
     const tx = _Transaction.create();
@@ -387,6 +402,16 @@ if (resultado.isUpdate) {
     }
   },
 
+  /**
+   * Retrieves accounts receivable/payable (cartera) with optional filtering and pagination.
+   * Applies business logic: marks overdue items based on current date,
+   * resolves third party names from cache, and calculates overdue days.
+   * @param {string|null} [filtroTipo=null] - Filter by type: CxC or CxP
+   * @param {string|null} [filtroEstado=null] - Filter by estado: ABIERTA, PARCIAL, VENCIDA, CANCELADA
+   * @param {number} [pageSize=5000] - Maximum records per page (1-5000)
+   * @param {number} [pageToken=0] - Zero-based offset for pagination
+   * @returns {{items: Array, nextPageToken: number}} Paginated cartera items and next offset
+   */
   getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
     const debeFiltrarVencida = filtroEstado === CARTERA_CONFIG.ESTADOS.VENCIDA;
     
@@ -464,6 +489,18 @@ if (resultado.isUpdate) {
     return TransactionManager.getCorrelationId();
   },
 
+  /**
+   * Registers a payment (abono) against a third party's outstanding debt.
+   * Implements idempotency via correlationId, validates credit limits for CxC,
+   * applies payment to oldest pending items first (FIFO), generates accounting
+   * entries and cash flow records. Retries on optimistic locking conflicts.
+   * @param {string} idTercero - Third party ID
+   * @param {number} valorAbono - Payment amount in currency units
+   * @param {string} referencia - Payment reference or description
+   * @param {string} tipo - Debt type: CxC or CxP
+   * @param {string} [correlationId] - Idempotency key to prevent duplicate processing
+   * @returns {{success: boolean, aplicado: number, restante: number, movimientos: number, correlationId: string, deduplicated?: boolean}} Processing result
+   */
   registrarAbonoAtomic(idTercero, valorAbono, referencia, tipo, correlationId) {
     const idTerceroLimpio = _sanitizeId(idTercero);
     if (!idTerceroLimpio) return _error('ID tercero inválido.');
@@ -627,6 +664,14 @@ if (resultado.isUpdate) {
     return _error(msg);
   },
 
+  /**
+   * Batch-updates multiple cartera records within a single atomic transaction.
+   * Takes a snapshot of affected rows before applying changes,
+   * delegates to DAO.updateCarteraBatch, and rolls back on failure.
+   * @param {Array} cambios - Array of change objects {rowIndex, saldo, estado, expectedVersion}
+   * @returns {boolean} True on successful update
+   * @throws {Error} Propagates DAO errors after rollback
+   */
   actualizarCarteraBatch(cambios) {
     const tx = _Transaction.create();
     tx.begin();
@@ -643,7 +688,16 @@ if (resultado.isUpdate) {
   },
 
   /**
-   * Creates a receivable/payable entry with business rule validation
+   * Creates a receivable (CxC) or payable (CxP) entry with full business rule validation.
+   * Validates third party existence, credit limits for CxC, generates a unique
+   * cartera ID, and acquires a distributed lock for the third party.
+   * @param {string} idTercero - Third party ID
+   * @param {string} origenId - Origin document ID (invoice, sale, etc.)
+   * @param {number} total - Total amount in currency units
+   * @param {string} tipo - Cartera type: CxC or CxP
+   * @param {number} [diasCredito=30] - Credit term in days (0-365)
+   * @returns {string} The newly created cartera record ID
+   * @throws {Error} On validation failure, third party not found, or credit limit exceeded
    */
   crearCarteraAtomic(idTercero, origenId, total, tipo, diasCredito) {
     const idTerceroLimpio = _sanitizeId(idTercero);
@@ -699,6 +753,23 @@ DAO.createCartera(record);
     }
   },
 
+  /**
+   * Registers a supplier purchase with inline product creation for unknown items.
+   * Validates supplier existence, invoice uniqueness, and item data.
+   * Automatically creates unknown products, increments stock, records kardex
+   * movements, and generates accounting entries. Retries on optimistic locking.
+   * @param {string} proveedorId - Supplier third party ID
+   * @param {Array} items - Array of purchase items
+   * @param {string|undefined} items[].id - Product ID (optional if nombre provided for inline creation)
+   * @param {string} [items[].nombre] - Product name for inline creation when ID is unknown
+   * @param {number} items[].cantidad - Quantity purchased
+   * @param {number} items[].precio_unitario - Unit price
+   * @param {number} total - Total purchase amount
+   * @param {Date|string} fechaVencimiento - Payment due date (defaults to +30 days)
+   * @param {string} [factura] - Supplier invoice number (checked for duplicates)
+   * @param {string} [correlationId] - Idempotency key
+   * @returns {{success: boolean, id: string, total: number}} Purchase result with ID
+   */
   registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura, correlationId) {
     const corrId = correlationId || ('compra_' + Date.now());
     const idProv = _sanitizeId(proveedorId);
@@ -904,6 +975,16 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
     return _error(msg);
   },
 
+  /**
+   * Processes a payment against a supplier purchase order.
+   * Validates the purchase exists and is not already fully paid.
+   * Updates purchase balance, records payment, generates accounting
+   * entries (libro diario + cash flow). Retries on optimistic locking.
+   * @param {string} idCompra - Purchase ID to pay
+   * @param {number} monto - Payment amount in currency units
+   * @param {string} referencia - Payment reference or description
+   * @returns {{success: boolean, id: string, saldo_restante: number, estado: string}} Payment result with remaining balance
+   */
   procesarPagoProveedorAtomic(idCompra, monto, referencia) {
     const idCompraLimpio = String(idCompra || "").trim();
     if (!idCompraLimpio) return _error("ID de compra inválido.");
@@ -1008,6 +1089,12 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return _error(msg);
   },
 
+  /**
+   * Retrieves upcoming due dates for both cartera (CxC/CxP) and supplier purchases
+   * within a specified number of days from today. Sorts by closest due date first.
+   * @param {number} dias - Number of days ahead to search
+   * @returns {Array} Array of upcoming due items with type, third party, amount, and days remaining
+   */
   getVencimientosProximos(dias) {
     const hoy = _today();
     const limite = new Date(hoy.getTime() + dias * 86400000);
@@ -1061,6 +1148,13 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return vencimientos;
   },
 
+  /**
+   * Returns the top N debtors ranked by total overdue CxC balance.
+   * Calculates overdue days, invoice count, and total delinquent amount per debtor.
+   * Sorts by descending overdue amount.
+   * @param {number} [topN=10] - Number of top debtors to return
+   * @returns {Array} Array of debtor objects {id, nombre, saldo_vencido, total_facturas, max_dias}
+   */
   getRankingDeudores(topN) {
     if (topN === undefined) topN = 10;
     CACHE.refresh();
@@ -1102,6 +1196,11 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return ranking.slice(0, topN);
   },
 
+  /**
+   * Calculates supplier concentration: each supplier's share of total CxP balance.
+   * Returns suppliers sorted by descending balance with percentage of total.
+   * @returns {{items: Array, total: number}} Items array with {id, nombre, saldo, porcentaje} and total CxP
+   */
   getConcentracionProveedores() {
     CACHE.refresh();
     const cartera = CACHE.cartera || [];
@@ -1138,6 +1237,21 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return { items: result, total: totalCxP };
   },
 
+  /**
+   * Registers a cash sale to a client with real-time stock deduction.
+   * Validates client existence and stock availability for all items.
+   * Applies optimistic locking per product (deadlock prevention via sorted locks),
+   * records kardex movements, creates a zero-balance CxC record, and generates
+   * accounting entries. Retries on version conflicts.
+   * @param {string} clienteId - Client third party ID
+   * @param {Array} items - Array of sale items
+   * @param {string} items[].id - Product ID
+   * @param {number} items[].cantidad - Quantity sold
+   * @param {number} items[].precio_unitario - Unit sale price
+   * @param {number} total - Total sale amount
+   * @param {string} [correlationId] - Idempotency key
+   * @returns {{success: boolean, id: string, total: number}} Sale result with ID
+   */
   registrarVentaAtomic(clienteId, items, total, correlationId) {
     const corrId = correlationId || ('venta_' + Date.now());
     const idCliente = _sanitizeId(clienteId);
@@ -1373,14 +1487,31 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return _error("Conflicto de concurrencia persistente al registrar venta.");
   },
 
+  /**
+   * Retrieves inventory movement history (kardex) for a specific product.
+   * @param {string} idProducto - Product ID
+   * @param {number} [limit] - Maximum number of records to return
+   * @returns {Array} Array of kardex movement records
+   */
   getKardexProducto(idProducto, limit) {
     return DAO_COMPRAS.getMovimientosKardex(idProducto, limit);
   },
 
+  /**
+   * Retrieves recent inventory movement history (kardex) for all products.
+   * @param {number} [limit] - Maximum number of records to return
+   * @returns {Array} Array of kardex movement records
+   */
   getKardex(limit) {
     return DAO_COMPRAS.getAllMovimientosKardex(30, limit);
   },
 
+  /**
+   * Calculates inventory rotation metrics (entries, exits, net balance) per product
+   * within the given time window from kardex data.
+   * @param {number} dias - Number of days to analyze
+   * @returns {Object} Rotation data keyed by product ID with {entradas, salidas, total}
+   */
   getRotacionInventario(dias) {
     const movimientos = this.getKardex(1000);
     const rotacion = {};
