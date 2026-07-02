@@ -1541,6 +1541,80 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
   },
 
   /**
+   * Validates if a date is within working hours (8AM-6PM, Mon-Fri).
+   * Returns validation result with reason if outside working hours.
+   * @param {Date|string} fecha - Date to validate
+   * @returns {{valido: boolean, motivo: string}} Validation result
+   */
+  validarHorarioLaboral(fecha) {
+    const d = _safeDate(fecha);
+    if (!d) return { valido: false, motivo: "Fecha inválida" };
+    
+    const day = d.getDay();
+    const hour = d.getHours();
+    
+    if (day === 0 || day === 6) {
+      return { valido: false, motivo: "Fin de semana" };
+    }
+    if (hour < 8 || hour >= 18) {
+      return { valido: false, motivo: "Fuera de horario laboral (8AM-6PM)" };
+    }
+    return { valido: true, motivo: "" };
+  },
+
+  /**
+   * Validates kardex movement editing restrictions.
+   * Only allows edits for movements older than 24h if user is ADMIN.
+   * Logs all edit attempts in AUDIT_LOG.
+   * @param {string} idMovimiento - Movement ID to validate
+   * @param {Date|string} nuevaFecha - Proposed new date
+   * @returns {{permitido: boolean, motivo: string}} Permission result
+   */
+  validarEdicionKardex(idMovimiento, nuevaFecha) {
+    const d = _safeDate(nuevaFecha);
+    if (!d) return { permitido: false, motivo: "Nueva fecha inválida" };
+    
+    const user = SESSION_SERVICE.getCurrentUser();
+    const email = user && user.getEmail ? user.getEmail() : null;
+    const role = email ? AuthService.getUserRole(email) : null;
+    const isAdmin = role === "ADMIN";
+    
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    if (!kardexSheet) return { permitido: false, motivo: "Hoja KARDEX no disponible" };
+    
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const data = kardexSheet.getDataRange().getValues();
+    let movimiento = null;
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0] || "").trim() === String(idMovimiento || "").trim()) {
+        movimiento = data[i];
+        break;
+      }
+    }
+    
+    if (!movimiento) return { permitido: false, motivo: "Movimiento no encontrado" };
+    
+    const fechaMov = _safeDate(movimiento[KCOL.fecha]);
+    if (!fechaMov) return { permitido: false, motivo: "Fecha del movimiento inválida" };
+    
+    const diffMs = d.getTime() - fechaMov.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    if (diffHours >= 24 && !isAdmin) {
+      return { permitido: false, motivo: "Edición de movimientos antiguos requiere ADMIN" };
+    }
+    
+    const corrId = TransactionManager.getCorrelationId() || ('kardex_edit_' + Date.now());
+    LOG_ENGINE.logEvent("EDITAR_KARDEX", "KARDEX", idMovimiento,
+      { fecha_original: fechaMov.toISOString() },
+      { nueva_fecha: d.toISOString(), usuario: email },
+      "SUCCESS", { correlationId: corrId });
+    
+    return { permitido: true, motivo: "" };
+  },
+
+  /**
    * Retrieves inventory movement history (kardex) for a specific product.
    * @param {string} idProducto - Product ID
    * @param {number} [limit] - Maximum number of records to return
@@ -1557,6 +1631,42 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
    */
   getKardex(limit) {
     return DAO_COMPRAS.getAllMovimientosKardex(30, limit);
+  },
+
+  /**
+   * Detects duplicate third parties by name (normalized).
+   * Returns terceros that have same name but different IDs.
+   * @returns {Array<{nombre: string, ids: string[], tipo: string}>} Duplicate entries
+   */
+  getTercerosDuplicados() {
+    const terceros = CACHE.terceros || DAO.getTerceros();
+    const nombreAId = {};
+    const duplicados = [];
+    
+    for (let i = 0; i < terceros.length; i++) {
+      const t = terceros[i];
+      const nombreNormalizado = String(t.nombre || "").trim().toLowerCase();
+      if (!nombreNormalizado) continue;
+      const tipo = String(t.tipo || "").toUpperCase();
+      
+      const key = nombreNormalizado + "|" + tipo;
+      if (!nombreAId[key]) {
+        nombreAId[key] = { nombre: t.nombre, ids: [], tipo };
+      }
+      nombreAId[key].ids.push(t.id);
+    }
+    
+    for (const key in nombreAId) {
+      if (nombreAId[key].ids.length > 1) {
+        duplicados.push({
+          nombre: nombreAId[key].nombre,
+          ids: nombreAId[key].ids,
+          tipo: nombreAId[key].tipo
+        });
+      }
+    }
+    
+    return duplicados;
   },
 
   /**
@@ -2285,4 +2395,665 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
     return Object.values(trazas);
   },
+
+  /**
+   * Valorización a costo promedio ponderado.
+   * @returns {Array} Productos con valuación { id, stock, costo_promedio, valor_valuado }
+   */
+  getValorizacionCostoPromedio() {
+    const movimientos = DAO_COMPRAS.getAllMovimientosKardex(365, 5000);
+    const productos = DAO_PRODUCTOS.listar({});
+
+    // Calcular costo promedio por producto
+    const entradasPorProducto = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      if (String(m.tipo_mov || "").toUpperCase() !== 'ENTRADA') continue;
+      const prodId = m.id_producto;
+      if (!prodId) continue;
+      if (!entradasPorProducto[prodId]) {
+        entradasPorProducto[prodId] = { totalCantidad: 0, totalCosto: 0, entradas: [] };
+      }
+      const cant = m.cantidad || 0;
+      const costo = m.costo_unitario || m.precio_compra || 0;
+      entradasPorProducto[prodId].totalCantidad += cant;
+      entradasPorProducto[prodId].totalCosto += cant * costo;
+      entradasPorProducto[prodId].entradas.push({ cantidad: cant, costo });
+    }
+
+    // Calcular valuado
+    return productos.map(p => {
+      const datos = entradasPorProducto[p.id] || { totalCantidad: 0, totalCosto: 0 };
+      const costoPromedio = datos.totalCantidad > 0 ? datos.totalCosto / datos.totalCantidad : 0;
+      const stockActual = p.stock || 0;
+      const valorValuado = Math.round(stockActual * costoPromedio);
+
+      return {
+        id: p.id,
+        nombre: p.nombre || p.id,
+        stock: stockActual,
+        costo_promedio: Math.round(costoPromedio),
+        valor_valuado: valorValuado,
+        valor_registro: Math.round((p.precio_compra || 0) * stockActual),
+        diferencia: valorValuado - Math.round((p.precio_compra || 0) * stockActual)
+      };
+    }).filter(p => p.stock > 0);
+  },
+
+  /**
+   * Valorización a último costo.
+   * @returns {Array} Productos con valuación basada en última entrada
+   */
+  getValorizacionUltimoCosto() {
+    const movimientos = DAO_COMPRAS.getAllMovimientosKardex(365, 5000);
+    const productos = DAO_PRODUCTOS.listar({});
+
+    // Obtener última entrada por producto
+    const ultimaEntradaPorProducto = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      if (String(m.tipo_mov || "").toUpperCase() !== 'ENTRADA') continue;
+      const prodId = m.id_producto;
+      if (!prodId) continue;
+      const fecha = new Date(m.fecha);
+      if (!ultimaEntradaPorProducto[prodId] || fecha > new Date(ultimaEntradaPorProducto[prodId].fecha)) {
+        ultimaEntradaPorProducto[prodId] = {
+          fecha: m.fecha,
+          costo: m.costo_unitario || m.precio_compra || 0
+        };
+      }
+    }
+
+    return productos.map(p => {
+      const ultima = ultimaEntradaPorProducto[p.id];
+      const ultimoCosto = ultima ? ultima.costo : 0;
+      const stockActual = p.stock || 0;
+      const valorValuado = Math.round(stockActual * ultimoCosto);
+
+      return {
+        id: p.id,
+        nombre: p.nombre || p.id,
+        stock: stockActual,
+        ultimo_costo: ultimoCosto,
+        valor_valuado: valorValuado,
+        fecha_ultima_entrada: ultima ? ultima.fecha : null
+      };
+    }).filter(p => p.stock > 0);
+  },
+
+  /**
+   * Cruza valuación con libro diario buscando diferencias.
+   * @returns {Array} Diferencias en valuación vs contabilidad
+   */
+  getDiferenciasValorizacion() {
+    const valuadoPromedio = this.getValorizacionCostoPromedio();
+    const libroDiario = DAO.getLibroDiario ? DAO.getLibroDiario() : [];
+
+    // Calcular total compras en libro
+    let totalCompras = 0;
+    for (let i = 0; i < libroDiario.length; i++) {
+      const t = libroDiario[i];
+      if (t.tipo === 'COMPRA' || t.tipo === 'COMPRA_PROVEEDOR') {
+        totalCompras += Number(t.monto) || 0;
+      }
+    }
+
+    // Calcular total valuado
+    const totalValorizado = valuadoPromedio.reduce((sum, v) => sum + v.valor_valuado, 0);
+    const diferencia = totalValorizado - totalCompras;
+    const umbral = CONFIG.MATERIALITY_THRESHOLD || 100000;
+
+    return {
+      total_compras_libro: totalCompras,
+      total_valuado_kardex: totalValorizado,
+      diferencia: diferencia,
+      diferencia_significativa: Math.abs(diferencia) > umbral,
+      umbral: umbral
+    };
+  },
+
+  /**
+   * Ventas del día agrupadas por producto.
+   * @returns {Array} { productoId, nombre, cantidad, total }
+   */
+  getVentasDelDiaPorProducto() {
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const lastRow = kardexSheet.getLastRow();
+
+    if (lastRow < 2) return [];
+
+    const hoy = _today();
+    const hoyStr = hoy.toISOString().split('T')[0];
+
+    const numCols = Math.max.apply(null, Object.values(KCOL)) + 1;
+    const kardexData = kardexSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+    const ventasPorProducto = {};
+    for (let i = 0; i < kardexData.length; i++) {
+      const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+      if (tipoMov !== 'SALIDA') continue;
+
+      const fecha = kardexData[i][KCOL.fecha];
+      const prodId = String(kardexData[i][KCOL.id_producto] || "").trim();
+      if (!prodId) continue;
+
+      const fechaStr = fecha instanceof Date ? fecha.toISOString().split('T')[0] : String(fecha).split(' ')[0];
+      if (fechaStr === hoyStr) {
+        const cantidad = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+        if (!ventasPorProducto[prodId]) {
+          ventasPorProducto[prodId] = { productoId: prodId, cantidad: 0, total: 0 };
+        }
+        ventasPorProducto[prodId].cantidad += cantidad;
+        ventasPorProducto[prodId].total += cantidad * (Number(kardexData[i][KCOL.costo_unitario]) || 0);
+      }
+    }
+
+    // Agregar nombres de productos
+    const productos = DAO_PRODUCTOS.listar({});
+    const productoMap = {};
+    for (let i = 0; i < productos.length; i++) {
+      productoMap[productos[i].id] = productos[i].nombre || productos[i].id;
+    }
+
+    return Object.values(ventasPorProducto).map(v => ({
+      ...v,
+      nombre: productoMap[v.productoId] || v.productoId
+    }));
+  },
+
+  /**
+   * Entradas de kardex del día.
+   * @returns {Array} Entradas con compra origen, productos, cantidades
+   */
+  getEntradasDelDia() {
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const lastRow = kardexSheet.getLastRow();
+
+    if (lastRow < 2) return [];
+
+    const hoy = _today();
+    const hoyStr = hoy.toISOString().split('T')[0];
+
+    const numCols = Math.max.apply(null, Object.values(KCOL)) + 1;
+    const kardexData = kardexSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+    const entradas = [];
+    for (let i = 0; i < kardexData.length; i++) {
+      const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+      if (tipoMov !== 'ENTRADA') continue;
+
+      const fecha = kardexData[i][KCOL.fecha];
+      const fechaStr = fecha instanceof Date ? fecha.toISOString().split('T')[0] : String(fecha).split(' ')[0];
+
+      if (fechaStr === hoyStr) {
+        const prodId = String(kardexData[i][KCOL.id_producto] || "").trim();
+        const referencia = String(kardexData[i][KCOL.referencia] || "").trim();
+        const cantidad = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+
+        entradas.push({
+          id_producto: prodId,
+          cantidad: cantidad,
+          referencia: referencia,
+          fecha: fecha
+        });
+      }
+    }
+
+    return entradas;
+  },
+
+  registrarDevolucionVenta(ventaId, items, motivo, correlationId) {
+    if (!ventaId) throw new Error("ventaId requerido");
+    if (!items || !Array.isArray(items) || items.length === 0) throw new Error("items requeridos");
+
+    const txn = TransactionManager.begin(correlationId || generateCorrelationId());
+    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+
+    try {
+      const auditSheet = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+      const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+      const PCOL = CONFIG.COLUMNS.PRODUCTOS;
+
+      const auditData = auditSheet.getDataRange().getValues();
+      const ACOL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
+      let ventaEncontrada = null;
+      let fechaVenta = null;
+
+      for (let i = 1; i < auditData.length; i++) {
+        const idReg = String(auditData[i][ACOL.id_registro] || "").trim();
+        if (idReg === ventaId && String(auditData[i][ACOL.tabla] || "").trim() === "VENTAS") {
+          ventaEncontrada = JSON.parse(auditData[i][ACOL.datos_nuevos] || "{}");
+          fechaVenta = auditData[i][ACOL.timestamp];
+          break;
+        }
+      }
+
+      if (!ventaEncontrada) {
+        throw new Error("Venta origen no encontrada: " + ventaId);
+      }
+
+      const productos = DAO_PRODUCTOS.listar({});
+      const productoMap = {};
+      for (const p of productos) productoMap[p.id] = p;
+
+      const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      const hoy = _today();
+
+      for (const item of items) {
+        const prodId = String(item.id || item.productoId || "").trim();
+        const cantidad = Number(item.cantidad || 0);
+
+        if (!prodId || cantidad <= 0) continue;
+
+        const producto = productoMap[prodId];
+        if (!producto) continue;
+
+        const stockAnterior = producto.stock || 0;
+        const stockNuevo = stockAnterior + cantidad;
+
+        const rowData = [
+          ["DEV_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)],
+          hoy,
+          prodId,
+          "ENTRADA",
+          cantidad,
+          stockAnterior,
+          stockNuevo,
+          ventaId,
+          "DEVOLUCION_VENTA",
+          SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM"
+        ];
+
+        const numCols = Math.max(...Object.values(KCOL)) + 1;
+        kardexSheet.getRange(kardexSheet.getLastRow() + 1, 1, 1, numCols).setValues([rowData]);
+
+        DAO_PRODUCTOS.actualizar(prodId, { stock: stockNuevo }, txn);
+      }
+
+      LOG_ENGINE.logEvent("DEVOLUCION_VENTA", "VENTAS", ventaId, {}, { items, motivo }, "OK", { correlationId: txn.correlationId });
+
+      txn.commit();
+
+      return { success: true, ventaId: ventaId, correlationId: txn.correlationId };
+    } catch (e) {
+      txn.rollback();
+      Logger.log("ERROR registrarDevolucionVenta: " + e.toString());
+      return { success: false, error: e.message };
+    } finally {
+      if (lock) lock.releaseLock();
+    }
+  }
+
+  getQuiebresStock(diasVentas) {
+    const dias = parseInt(diasVentas) || 30;
+    const productos = DAO_PRODUCTOS.listar({});
+    const hoy = _today();
+    const fechaLimite = new Date(hoy.getTime() - (dias * 86400000));
+
+    const kardex = DAO_COMPRAS.getAllMovimientosKardex(dias, 5000);
+    const ventasRecientes = {};
+
+    for (let i = 0; i < kardex.length; i++) {
+      const m = kardex[i];
+      if (String(m.tipo_mov || "").toUpperCase() === 'SALIDA') {
+        const f = new Date(m.fecha);
+        if (f >= fechaLimite) {
+          ventasRecientes[m.id_producto] = true;
+        }
+      }
+    }
+
+    return productos.filter(p =>
+      ((p.stock || 0) === 0 || (p.stock || 0) < 0) &&
+      ventasRecientes[p.id]
+    ).map(p => ({
+      id: p.id,
+      nombre: p.nombre || p.id,
+      stock: p.stock || 0,
+      tieneVentasRecientes: true
+    }));
+  },
+
+  getExcesoInventario(factor) {
+    const mult = parseInt(factor) || 10;
+    const movimientos = DAO_COMPRAS.getAllMovimientosKardex(30, 5000);
+    const productos = DAO_PRODUCTOS.listar({});
+
+    const salidasMensuales = {};
+    for (let i = 0; i < movimientos.length; i++) {
+      const m = movimientos[i];
+      if (String(m.tipo_mov || "").toUpperCase() !== 'SALIDA') continue;
+      const prodId = m.id_producto;
+      if (!salidasMensuales[prodId]) salidasMensuales[prodId] = 0;
+      salidasMensuales[prodId] += m.cantidad || 0;
+    }
+
+    return productos.filter(p => {
+      const promedioMensual = salidasMensuales[p.id] || 0;
+      const umbral = promedioMensual * mult;
+      return (p.stock || 0) > umbral && umbral > 0;
+    }).map(p => ({
+      id: p.id,
+      nombre: p.nombre || p.id,
+      stock: p.stock || 0,
+      salidasMensuales: salidasMensuales[p.id] || 0,
+      umbral: (salidasMensuales[p.id] || 0) * mult
+    }));
+  },
+
+  getMargenPorProducto(umbralMargen) {
+    const umbral = parseFloat(umbralMargen) || 0.10;
+    const productos = DAO_PRODUCTOS.listar({});
+
+    const result = { margenBajo: [], margenAlto: [] };
+
+    for (let i = 0; i < productos.length; i++) {
+      const p = productos[i];
+      const precioVenta = p.precio_venta || 0;
+      const precioCompra = p.precio_compra || 0;
+
+      if (precioVenta > 0) {
+        const margen = (precioVenta - precioCompra) / precioVenta;
+        const productoInfo = {
+          id: p.id,
+          nombre: p.nombre || p.id,
+          precio_venta: precioVenta,
+          precio_compra: precioCompra,
+          margen: Math.round(margen * 10000) / 100
+        };
+        if (margen < umbral) {
+          result.margenBajo.push(productoInfo);
+        } else {
+          result.margenAlto.push(productoInfo);
+        }
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Registers an inventory adjustment (ajuste) movement.
+   * Validates stock won't go negative, uses optimistic locking.
+   * @param {string} productoId - Product ID
+   * @param {number} cantidad - Quantity to adjust (positive or negative)
+   * @param {string} justificacion - Required justification
+   * @param {string} [correlationId] - Idempotency key
+   * @returns {{success: boolean, stockAnterior: number, stockNuevo: number}}
+   */
+  registrarAjuste(productoId, cantidad, justificacion, correlationId) {
+    const prodId = _sanitizeId(productoId);
+    if (!prodId) return { success: false, error: "ID producto inválido" };
+    const cant = _parseMoneda(cantidad, NaN);
+    if (isNaN(cant)) return { success: false, error: "Cantidad inválida" };
+    const desc = String(justificacion || "").trim();
+    if (!desc) return { success: false, error: "Justificación requerida" };
+
+    const corrId = correlationId || ('ajuste_' + Date.now());
+    const lock = LOCK_MANAGER.acquireResourceLock(prodId);
+
+    try {
+      const productos = DAO_PRODUCTOS.listar({});
+      const prodIdx = productos.findIndex(p => p.id === prodId);
+      if (prodIdx === -1) return { success: false, error: "Producto no encontrado" };
+
+      const stockActual = productos[prodIdx].stock || 0;
+      const stockNuevo = stockActual + cant;
+      if (stockNuevo < 0) return { success: false, error: "Stock resultante no puede ser negativo" };
+
+      const result = DAO_PRODUCTOS.actualizar(prodId, { stock: stockNuevo }, productos[prodIdx].version);
+      if (result !== true) return { success: false, error: "Error en actualización (optimistic lock)" };
+
+      const kardexId = "KDX-AJUS-" + Date.now();
+      DAO_COMPRAS.crearMovimientoKardex({
+        id: kardexId,
+        fecha: new Date(),
+        id_producto: prodId,
+        tipo_mov: "ENTRADA",
+        cantidad: Math.abs(cant),
+        stock_anterior: stockActual,
+        stock_nuevo: stockNuevo,
+        referencia: corrId,
+        origen: "AJUSTE",
+        usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "system"
+      });
+
+      LOG_ENGINE.logEvent("REGISTRAR_AJUSTE", "KARDEX", kardexId,
+        { stock_anterior: stockActual }, { stock_nuevo: stockNuevo, justificacion: desc },
+        "SUCCESS", { correlationId: corrId });
+
+      return { success: true, stockAnterior: stockActual, stockNuevo: stockNuevo };
+    } catch (e) {
+      return { success: false, error: e.message };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
+  /**
+   * Registers inventory write-off (merma) movement.
+   * @param {string} productoId - Product ID
+   * @param {number} cantidad - Quantity to write off
+   * @param {string} justificacion - Required justification
+   * @param {string} [correlationId] - Idempotency key
+   * @returns {{success: boolean, stockAnterior: number, stockNuevo: number}}
+   */
+  registrarMerma(productoId, cantidad, justificacion, correlationId) {
+    return this.registrarAjuste(productoId, -cantidad, "MERMA: " + justificacion, correlationId);
+  },
+
+  /**
+   * Calculates weighted average cost from kardex entries.
+   * @param {string} [productoId] - Product ID (all if omitted)
+   * @returns {{costoPromedio: number, totalEntradas: number}}
+   */
+  calcularCostoPromedio(productoId) {
+    const kardex = DAO_COMPRAS.getAllMovimientosKardex(365, 10000);
+    const productos = productoId ? 
+      (DAO_PRODUCTOS.obtener(productoId) ? [DAO_PRODUCTOS.obtener(productoId)] : []) :
+      DAO_PRODUCTOS.listar({});
+
+    const result = {};
+    for (let i = 0; i < productos.length; i++) {
+const prodId = productos[i].id;
+       const entradas = kardex.filter(k => k.id_producto === prodId && k.tipo_mov === "ENTRADA");
+       let totalCantidad = 0;
+       let totalCosto = 0;
+       for (let j = 0; j < entradas.length; j++) {
+         const cant = entradas[j].cantidad || 0;
+         const costo = entradas[j].costo_unitario || entradas[j].precio_compra || 0;
+         totalCantidad += cant;
+         totalCosto += cant * costo;
+       }
+       result[prodId] = {
+         nombre: productos[i].nombre,
+         costoPromedio: totalCantidad > 0 ? totalCosto / totalCantidad : 0,
+         totalEntradas: totalCantidad
+       };
+     }
+     return result;
+   },
+
+   /**
+    * Obtiene el último costo de reposición de un producto.
+    * @param {string} idProducto - ID del producto
+    * @returns {number} Último precio de compra o 0 si no hay historial
+    */
+   getCostoReposicion(idProducto) {
+     try {
+       const detalleCompras = DAO_COMPRAS.listarDetalles ? DAO_COMPRAS.listarDetalles() : [];
+       const ultimaCompra = detalleCompras
+         .filter(d => d.id_producto === idProducto)
+         .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))[0];
+       
+       return ultimaCompra ? Number(ultimaCompra.precio_unitario || 0) : 0;
+     } catch (e) {
+       return 0;
+     }
+   },
+
+   /**
+    * Obtiene proveedores que no tienen compras registradas.
+    * @returns {Array} Array de objetos con id, nombre de proveedores sin compras
+    */
+   getProveedoresSinCompras() {
+     try {
+       const terceros = CACHE.terceros || DAO.getTerceros();
+       const compras = DAO_COMPRAS.getCompras();
+       
+       const proveedorIdsConCompras = new Set();
+       for (const c of compras) {
+         if (c.id_proveedor) proveedorIdsConCompras.add(c.id_proveedor);
+       }
+       
+       const proveedoresSinCompras = terceros.filter(t => {
+         const tipo = String(t.tipo || '').toUpperCase();
+         return (tipo === 'PROVEEDOR' || tipo === 'AMBOS') && !proveedorIdsConCompras.has(t.id);
+       });
+       
+return proveedoresSinCompras.map(p => ({ id: p.id, nombre: p.nombre }));
+      } catch (e) {
+        return [];
+      }
+    },
+
+    /**
+     * Clasifica productos por valor en inventario (ABC analysis).
+     * A = top 80% valor, B = 15%, C = 5%
+     * @returns {{A: Array, B: Array, C: Array}} Productos clasificados
+     */
+    getRankingABC() {
+      try {
+        const productos = DAO_PRODUCTOS.listar({});
+        const kardex = DAO_COMPRAS.getAllMovimientosKardex(null, 5000);
+        
+        const valorPorProducto = {};
+        for (const p of productos) {
+          const entradas = kardex.filter(k => k.id_producto === p.id && String(k.tipo_mov || '').toUpperCase() === 'ENTRADA');
+          let totalValor = 0;
+          for (const e of entradas) {
+            const cant = e.cantidad || 0;
+            const costo = e.costo_unitario || p.precio_compra || 0;
+            totalValor += cant * costo;
+          }
+          valorPorProducto[p.id] = {
+            id: p.id,
+            nombre: p.nombre,
+            valor: totalValor,
+            stock: p.stock || 0
+          };
+        }
+        
+        // Ordenar por valor descendente
+        const productosOrdenados = Object.values(valorPorProducto)
+          .sort((a, b) => b.valor - a.valor);
+        
+        const totalValor = productosOrdenados.reduce((sum, p) => sum + p.valor, 0);
+        
+        let acumulado = 0;
+        const A = [], B = [], C = [];
+        
+        for (const p of productosOrdenados) {
+          acumulado += p.valor;
+          const pct = totalValor > 0 ? acumulado / totalValor : 0;
+          
+          if (pct <= 0.80) A.push(p);
+          else if (pct <= 0.95) B.push(p);
+          else C.push(p);
+        }
+        
+        return { A, B, C };
+      } catch (e) {
+        return { A: [], B: [], C: [] };
+      }
+    },
+
+    /**
+     * Obtiene productos con margen bajo o alto.
+     * @param {number} umbral - Margen mínimo (default 0.10 = 10%)
+     * @returns {{margenBajo: Array, margenAlto: Array}} Productos por margen
+     */
+    getMargenPorProducto(umbral) {
+      try {
+        const productos = DAO_PRODUCTOS.listar({});
+        const margenBajo = [];
+        const margenAlto = [];
+        
+        for (const p of productos) {
+          const compra = p.precio_compra || 0;
+          const venta = p.precio_venta || 0;
+          const margen = venta > 0 ? (venta - compra) / venta : 0;
+          
+          if (margen < (umbral || 0.10)) {
+            margenBajo.push({ id: p.id, nombre: p.nombre, margen });
+          } else {
+            margenAlto.push({ id: p.id, nombre: p.nombre, margen });
+          }
+        }
+        
+        return { margenBajo, margenAlto };
+      } catch (e) {
+        return { margenBajo: [], margenAlto: [] };
+      }
+    },
+
+    /**
+     * Detecta quiebres de stock: productos con stock=0 y ventas recientes.
+     * @returns {Array} Productos con quiebre de stock
+     */
+    getQuiebresStock() {
+      try {
+        const productos = DAO_PRODUCTOS.listar({});
+        const kardex = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+        const quiebres = [];
+        
+        for (const p of productos) {
+          if ((p.stock || 0) === 0) {
+            const ventas = kardex.filter(k => 
+              k.id_producto === p.id && 
+              String(k.tipo_mov || '').toUpperCase() === 'SALIDA'
+            );
+            if (ventas.length > 0) {
+              quiebres.push({ id: p.id, nombre: p.nombre, ultimaVenta: ventas[ventas.length - 1].fecha });
+            }
+          }
+        }
+        
+        return quiebres;
+      } catch (e) {
+        return [];
+      }
+    },
+
+    /**
+     * Detecta exceso de inventario: stock > 10x promedio mensual.
+     * @returns {Array} Productos con exceso de inventario
+     */
+    getExcesoInventario() {
+      try {
+        const productos = DAO_PRODUCTOS.listar({});
+        const kardex = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+        const excesos = [];
+        
+        for (const p of productos) {
+          const ventas = kardex.filter(k => 
+            k.id_producto === p.id && 
+            String(k.tipo_mov || '').toUpperCase() === 'SALIDA'
+          );
+          
+          const totalVentas = ventas.reduce((sum, v) => sum + (v.cantidad || 0), 0);
+          const promedioDiario = totalVentas / 30;
+          
+          if (p.stock > promedioDiario * 10 && promedioDiario > 0) {
+            excesos.push({ id: p.id, nombre: p.nombre, stock: p.stock, promedioDiario });
+          }
+        }
+        
+        return excesos;
+      } catch (e) {
+        return [];
+      }
+    }
 };

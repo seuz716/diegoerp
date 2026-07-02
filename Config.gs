@@ -32,7 +32,7 @@ const COMPRAS_CONFIG = {
     PAGOS_PROVEEDORES: { id: 0, fecha: 1, id_compra: 2, id_proveedor: 3, valor: 4, referencia: 5, metodo_pago: 6 },
     KARDEX: { id: 0, fecha: 1, id_producto: 2, tipo_mov: 3, cantidad: 4, stock_anterior: 5, stock_nuevo: 6, referencia: 7, origen: 8, usuario: 9 },
   },
-  ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA" },
+  ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA", CANCELADA: "CANCELADA" },
 };
 
 const PRODUCTOS_CONFIG = {

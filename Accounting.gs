@@ -176,6 +176,54 @@ const FLUJO_CAJA = {
   TIPOS: FLUJO_CAJA_TIPOS,
 
   /**
+   * Calculates Cost of Goods Sold (COGS) for a given period.
+   * Sum of (SALIDAS en KARDEX × costo_unitario) vs LIBRO_DIARIO tipo COSTO_VENTAS.
+   * @param {Date|string} fechaInicio - Start date of period
+   * @param {Date|string} fechaFin - End date of period
+   * @returns {{cogsKardex: number, cogsLibroDiario: number, diferencia: number}}
+   */
+  calcularCostoDeVentas(fechaInicio, fechaFin) {
+    const fi = _safeDate(fechaInicio);
+    const ff = _safeDate(fechaFin);
+    if (!fi || !ff) return { cogsKardex: 0, cogsLibroDiario: 0, diferencia: 0 };
+    
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const kardexData = kardexSheet ? kardexSheet.getDataRange().getValues() : [];
+    
+    let cogsKardex = 0;
+    for (let i = 1; i < kardexData.length; i++) {
+      const fecha = _safeDate(kardexData[i][KCOL.fecha]);
+      if (!fecha || fecha < fi || fecha > ff) continue;
+      const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+      if (tipoMov !== "SALIDA") continue;
+      const costoUnitario = _parseMoneda(kardexData[i][KCOL.costo_unitario] || 0, 0);
+      const cantidad = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+      cogsKardex += costoUnitario * cantidad;
+    }
+    
+    const LD_COL = CONFIG.COLUMNS.LIBRO_DIARIO;
+    const ldSheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+    const ldData = ldSheet ? ldSheet.getDataRange().getValues() : [];
+    
+    let cogsLibroDiario = 0;
+    for (let i = 1; i < ldData.length; i++) {
+      const fecha = _safeDate(ldData[i][LD_COL.fecha]);
+      if (!fecha || fecha < fi || fecha > ff) continue;
+      const tipo = String(ldData[i][LD_COL.tipo] || "").trim();
+      if (tipo === "COSTO_VENTAS") {
+        cogsLibroDiario += _parseMoneda(ldData[i][LD_COL.monto], 0);
+      }
+    }
+    
+    return {
+      cogsKardex: cogsKardex,
+      cogsLibroDiario: cogsLibroDiario,
+      diferencia: Math.abs(cogsKardex - cogsLibroDiario)
+    };
+  },
+
+  /**
    * Registers a cash flow movement in the flujo de caja sheet.
    * @param {Date|string} fecha - Movement date.
    * @param {string} tipo - Movement type (from FLUJO_CAJA_TIPOS).

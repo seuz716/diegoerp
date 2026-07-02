@@ -529,5 +529,39 @@ const DAO = {
       if (lock) lock.releaseLock();
     }
   },
+
+  /**
+   * Retrieves libro diario records.
+   * @param {number} [maxRows=100] - Max rows to read.
+   * @returns {Array<Object>} Libro diario records.
+   */
+  getLibroDiario(maxRows = 100) {
+    try {
+      const sheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return [];
+      const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
+      const numCols = Math.max.apply(null, Object.values(COL)) + 1;
+      const limit = Math.min(maxRows, lastRow - 1);
+      const data = sheet.getRange(2, 1, limit, numCols).getValues();
+      const result = [];
+      for (let i = 0; i < data.length; i++) {
+        result.push({
+          id: data[i][COL.id],
+          fecha: data[i][COL.fecha],
+          tipo: data[i][COL.tipo],
+          id_referencia: data[i][COL.id_referencia],
+          tercero: data[i][COL.tercero],
+          monto: data[i][COL.monto],
+          usuario: data[i][COL.usuario],
+          descripcion: data[i][COL.descripcion]
+        });
+      }
+      return result;
+    } catch (e) {
+      Logger.log("[DAO.getLibroDiario] Error: " + e.message);
+      return [];
+    }
+  },
 };
 
