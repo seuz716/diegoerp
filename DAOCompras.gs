@@ -362,4 +362,33 @@ const DAO_COMPRAS = {
     }
     return result;
   },
+
+  /**
+   * Retrieves the most recent payment for a specific provider.
+   * @param {string} idProveedor - Provider ID.
+   * @returns {Object|null} Most recent payment or null if none found.
+   */
+  getUltimoPagoProveedor(idProveedor) {
+    const sheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return null;
+    const C = DAO_COMPRAS.PAGOS_COL;
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    
+    // Read all payments and filter by proveedor
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const pagosProveedor = [];
+    
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][C.id_proveedor] || "").trim() === idProveedor) {
+        pagosProveedor.push(DAO_COMPRAS._rowToPago(data[i]));
+      }
+    }
+    
+    if (pagosProveedor.length === 0) return null;
+    
+    // Sort by date descending and return most recent
+    pagosProveedor.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    return pagosProveedor[0];
+  },
 };

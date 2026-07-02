@@ -290,6 +290,18 @@ const DAO = {
         const rowData = [_sanitizeCell(id), _sanitizeCell(nombre), _sanitizeCell(telefono), _sanitizeCell(tipo), limite, activo];
         const cachedRow = CACHE.terceroIndex[id];
 
+        // Validate unique name using cache (no sheet read)
+        const nombreNormalizado = nombre.trim().toLowerCase();
+        for (let i = 0; i < CACHE.terceros.length; i++) {
+          const existing = CACHE.terceros[i];
+          if (!existing.nombre) continue;
+          // Skip if updating same record
+          if (cachedRow && existing.id === id) continue;
+          if (String(existing.nombre).trim().toLowerCase() === nombreNormalizado) {
+            throw new Error("Ya existe un tercero con el nombre '" + nombre + "'.");
+          }
+        }
+
         if (cachedRow) {
           sheet.getRange(cachedRow, 1, 1, 6).setValues([rowData]);
           return { isUpdate: true };

@@ -1073,6 +1073,64 @@ function _sendTestAlert(results) {
     } catch (e) {
       return 'Exception: ' + e.message;
     }
+  // ===== MEDIA: saveTercero unique name validation =====
+
+  _test('P1: saveTercero rechaza nombre duplicado', () => {
+    try {
+      const ts = Date.now();
+      const testId1 = 'TEST_NOMBRE_' + ts + '_1';
+      const testId2 = 'TEST_NOMBRE_' + ts + '_2';
+      const nombre = 'Test Nombre Unico ' + ts;
+      
+      // Create first tercero
+      var r1 = saveTercero({ id: testId1, nombre: nombre, tipo: 'CLIENTE', limite_credito: 100000 });
+      if (!r1.success) return 'Fallo creando primer tercero: ' + (r1.error || JSON.stringify(r1));
+      
+      // Try to create second with same name - should fail
+      var r2 = saveTercero({ id: testId2, nombre: nombre, tipo: 'CLIENTE', limite_credito: 100000 });
+      if (r2.success) return 'Esperaba error por nombre duplicado';
+      if (r2.error && r2.error.indexOf('nombre') > -1) return true;
+      return 'Error inesperado: ' + (r2.error || JSON.stringify(r2));
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('P1: saveTercero permite mismo nombre al actualizar', () => {
+    try {
+      const ts = Date.now();
+      const testId = 'TEST_UPDATE_' + ts;
+      const nombre = 'Test Update ' + ts;
+      
+      // Create first
+      var r1 = saveTercero({ id: testId, nombre: nombre, tipo: 'CLIENTE', limite_credito: 100000 });
+      if (!r1.success) return 'Fallo creando tercero: ' + (r1.error || JSON.stringify(r1));
+      
+      // Update same record with same name - should succeed
+      var r2 = saveTercero({ id: testId, nombre: nombre, tipo: 'CLIENTE', limite_credito: 200000 });
+      if (r2.success) return true;
+      return 'Fallo al actualizar mismo registro: ' + (r2.error || JSON.stringify(r2));
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== BATCH UPDATES - Performance Optimization Tests =====
+
+  _test('P1_CRITICAL: registrarCompraAtomic uses batch stock updates', () => {
+    try {
+      const fnStr = DOMAIN.registrarCompraAtomic.toString();
+      // Check for batch update pattern
+      if (fnStr.indexOf('prodVersions') > -1 && fnStr.indexOf('stockUpdates') > -1) {
+        return true;
+      }
+      return 'registrarCompraAtomic not using batch updates';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== BACKUP SERVICE TESTS (B-01 a B-04) =====
   });
 
   _test('P1_CRITICAL: _validarStockCarrito uses cache', () => {
