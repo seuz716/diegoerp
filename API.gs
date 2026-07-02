@@ -349,6 +349,23 @@ function saveTercero(tercero) {
 }
 
 /**
+ * API Pública: Eliminar tercero (soft delete con validaciones)
+ */
+function deleteTercero(id) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("deleteTercero");
+    AuthService.checkPermission("eliminar_tercero");
+    const idLimpio = _sanitizeId(id);
+    const result = DOMAIN.deleteTercero(idLimpio);
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("deleteTercero", e, correlationId);
+  }
+}
+
+/**
  * API Pública: Obtener Dashboard
  */
 function getDashboardCartera() {
