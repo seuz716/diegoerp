@@ -377,21 +377,63 @@ const DAO_COMPRAS = {
     if (lastRow < 2) return null;
     const C = DAO_COMPRAS.PAGOS_COL;
     const numCols = Math.max.apply(null, Object.values(C)) + 1;
-    
+
     // Read all payments and filter by proveedor
     const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
     const pagosProveedor = [];
-    
+
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][C.id_proveedor] || "").trim() === idProveedor) {
         pagosProveedor.push(DAO_COMPRAS._rowToPago(data[i]));
       }
     }
-    
+
     if (pagosProveedor.length === 0) return null;
-    
+
     // Sort by date descending and return most recent
     pagosProveedor.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
     return pagosProveedor[0];
+  },
+
+  /**
+   * Retrieves all purchase detail lines (for reporting/analysis).
+   * @param {number} [maxRows=10000] - Max rows to read.
+   * @returns {Array<Object>} All detail records.
+   */
+  listarDetalles(maxRows) {
+    const sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const C = DAO_COMPRAS.DETALLE_COL;
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    if (!maxRows || maxRows <= 0) maxRows = 10000;
+    const totalDataRows = Math.min(lastRow - 1, maxRows);
+    const data = sheet.getRange(2, 1, totalDataRows, numCols).getValues();
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      result.push(DAO_COMPRAS._rowToDetalle(data[i]));
+    }
+    return result;
+  },
+
+  /**
+   * Retrieves payment records for a specific provider.
+   * @param {string} idProveedor - Provider ID.
+   * @returns {Array<Object>} List of payment records.
+   */
+  listarPagosPorProveedor(idProveedor) {
+    const sheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const C = DAO_COMPRAS.PAGOS_COL;
+    const numCols = Math.max.apply(null, Object.values(C)) + 1;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][C.id_proveedor] || "").trim() === idProveedor) {
+        result.push(DAO_COMPRAS._rowToPago(data[i]));
+      }
+    }
+    return result;
   },
 };

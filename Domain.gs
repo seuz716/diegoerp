@@ -1343,6 +1343,12 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           return _error("Cliente " + idCliente + " no existe.");
         }
 
+        // Validar que el cliente esté activo
+        if (cliente.activo === 'INACTIVO' || cliente.activo === 'INACTIVE') {
+          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, { cliente_activo: cliente.activo }, { error: "CLIENTE_INACTIVO" }, "ERROR");
+          return _error("No se puede vender a cliente inactivo: " + idCliente);
+        }
+
         CACHE.refresh();
         const consistency = CACHE.verifyConsistency();
         if (consistency.mismatched) {
@@ -1598,7 +1604,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     
     try {
       const idLimpio = _sanitizeId(id);
-      if (!idLimpio) return _error("ID de tercero inv�lido.");
+      if (!idLimpio) return _error("ID de tercero inv�lido.");
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(idLimpio);
 
@@ -1751,5 +1757,242 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     }
 
     return ultimoPago;
+  },
+
+  /**
+   * Cancela una compra y revierte sus movimientos de kardex.
+   * Genera SALIDAS en kardex para revertir el stock aumentado.
+   * @param {string} idCompra - ID de la compra a cancelar
+   * @param {string} [motivo] - Motivo de la cancelación
+   * @returns {{success: boolean, message: string}} Resultado de la cancelación
+   */
+  cancelarCompraAtomic(idCompra, motivo) {
+    const idLimpio = _sanitizeId(idCompra);
+    if (!idLimpio) return _error("ID de compra inválido.");
+
+    const MAX_RETRIES = 3;
+
+    const _executeCancelTx = () => {
+      let lockAcquired = null;
+      const tx = _Transaction.create();
+
+      try {
+        const compra = DAO_COMPRAS.getCompraById(idLimpio);
+        if (!compra) return _error("Compra no encontrada: " + idLimpio);
+        
+        const estadoActual = compra.estado;
+        if (estadoActual === COMPRAS_CONFIG.ESTADOS.CANCELADA) {
+          return _error("La compra ya está cancelada.");
+        }
+
+        lockAcquired = LOCK_MANAGER.acquireResourceLock(compra.id_proveedor);
+
+        tx.begin();
+        tx.snapshotCompraRow(compra.rowIndex);
+
+        // Obtener detalles de la compra
+        const detalles = DAO_COMPRAS.getDetallesByCompra(idLimpio);
+        
+        // Obtener movimientos de kardex ENTRADA asociados a esta compra
+        const kardexEntradas = DAO_COMPRAS.getMovimientosKardex(null, 500)
+          .filter(m => m.referencia === idLimpio && m.tipo_mov === 'ENTRADA');
+
+        // Revertir stock: generar SALIDAS en kardex
+        const C = CONFIG.COLUMNS.PRODUCTOS;
+        const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const lastRow = prodSheet.getLastRow();
+        const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, C.version + 1).getValues() : [];
+        
+        for (let j = 0; j < kardexEntradas.length; j++) {
+          const mov = kardexEntradas[j];
+          const prodId = mov.id_producto;
+          const cantEntrada = mov.cantidad;
+          
+          // Buscar el producto en los datos
+          const prodIdx = prodData.findIndex(p => String(p[C.id]).trim() === prodId);
+          if (prodIdx !== -1) {
+            const stockActual = parseInt(prodData[prodIdx][C.stock]) || 0;
+            const nuevoStock = Math.max(0, stockActual - cantEntrada);
+            const nuevaVersion = (parseInt(prodData[prodIdx][C.version]) || 1) + 1;
+            
+            // Actualizar stock
+            prodSheet.getRange(prodIdx + 2, C.stock + 1).setValue(nuevoStock);
+            prodSheet.getRange(prodIdx + 2, C.version + 1).setValue(nuevaVersion);
+            
+            // Generar SALIDA en kardex para revertir
+            const kardexId = "KDX-CANC-" + Date.now() + "-" + j;
+            DAO_COMPRAS.crearMovimientoKardex({
+              id: kardexId,
+              fecha: new Date(),
+              id_producto: prodId,
+              tipo_mov: "SALIDA",
+              cantidad: cantEntrada,
+              stock_anterior: stockActual,
+              stock_nuevo: nuevoStock,
+              referencia: idLimpio,
+              origen: "CANCELACION_COMPRA",
+              usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "system"
+            });
+          }
+        }
+
+        // Marcar compra como CANCELADA
+        const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+        const compraRow = compraSheet.getRange(compra.rowIndex, 1, 1, Math.max.apply(null, Object.values(DAO_COMPRAS.COMPRAS_COL)) + 1);
+        const compraValues = compraRow.getValues()[0];
+        compraValues[DAO_COMPRAS.COMPRAS_COL.estado] = COMPRAS_CONFIG.ESTADOS.CANCELADA;
+        compraRow.setValues([compraValues]);
+
+        tx.commit();
+
+        CACHE.invalidateCartera();
+        CACHE.invalidateProductos();
+
+        LOG_ENGINE.logEvent("CANCEL_COMPRA", "COMPRAS", idLimpio,
+          { estado: estadoActual, total: compra.total },
+          { estado: COMPRAS_CONFIG.ESTADOS.CANCELADA, motivo: motivo || "Cancelación" },
+          "SUCCESS",
+          { correlationId: TransactionManager.getCorrelationId() || ('cancel_' + Date.now()) });
+
+        return { success: true, message: "Compra cancelada correctamente. Stock revertido." };
+      } catch (e) {
+        _captureError("cancelarCompraAtomic", e);
+        try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error: " + rbErr.message); }
+        CACHE.invalidateCartera();
+        throw e;
+      } finally {
+        if (lockAcquired) lockAcquired.releaseLock();
+      }
+    };
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return _executeCancelTx();
+      } catch (e) {
+        const isOptimisticLock =
+          e.type === 'OPTIMISTIC_LOCK_FAILURE' ||
+          (e.message && e.message.includes('OptimisticLockError'));
+
+        if (!isOptimisticLock || attempt >= MAX_RETRIES - 1) {
+          LOG_ENGINE.logEvent("ERROR_CANCEL_COMPRA", "COMPRAS", idLimpio, {}, { error: e.toString() }, "FAILED");
+          return _error(e.message || "Error al cancelar compra.");
+        }
+
+        CACHE.refresh(true);
+        Utilities.sleep(100 * Math.pow(2, attempt) + Math.random() * 50);
+      }
+    }
+
+    return _error("Conflicto de concurrencia persistente al cancelar compra.");
+  },
+
+  /**
+   * Ranking de clientes por producto comprado (basado en ventas/Kardex).
+   * @param {string} [idProducto] - Optional product ID filter. Returns ranking for all products if omitted.
+   * @param {number} [limit=10] - Maximum clients to return.
+   * @returns {Array<{id_cliente: string, nombre: string, producto: string, cantidad: number}>}
+   */
+  getRankingClienteProducto(idProducto, limit) {
+    const tz = _getTimeZone();
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+
+    const lastRow = kardexSheet.getLastRow();
+    if (lastRow < 2) return [];
+
+    const numCols = Math.max.apply(null, Object.values(KCOL)) + 1;
+    const kardexData = kardexSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+    // Agrupar por cliente y producto (basado en referencias de ventas)
+    const ranking = {};
+    const clientesConVentas = {};
+
+    for (let i = 0; i < kardexData.length; i++) {
+      const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+      if (tipoMov !== 'SALIDA') continue;
+
+      const prodId = String(kardexData[i][KCOL.id_producto] || "").trim();
+      if (idProducto && prodId !== idProducto) continue;
+
+      const referencia = String(kardexData[i][KCOL.referencia] || "").trim();
+      const cantidad = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+
+      // Extraer cliente de la referencia (asumiendo formato VTA-CLIENTE-*)
+      const clienteIdMatch = referencia.match(/CLI[-_]?([A-Z0-9]+)/i) || referencia.match(/^([A-Z0-9]+)[-_]/);
+      if (!clienteIdMatch) continue;
+
+      const clienteId = _sanitizeId(clienteIdMatch[1] || clienteIdMatch[0]);
+      const key = clienteId + '|' + prodId;
+
+      if (!ranking[key]) {
+        ranking[key] = { id_cliente: clienteId, producto: prodId, cantidad: 0 };
+      }
+      ranking[key].cantidad += cantidad;
+      clientesConVentas[clienteId] = true;
+    }
+
+    // Obtener nombres de clientes
+    const terceros = CACHE.terceros || DAO.getTerceros();
+    const terceroMap = {};
+    for (let i = 0; i < terceros.length; i++) {
+      const t = terceros[i];
+      if (t.tipo === 'CLIENTE' || t.tipo === 'AMBOS' || t.tipo === 'PROVEEDOR') {
+        terceroMap[t.id] = t.nombre || t.id;
+      }
+    }
+
+    // Convertir a array y ordenar
+    const result = Object.values(ranking).map(r => ({
+      id_cliente: r.id_cliente,
+      nombre: terceroMap[r.id_cliente] || r.id_cliente,
+      producto: r.producto,
+      cantidad: r.cantidad
+    })).sort((a, b) => b.cantidad - a.cantidad);
+
+    if (limit && result.length > limit) return result.slice(0, limit);
+    return result;
+  },
+
+  /**
+   * Lista clientes activos que no tienen ventas registradas en kardex.
+   * @returns {Array<{id: string, nombre: string, tipo: string, activo: string}>}
+   */
+  listarClientesSinVentas() {
+    const terceros = CACHE.terceros || DAO.getTerceros();
+    const clientes = terceros.filter(t =>
+      (t.tipo === 'CLIENTE' || t.tipo === 'AMBOS') &&
+      t.activo !== 'INACTIVO'
+    );
+
+    // Obtener clientes con ventas del kardex
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const lastRow = kardexSheet.getLastRow();
+    const clientesConVentas = {};
+
+    if (lastRow >= 2) {
+      const numCols = Math.max.apply(null, Object.values(KCOL)) + 1;
+      const kardexData = kardexSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+      for (let i = 0; i < kardexData.length; i++) {
+        const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+        if (tipoMov === 'SALIDA') {
+          const referencia = String(kardexData[i][KCOL.referencia] || "").trim();
+          // Intentar extraer ID de cliente de la referencia
+          const clienteId = referencia.replace(/^VTA[-_]?/, '').split(/[-_]/)[0];
+          if (clienteId) {
+            clientesConVentas[clienteId] = true;
+          }
+        }
+      }
+    }
+
+    // Filtrar clientes sin ventas
+    return clientes.filter(c => !clientesConVentas[c.id]).map(c => ({
+      id: c.id,
+      nombre: c.nombre || c.id,
+      tipo: c.tipo,
+      activo: c.activo
+    }));
   },
 };
