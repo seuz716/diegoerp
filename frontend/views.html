@@ -453,7 +453,19 @@ function _showRetry(container, fn) {
   btn.className = 'btn btn-sm';
   btn.textContent = '\u21bb Reintentar';
   btn.style.marginLeft = 'var(--space-3)';
-  btn.addEventListener('click', fn);
+  var retryClicked = false;
+  btn.addEventListener('click', function() {
+    if (retryClicked) return;
+    retryClicked = true;
+    btn.textContent = '\u274c Reintentando...';
+    App.retryWithBackoff(fn).then(function() {
+      btn.textContent = '\u21bb Reintentar';
+      retryClicked = false;
+    }).catch(function(err) {
+      btn.textContent = '\u21bb Reintentar';
+      retryClicked = false;
+    });
+  });
   container.querySelector('.error-banner').appendChild(btn);
 }
 function cargarCartera(append) {
@@ -1693,4 +1705,18 @@ function cargarVencimientos() {
     showErrorCode(err.code || 'SERVER_ERROR', err.message);
   });
 }
+
+  // ===== Beforeunload warning for unsaved drafts =====
+  var _hasUnsavedChanges = false;
+  
+  App.drafts.setOnDirty(function() { _hasUnsavedChanges = true; });
+  App.drafts.setOnClear(function() { _hasUnsavedChanges = false; });
+  
+  window.addEventListener('beforeunload', function(e) {
+    if (_hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = 'Tienes cambios sin guardar. ¿Seguro que quieres cerrar?';
+      return e.returnValue;
+    }
+  });
 </script>

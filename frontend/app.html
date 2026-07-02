@@ -187,11 +187,18 @@ function callServer(funcName) {
         var errMsg = (error && error.message) ? error.message : String(error || 'Error desconocido');
         var errCode = (error && error.code) ? error.code : 'SERVER_ERROR';
         App.logError(errMsg, funcName);
-        reject({ code: errCode, message: errMsg, funcName: funcName, raw: error });
+        var errObj = { code: errCode, message: errMsg, funcName: funcName, raw: error };
+        // Check for autoRecover errors
+        var mapped = App.ERROR_MAP[errCode];
+        if (mapped && mapped.autoRecover && funcName) {
+          var toastFn = function() { return callServer(funcName).apply(null, args); };
+          var toastMsg = mapped.icon + ' ' + mapped.message + ' ' + mapped.action;
+          showToastWithRetry(toastMsg, mapped.cssClass.replace('toast-', ''), 8000, toastFn);
+        }
+        reject(errObj);
       })
       [funcName].apply(null, args);
   });
-}
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
   getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },
@@ -654,16 +661,35 @@ App.drafts = {
       keys.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) {}
   },
+  // Callbacks for beforeunload warning
+  _onDirty: null,
+  _onClear: null,
+  setOnDirty: function(fn) { this._onDirty = fn; },
+  setOnClear: function(fn) { this._onClear = fn; },
   // Wire auto-save to a form's input fields
   wireForm: function (formKey, selector, getDataFn) {
     var inputs = document.querySelectorAll(selector);
     var self = this;
     for (var i = 0; i < inputs.length; i++) {
       (function (input) {
-        input.addEventListener('input', function () { self.autoSave(formKey, getDataFn); });
-        input.addEventListener('change', function () { self.autoSave(formKey, getDataFn, 0); });
+        var handler = function () { 
+          self.autoSave(formKey, getDataFn); 
+          if (self._onDirty) self._onDirty();
+        };
+        input.addEventListener('input', handler);
+        input.addEventListener('change', function () { 
+          self.autoSave(formKey, getDataFn, 0); 
+          if (self._onDirty) self._onDirty();
+        });
       })(inputs[i]);
     }
+  },
+  // Called when form is successfully submitted
+  clear: function (formKey) { 
+    try { 
+      localStorage.removeItem(this._prefix + formKey); 
+      if (this._onClear) this._onClear();
+    } catch (e) {} 
   },
 };
 
