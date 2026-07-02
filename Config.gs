@@ -64,14 +64,6 @@ const CONFIG = {
   },
   STOCK_MINIMO: 5,
   MATERIALITY_THRESHOLD: 100000, // 1,000 COP en centavos
-
-  // Sanitización segura de celdas para evitar errores de tipo
-  _sanitizeCell(v) {
-    if (v === null || v === undefined) return "";
-    if (typeof v === "string") return v;
-    if (typeof v === "number" || typeof v === "boolean") return v;
-    return String(v);
-  },
   SCHEMA_definitions: {
     TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
     CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
@@ -364,6 +356,17 @@ function validateAndMapSchemas() {
 }
 
 function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ""); }
+
+/**
+ * Sanitiza un valor para escritura segura en hoja.
+ * Devuelve el valor apropiado según su tipo.
+ */
+function _sanitizeCell(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return v;
+  return String(v);
+}
 
 /**
  * Convierte un valor del sheet a centavos (entero).

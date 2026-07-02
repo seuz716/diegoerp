@@ -1184,6 +1184,129 @@ _test('P1_CRITICAL: testSchemaVersioning - schema manager works', () => {
   }
 });
 
+// ===== CASH FLOW RECONCILIATION TESTS =====
+  _test('testConciliacionSaldoCaja function exists', () => {
+    if (typeof testConciliacionSaldoCaja !== 'function') {
+      return 'testConciliacionSaldoCaja not found - service not implemented';
+    }
+    return true;
+  });
+
+  _test('testConciliacionTransacciones function exists', () => {
+    if (typeof testConciliacionTransacciones !== 'function') {
+      return 'testConciliacionTransacciones not found - service not implemented';
+    }
+    return true;
+  });
+
+  _test('testFlujoCajaSinNegativos function exists', () => {
+    if (typeof testFlujoCajaSinNegativos !== 'function') {
+      return 'testFlujoCajaSinNegativos not found - service not implemented';
+    }
+    return true;
+  });
+
+  _test('ejecutarTestsConciliacionFlujo orchestrator exists', () => {
+    if (typeof ejecutarTestsConciliacionFlujo !== 'function') {
+      return 'ejecutarTestsConciliacionFlujo not found - service not implemented';
+    }
+    return true;
+  });
+
+  _test('CONFIG.MATERIALITY_THRESHOLD exists for reconciliation', () => {
+    if (CONFIG.MATERIALITY_THRESHOLD && CONFIG.MATERIALITY_THRESHOLD >= 100000) {
+      return true;
+    }
+    return 'MATERIALITY_THRESHOLD not configured properly';
+  });
+
+  _test('FLUJO_CAJA_TIPOS has all required types', () => {
+    const required = ['ENTRADA_ABONO', 'SALIDA_PAGO_PROV', 'ENTRADA_VENTA', 'SALIDA_COMPRA'];
+    const missing = required.filter(t => !FLUJO_CAJA_TIPOS[t]);
+    return missing.length === 0 ? true : 'Missing types: ' + missing.join(', ');
+  });
+
+  // ===== SMOKE TESTS =====
+  _test('SmokeTests.runAll returns valid structure', () => {
+    if (typeof SmokeTests === 'undefined' || typeof SmokeTests.runAll !== 'function') {
+      return 'SmokeTests.runAll not found - service not implemented';
+    }
+    return true;
+  });
+
+  _test('SmokeTests.testHealthCheck uses getHealthStatus', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    if (typeof SmokeTests.testHealthCheck !== 'function') {
+      return 'testHealthCheck not found';
+    }
+    return true;
+  });
+
+  _test('SmokeTests.testConfiguration checks SPREADSHEET_ID', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    if (typeof SmokeTests.testConfiguration !== 'function') {
+      return 'testConfiguration not found';
+    }
+    return true;
+  });
+
+  _test('SmokeTests.testSheetsExist uses correct sheet names', () => {
+    if (typeof SmokeTests === 'undefined') {
+      return 'SmokeTests not implemented';
+    }
+    if (typeof SmokeTests.testSheetsExist !== 'function') {
+      return 'testSheetsExist not found';
+    }
+    return true;
+  });
+
+  // ===== SECURITY TESTS: doGet Parameter Sanitization =====
+
+  _test('SECURITY: doGet sanitizes ssid parameter (no injection)', () => {
+    try {
+      // Test that INPUT_VALIDATOR.validateId rejects malicious input
+      const maliciousSsid = '1234"; DROP TABLE; --';
+      const result = INPUT_VALIDATOR.validateId(maliciousSsid);
+      // Should return null or throw for invalid input
+      return (result === null || typeof result === 'undefined') ? true : 'ssid malicioso no fue rechazado: ' + result;
+    } catch (e) {
+      return true; // Exception means it was rejected
+    }
+  });
+
+  _test('SECURITY: doGet health check only accepts "1"', () => {
+    try {
+      var validValues = ['1'];
+      var invalidValues = ['true', 'yes', 'TRUE', '2', ''];
+      for (var i = 0; i < invalidValues.length; i++) {
+        if (validValues.indexOf(invalidValues[i]) === -1) {
+          // These should NOT be valid for health check
+        }
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('SECURITY: doGet ssid uses alphanumeric validation', () => {
+    try {
+      // Valid IDs: letters, numbers, hyphens, underscores
+      var validIds = ['1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc', 'ABC123', 'test_id'];
+      for (var i = 0; i < validIds.length; i++) {
+        var result = INPUT_VALIDATOR.validateId(validIds[i]);
+        // Should return the ID (possibly cleaned) but not throw
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

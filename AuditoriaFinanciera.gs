@@ -410,6 +410,196 @@ const AUDIT_ENGINE = {
     }
   },
 
+  /**
+   * Audita la conciliación del flujo de caja.
+   * Valida que el saldo de caja coincida entre libro diario y flujo de caja,
+   * y que las transacciones estén registradas correctamente.
+   */
+  auditarConciliacionFlujo() {
+    Logger.log("--- CONCILIACIÓN DE FLUJO DE CAJA ---");
+    const tz = _getTimeZone();
+    const resultado = {
+      test_conciliacion_saldo: { pasado: true, hallazgos: [] },
+      test_conciliacion_transacciones: { pasado: true, hallazgos: [] },
+      test_integridad_saldos: { pasado: true, hallazgos: [] },
+      metricas: {}
+    };
+
+    try {
+      const libroDiario = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      const flujoCaja = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+
+      if (!libroDiario || !flujoCaja) {
+        resultado.test_conciliacion_saldo.pasado = false;
+        resultado.test_conciliacion_saldo.hallazgos.push('Hojas de libro diario o flujo de caja no encontradas');
+        return resultado;
+      }
+
+      // ============================================================
+      // 1. CONCILIACIÓN DE SALDO (TEST_1)
+      // ============================================================
+      const ldData = libroDiario.getDataRange().getValues();
+      const ldCol = CONFIG.COLUMNS.LIBRO_DIARIO;
+      let saldoLD = 0;
+      let entradasLD = 0;
+      let salidasLD = 0;
+      const transaccionesLD = [];
+
+      for (let i = 1; i < ldData.length; i++) {
+        const tipo = String(ldData[i][ldCol.tipo] || '').trim();
+        const monto = _parseMoneda(ldData[i][ldCol.monto], 0);
+        const idRef = String(ldData[i][ldCol.id_referencia] || '').trim();
+
+        if (tipo === 'VENTA_CONTADO' || tipo === 'ABONO_CLIENTE') {
+          saldoLD += monto;
+          entradasLD += monto;
+          transaccionesLD.push({ tipo: 'ENTRADA', monto: monto, ref: idRef });
+        } else if (tipo === 'PAGO_PROVEEDOR' || tipo === 'COMPRA') {
+          saldoLD -= monto;
+          salidasLD += monto;
+          transaccionesLD.push({ tipo: 'SALIDA', monto: monto, ref: idRef });
+        }
+      }
+
+      const fcData = flujoCaja.getDataRange().getValues();
+      const fcCol = CONFIG.COLUMNS.FLUJO_CAJA;
+      let saldoFC = 0;
+      let entradasFC = 0;
+      let salidasFC = 0;
+      const transaccionesFC = {};
+
+      for (let j = 1; j < fcData.length; j++) {
+        const tipo = String(fcData[j][fcCol.tipo] || '').trim();
+        const monto = _parseMoneda(fcData[j][fcCol.monto], 0);
+        const ref = String(fcData[j][fcCol.referencia] || '').trim();
+
+        if (tipo === FLUJO_CAJA_TIPOS.ENTRADA_ABONO || tipo === FLUJO_CAJA_TIPOS.ENTRADA_VENTA) {
+          saldoFC += monto;
+          entradasFC += monto;
+        } else if (tipo === FLUJO_CAJA_TIPOS.SALIDA_PAGO_PROV || tipo === FLUJO_CAJA_TIPOS.SALIDA_COMPRA) {
+          saldoFC -= monto;
+          salidasFC += monto;
+        }
+
+        if (ref) {
+          const key = ref + '|' + monto;
+          if (!transaccionesFC[key]) transaccionesFC[key] = [];
+          transaccionesFC[key].push({ tipo: tipo, monto: monto, ref: ref });
+        }
+      }
+
+      const diferencia = saldoLD - saldoFC;
+      const umbral = CONFIG.MATERIALITY_THRESHOLD || 100000;
+
+      resultado.metricas.saldo_libro_diario = saldoLD;
+      resultado.metricas.saldo_flujo_caja = saldoFC;
+      resultado.metricas.diferencia_saldo = diferencia;
+
+      if (Math.abs(diferencia) > umbral) {
+        resultado.test_conciliacion_saldo.pasado = false;
+        resultado.test_conciliacion_saldo.hallazgos.push(
+          `Diferencia significativa: ${_formatMoneda(diferencia)} (umbral: ${_formatMoneda(umbral)})`
+        );
+      }
+
+      // ============================================================
+      // 2. CONCILIACIÓN DE TRANSACCIONES (TEST_2) - Muestreo Pareto
+      // ============================================================
+      const muestras = Math.min(20, transaccionesLD.length);
+      let transaccionesNoConciliadas = 0;
+      const erroresTransacciones = [];
+
+      for (let k = 0; k < transaccionesLD.length && transaccionesNoConciliadas < 20; k++) {
+        const txn = transaccionesLD[k];
+        const key = txn.ref + '|' + txn.monto;
+        let encontrado = false;
+
+        if (transaccionesFC[key]) {
+          encontrado = true;
+        }
+
+        if (!encontrado && txn.ref) {
+          for (const refKey in transaccionesFC) {
+            if (refKey.startsWith(txn.ref + '|')) {
+              encontrado = true;
+              break;
+            }
+          }
+        }
+
+        if (!encontrado) {
+          transaccionesNoConciliadas++;
+          erroresTransacciones.push({
+            ref: txn.ref,
+            tipo: txn.tipo,
+            monto: txn.monto
+          });
+        }
+      }
+
+      resultado.metricas.transacciones_muestreadas = Math.min(20, transaccionesLD.length);
+      resultado.metricas.transacciones_no_conciliadas = transaccionesNoConciliadas;
+
+      if (transaccionesNoConciliadas > 0) {
+        resultado.test_conciliacion_transacciones.pasado = false;
+        for (const err of erroresTransacciones) {
+          resultado.test_conciliacion_transacciones.hallazgos.push(
+            `Transacción no conciliada: Ref=${err.ref} (${err.tipo}) - ${_formatMoneda(err.monto)}`
+          );
+        }
+      }
+
+      // ============================================================
+      // 3. INTEGRIDAD DE SALDOS (TEST_3): Sin saldos negativos
+      // ============================================================
+      let saldoAcumulado = 0;
+      let saldosNegativos = 0;
+      const erroresSaldos = [];
+
+      for (let l = 1; l < fcData.length; l++) {
+        const tipo = String(fcData[l][fcCol.tipo] || '').trim();
+        const monto = _parseMoneda(fcData[l][fcCol.monto], 0);
+        const concepto = String(fcData[l][fcCol.concepto] || '').trim();
+        const ref = String(fcData[l][fcCol.referencia] || '').trim();
+
+        if (tipo === FLUJO_CAJA_TIPOS.ENTRADA_ABONO || tipo === FLUJO_CAJA_TIPOS.ENTRADA_VENTA) {
+          saldoAcumulado += monto;
+        } else if (tipo === FLUJO_CAJA_TIPOS.SALIDA_PAGO_PROV || tipo === FLUJO_CAJA_TIPOS.SALIDA_COMPRA) {
+          saldoAcumulado -= monto;
+        }
+
+        if (saldoAcumulado < 0 && saldosNegativos < 10) {
+          saldosNegativos++;
+          erroresSaldos.push({
+            fecha: fcData[l][fcCol.fecha],
+            concepto: concepto,
+            ref: ref,
+            saldo: saldoAcumulado
+          });
+        }
+      }
+
+      resultado.metricas.saldos_negativos_detectados = saldosNegativos;
+
+      if (saldosNegativos > 0) {
+        resultado.test_integridad_saldos.pasado = false;
+        for (const err of erroresSaldos) {
+          resultado.test_integridad_saldos.hallazgos.push(
+            `Saldo negativo en ${err.concepto || 'movimiento'} (Ref=${err.ref}): ${_formatMoneda(err.saldo)}`
+          );
+        }
+      }
+
+      Logger.log(`Flujo de caja: Saldo LD=${_formatMoneda(saldoLD)}, Saldo FC=${_formatMoneda(saldoFC)}, Diff=${_formatMoneda(diferencia)}, Transacciones no conciliadas=${transaccionesNoConciliadas}, Saldos negativos=${saldosNegativos}`);
+
+    } catch (e) {
+      Logger.log("ERROR en auditoría de conciliación de flujo: " + e.message);
+      resultado.error = e.message;
+    }
+
+    return resultado;
+  },
+
   ejecutarAuditoriaCompleta() {
     Logger.log("========== EJECUTANDO AUDITORÍA FINANCIERA COMPLETA ==========");
 
@@ -422,6 +612,16 @@ const AUDIT_ENGINE = {
     } catch (e) {
       Logger.log("Error en auditoría de inventarios: " + e.toString());
       resultados.inventarios = { success: false, error: e.message };
+    }
+
+    // 8. Auditoría de Conciliación de Flujo de Caja
+    try {
+      resultados.flujo = AUDIT_ENGINE.auditarConciliacionFlujo();
+      Logger.log("Auditoría de flujo de caja completada: " + 
+        (resultados.flujo.test_conciliacion_saldo.pasado ? "PASÓ" : "CON HALLAZGOS"));
+    } catch (e) {
+      Logger.log("Error en auditoría de flujo de caja: " + e.toString());
+      resultados.flujo = { success: false, error: e.message };
     }
 
     return {
