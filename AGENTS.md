@@ -98,7 +98,7 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-   Commits totales: 24 en main
+   Commits totales: 25 en main (incluye commit de correcciones circuit breaker)
 
    --------
 
