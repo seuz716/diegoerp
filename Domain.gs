@@ -1712,3 +1712,44 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       if (lockAcquired) lockAcquired.releaseLock();
     }
   },
+
+  /**
+   * Retrieves the most recent payment for a specific provider.
+   * @param {string} idProveedor - Provider ID.
+   * @returns {Object|null} Most recent payment with fecha, valor, referencia.
+   */
+  getUltimoPagoProveedor(idProveedor) {
+    if (!idProveedor) return null;
+    CACHE.refresh();
+    
+    const cartera = CACHE.getCarteraBase() || [];
+    const comprasProveedor = cartera.filter(c => 
+      c.id_tercero === idProveedor && 
+      c.tipo === CARTERA_CONFIG.TIPOS.CXP
+    );
+
+    let ultimoPago = null;
+    let fechaMasReciente = 0;
+
+    for (const compra of comprasProveedor) {
+      const pagos = DAO_COMPRAS.getPagosByCompra ? DAO_COMPRAS.getPagosByCompra(compra.id) : [];
+      for (const pago of pagos) {
+        if (pago.fecha && pago.fecha.getTime) {
+          const fechaPago = pago.fecha.getTime();
+          if (fechaPago > fechaMasReciente) {
+            fechaMasReciente = fechaPago;
+            ultimoPago = {
+              id: pago.id,
+              fecha: pago.fecha,
+              valor: pago.valor,
+              referencia: pago.referencia,
+              id_compra: pago.id_compra
+            };
+          }
+        }
+      }
+    }
+
+    return ultimoPago;
+  },
+};

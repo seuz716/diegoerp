@@ -366,6 +366,21 @@ function deleteTercero(id) {
 }
 
 /**
+ * API Pública: Obtener último pago de proveedor
+ */
+function getUltimoPagoProveedor(idProveedor) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    AuthService.checkPermission("ver_compras");
+    const result = DOMAIN.getUltimoPagoProveedor(idProveedor);
+    return { success: true, pago: result, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("getUltimoPagoProveedor", e, correlationId);
+  }
+}
+
+/**
  * API Pública: Obtener Dashboard
  */
 function getDashboardCartera() {
