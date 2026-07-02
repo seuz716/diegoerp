@@ -438,28 +438,29 @@ function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera)
 }
 
 function _validarStockCarrito(carrito) {
-  const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-  const data = sheet.getDataRange().getValues();
-  const COL = CONFIG.COLUMNS.PRODUCTOS;
-
+  // Use cache instead of sheet read
+  CACHE.refresh();
+  const productosMap = CACHE.productos || {};
+  const productosCache = {};
+  if (Array.isArray(CACHE.productos)) {
+    for (let i = 0; i < CACHE.productos.length; i++) {
+      productosCache[CACHE.productos[i].id] = CACHE.productos[i];
+    }
+  }
+  
   for (const item of carrito) {
     const id = String(item.id || "").trim();
     const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
-    let encontrado = false;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][COL.id] || "").trim() === id) {
-        const stock = Number(data[i][COL.stock]) || 0;
-        if (stock < cantidad) {
-          return `Stock insuficiente para ${data[i][COL.nombre] || id}: disponible ${stock}, solicitado ${cantidad}`;
-        }
-        encontrado = true;
-        break;
-      }
-    }
-    if (!encontrado) {
+    const prod = productosCache[id] || CACHE.getProductoRAW(id);
+    if (!prod) {
       return `Producto ${id} no encontrado en inventario.`;
+    }
+    
+    const stock = Number(prod.stock) || 0;
+    if (stock < cantidad) {
+      return `Stock insuficiente para ${prod.nombre || id}: disponible ${stock}, solicitado ${cantidad}`;
     }
   }
   return null;
@@ -473,11 +474,12 @@ function _descontarInventario(carrito) {
 
   try {
     const data = sheet.getDataRange().getValues();
-    // Index rows by product ID for O(N+M) instead of O(N*M)
     const index = {};
     for (let i = 1; i < data.length; i++) {
       const id = String(data[i][COL.id] || "").trim();
-      if (id) index[id] = i;
+      if (id) {
+        index[id] = { rowIndex: i, version: _parseMoneda(data[i][COL.version], 1) };
+      }
     }
 
     for (const item of carrito) {
@@ -485,26 +487,38 @@ function _descontarInventario(carrito) {
       const cantidad = Number(item.cantidad) || 0;
       if (!id || cantidad <= 0) continue;
 
-      const i = index[id];
-      if (i === undefined) {
+      const info = index[id];
+      if (!info) {
         throw new Error(`Producto ${id} no encontrado en inventario.`);
       }
 
-      const stockActual = Number(data[i][COL.stock]) || 0;
+      const stockActual = _parseMoneda(data[info.rowIndex][COL.stock], 0);
+      const nuevoStock = stockActual - cantidad;
+      if (nuevoStock < 0) {
+        throw new Error(`Stock insuficiente para ${id}: disponible ${stockActual}, solicitado ${cantidad}`);
+      }
 
-      data[i][COL.stock] = Math.max(0, stockActual - cantidad);
-      updates.push(i);
+      const rowRange = sheet.getRange(info.rowIndex + 1, 1, 1, Object.keys(COL).length);
+      const rowValues = rowRange.getValues()[0];
+      
+      const currentVersion = _parseMoneda(rowValues[COL.version], 1);
+      if (currentVersion !== info.version) {
+        const err = new Error(
+          "OptimisticLockError: Producto " + id + " fue modificado concurrentemente " +
+          "(esperada v" + info.version + ", actual v" + currentVersion + "). Reintente."
+        );
+        err.type = 'OPTIMISTIC_LOCK_FAILURE';
+        err.productId = id;
+        throw err;
+      }
+      
+      rowValues[COL.stock] = nuevoStock;
+      rowValues[COL.version] = currentVersion + 1;
+      updates.push({ range: rowRange, values: [rowValues] });
     }
 
-    // Single batch write: all changed rows at once
-    if (updates.length > 0) {
-      const minRow = Math.min(...updates);
-      const maxRow = Math.max(...updates);
-      const batchData = [];
-      for (let r = minRow; r <= maxRow; r++) {
-        batchData.push([data[r][COL.stock]]);
-      }
-      sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 1).setValues(batchData);
+    for (const update of updates) {
+      update.range.setValues(update.values);
     }
   } finally {
     lock.releaseLock();

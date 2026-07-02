@@ -1031,23 +1031,41 @@ function _sendTestAlert(results) {
     body += '\nRevisar la hoja TestResults para más detalles.';
 
     MailApp.sendEmail(adminEmail, '[MicroERP] Fallo en pruebas automáticas', body);
-  } catch (e) {
-    Logger.log('Error enviando alerta: ' + e.message);
-  }
-}
+  // ===== BATCH UPDATES - Performance Optimization Tests =====
 
-function _setupDailyTrigger() {
-  var existing = ScriptApp.getProjectTriggers();
-  for (var ti = 0; ti < existing.length; ti++) {
-    if (existing[ti].getHandlerFunction() === 'runAllTests') {
-      Logger.log('Trigger diario ya existe');
-      return;
+  _test('P1_CRITICAL: registrarCompraAtomic uses batch stock updates', () => {
+    try {
+      const fnStr = DOMAIN.registrarCompraAtomic.toString();
+      // Check for batch update pattern (reading all products once, then batch write)
+      if (fnStr.indexOf('prodVersions') > -1 && fnStr.indexOf('changedRows') > -1) {
+        return true;
+      }
+      // If not using batch, verify it uses incrementarStock (legacy but working)
+      if (fnStr.indexOf('incrementarStock') > -1) {
+        return 'WARN: Using individual incrementarStock calls - not optimized for batch';
+      }
+      return 'registrarCompraAtomic missing stock update logic';
+    } catch (e) {
+      return 'Exception: ' + e.message;
     }
-  }
-  ScriptApp.newTrigger('runAllTests')
-    .timeBased()
-    .everyDays(1)
-    .atHour(6)
-    .create();
-  Logger.log('Trigger diario creado para runAllTests a las 6:00 AM');
+  });
+
+  _test('P1_CRITICAL: _validarStockCarrito uses cache', () => {
+    try {
+      const fnStr = (typeof _validarStockCarrito !== 'undefined' ? 
+        _validarStockCarrito.toString() : '');
+      if (fnStr.indexOf('CACHE.') > -1) {
+        return true;
+      }
+      return '_validarStockCarrito not using cache - performance issue';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  return {
+    passed: TEST_RESULTS.passed,
+    failed: TEST_RESULTS.failed,
+    tests: TEST_RESULTS.tests
+  };
 }
