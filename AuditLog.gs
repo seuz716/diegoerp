@@ -103,6 +103,7 @@ const LOG_ENGINE = {
         lock = LOCK_MANAGER.acquireGlobalLock(30000);
       } catch (lockErr) {
         Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para AuditLog: " + lockErr.message);
+        LogService.logWarn("No se pudo adquirir lock para AuditLog", { functionName: 'logEvent', error: lockErr });
       }
 
       try {
@@ -120,6 +121,7 @@ const LOG_ENGINE = {
           const rowsToDelete = totalRows - MAX_LOG_ROWS;
           sheetAudit.deleteRows(2, rowsToDelete);
           Logger.log("[FIX-C-03] Purge atómico: " + rowsToDelete + " filas borradas");
+      LogService.logInfo("Purge atómico completado", { functionName: 'logEvent', details: { rowsToDelete: rowsToDelete } });
         }
       } finally {
         if (lock) lock.releaseLock();
@@ -128,6 +130,7 @@ const LOG_ENGINE = {
       return true;
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE: Error en operación");
+      LogService.logError("Error en logEvent", { functionName: 'logEvent', error: e });
       return false;
     }
   },
@@ -158,6 +161,7 @@ const LOG_ENGINE = {
         .reverse();
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE.getHistory: Error en operación");
+      LogService.logError("Error en getHistory", { functionName: 'getHistory', error: e });
       return [];
     }
   },

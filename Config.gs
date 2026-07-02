@@ -380,8 +380,7 @@ function _error(msg) { return { success: false, message: String(msg || "Error de
 function _captureError(context, error) {
   const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
   const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
-  Logger.log(`[${context}][${corrId}] ${stack}`);
-  Logger.log(`[${context}][${corrId}]`, error);
+  LogService.logError(stack, { functionName: context, correlationId: corrId, error: error });
 }
 
 function _getTimeZone() {
@@ -501,6 +500,15 @@ function crearBackup() {
      return { cartera: carteraSnapshot, tercero: terceroSnapshot };
    }
  };
+
+// ─ BACKUP & EXPORT CONFIG ─
+
+var BACKUP_CONFIG = {
+  FOLDER_NAME: "MicroERP_Backups",
+  EXPORT_FOLDER_NAME: "MicroERP_Exportaciones",
+  MAX_BACKUPS: 7,
+  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG"],
+};
 
 // ─ SESSION SERVICE (singleton) ─
 const SESSION_SERVICE = {
