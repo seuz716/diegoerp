@@ -44,6 +44,14 @@ const DAO_PRODUCTOS = {
     delete _SHEETS_CACHE[DAO_PRODUCTOS.SHEET];
   },
 
+  /**
+   * Lists products with optional filters, sorted by name.
+   * @param {Object} [filtros] - Filter criteria.
+   * @param {boolean} [filtros.activo] - Filter by active status.
+   * @param {string} [filtros.categoria] - Filter by category.
+   * @param {string} [filtros.busqueda] - Search text for name or ID.
+   * @returns {Array<Object>} Sorted list of products.
+   */
   listar(filtros) {
     const sheet = getSheet(DAO_PRODUCTOS.SHEET);
     const lastRow = sheet.getLastRow();
@@ -69,6 +77,11 @@ const DAO_PRODUCTOS = {
     return result;
   },
 
+  /**
+   * Retrieves a product by its ID.
+   * @param {string} id - Product ID.
+   * @returns {Object|null} Product object or null if not found.
+   */
   obtener(id) {
     const idLimpio = _sanitizeId(id);
     if (!idLimpio) return null;
@@ -86,6 +99,16 @@ const DAO_PRODUCTOS = {
     return null;
   },
 
+  /**
+   * Creates a new product with duplicate ID/name validation.
+   * @param {Object} datos - Product data.
+   * @param {string} datos.nombre - Product name (required).
+   * @param {string} [datos.id] - Optional product ID (auto-generated if omitted).
+   * @param {number} [datos.precio_compra] - Purchase price.
+   * @param {number} [datos.precio_venta] - Sale price.
+   * @param {string} [datos.categoria] - Category.
+   * @returns {{success: boolean, id?: string, nombre?: string, stock?: number, error?: string}} Result object.
+   */
   crear(datos) {
     const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
@@ -133,6 +156,19 @@ const DAO_PRODUCTOS = {
     }
   },
 
+  /**
+   * Updates a product with optimistic locking.
+   * @param {string} id - Product ID.
+   * @param {Object} cambios - Fields to update.
+   * @param {string} [cambios.nombre] - New name.
+   * @param {number} [cambios.precio_compra] - New purchase price.
+   * @param {number} [cambios.precio_venta] - New sale price.
+   * @param {string} [cambios.categoria] - New category.
+   * @param {number} [expectedVersion] - Expected version for optimistic lock.
+   * @returns {boolean} True if update succeeded.
+   * @throws {Error} OPTIMISTIC_LOCK_FAILURE if version mismatch.
+   * @throws {Error} If product not found.
+   */
   actualizar(id, cambios, expectedVersion) {
     const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
@@ -177,7 +213,14 @@ const DAO_PRODUCTOS = {
     }
   },
 
-incrementarStock(id, cantidad) {
+  /**
+   * Atomically increments or decrements product stock with resource locking.
+   * @param {string} id - Product ID.
+   * @param {number} cantidad - Quantity to add (positive) or subtract (negative).
+   * @returns {{stockAnterior: number, stockNuevo: number}} Stock levels before and after.
+   * @throws {Error} If stock insufficient or product not found.
+   */
+  incrementarStock(id, cantidad) {
      const lock = LOCK_MANAGER.acquireResourceLock(id);
      try {
        const idLimpio = _sanitizeId(id);
@@ -214,6 +257,12 @@ incrementarStock(id, cantidad) {
     }
   },
 
+  /**
+   * Toggles the active status of a product.
+   * @param {string} id - Product ID.
+   * @returns {{id: string, activo: string}} Updated product ID and new status.
+   * @throws {Error} If product not found.
+   */
   toggleActivo(id) {
     const idLimpio = _sanitizeId(id);
     if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);

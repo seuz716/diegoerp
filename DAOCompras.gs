@@ -23,6 +23,20 @@ const DAO_COMPRAS = {
     };
   },
 
+  /**
+   * Creates a new kardex inventory movement record.
+   * @param {Object} movimiento - Movement data.
+   * @param {string} movimiento.id - Movement ID.
+   * @param {Date} [movimiento.fecha] - Movement date (defaults to now).
+   * @param {string} movimiento.id_producto - Product ID.
+   * @param {string} movimiento.tipo_mov - Movement type (ENTRADA/SALIDA).
+   * @param {number} movimiento.cantidad - Quantity moved.
+   * @param {number} movimiento.stock_anterior - Stock before movement.
+   * @param {number} movimiento.stock_nuevo - Stock after movement.
+   * @param {string} [movimiento.referencia] - Reference document.
+   * @param {string} [movimiento.origen] - Origin module.
+   * @param {string} [movimiento.usuario] - User who performed the movement.
+   */
   crearMovimientoKardex(movimiento) {
     const lock = LOCK_MANAGER.acquireGlobalLock(30000);
     try {
@@ -46,6 +60,12 @@ const DAO_COMPRAS = {
     }
   },
 
+  /**
+   * Retrieves kardex movements for a specific product, sorted by date descending.
+   * @param {string} idProducto - Product ID.
+   * @param {number} [limit] - Max results to return.
+   * @returns {Array<Object>} List of kardex movements.
+   */
   getMovimientosKardex(idProducto, limit) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
     const lastRow = sheet.getLastRow();
@@ -199,6 +219,13 @@ const DAO_COMPRAS = {
     return result;
   },
 
+  /**
+   * Retrieves purchase records with optional filters.
+   * @param {string|null} filtroProveedor - Filter by provider ID.
+   * @param {string|null} filtroEstado - Filter by estado.
+   * @param {number} [maxRows=10000] - Max rows to read from sheet.
+   * @returns {Array<Object>} List of purchase records.
+   */
   getCompras(filtroProveedor, filtroEstado, maxRows) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     const lastRow = sheet.getLastRow();
@@ -268,6 +295,11 @@ const DAO_COMPRAS = {
     sheet.appendRow(row);
   },
 
+  /**
+   * Retrieves detail lines for a given purchase.
+   * @param {string} idCompra - Purchase ID.
+   * @returns {Array<Object>} List of detail items.
+   */
   getDetallesByCompra(idCompra) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
     const lastRow = sheet.getLastRow();
@@ -282,6 +314,11 @@ const DAO_COMPRAS = {
     return result;
   },
 
+  /**
+   * Retrieves payment records for a given purchase.
+   * @param {string} idCompra - Purchase ID.
+   * @returns {Array<Object>} List of payment records.
+   */
   getPagosByCompra(idCompra) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
     const lastRow = sheet.getLastRow();

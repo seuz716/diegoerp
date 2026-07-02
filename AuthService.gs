@@ -26,7 +26,11 @@ const PERMISSION_ROLES = {
   administrar: ROLES.ADMIN,
 };
 
-// Whitelist de acciones permitidas sin identidad de usuario (triggers por tiempo)
+/**
+ * Whitelist de acciones permitidas sin identidad de usuario (triggers por tiempo).
+ * Las acciones listadas aquí pueden ejecutarse sin un usuario autenticado.
+ * @type {Object<string, boolean>}
+ */
 const TRIGGER_SAFE_ACTIONS = {
   actualizarVencimientos: true,
   revisarInventario: true,
@@ -36,6 +40,12 @@ const TRIGGER_SAFE_ACTIONS = {
 // SCHEMA VALIDATOR - Validate JSON structures before parsing
 // =============================================================================
 const SCHEMA_VALIDATOR = {
+  /**
+   * Validates and parses AUTHORIZED_USERS JSON string.
+   * Schema: { "email@domain.com": "ADMIN|OPERATOR|VIEWER" }
+   * @param {string} raw - JSON string of authorized users.
+   * @returns {{valid: boolean, parsed?: Object<string, string>, error?: string}} Validation result.
+   */
   validateRoleMap(raw) {
     if (typeof raw !== 'string') return { valid: false, error: 'AUTHORIZED_USERS no es string' };
     try {
@@ -90,6 +100,12 @@ const CRYPTO_SERVICE = {
     return key;
   },
 
+  /**
+   * Sets a new master encryption key in UserProperties.
+   * @param {string} key - Master key (minimum 32 characters).
+   * @returns {boolean} true on success.
+   * @throws {Error} If key is too short.
+   */
   setMasterKey(key) {
     if (!key || key.length < 32) throw new Error("La clave maestra debe tener al menos 32 caracteres.");
     PropertiesService.getUserProperties().setProperty("CRYPTO_MASTER_KEY", key);
@@ -97,6 +113,9 @@ const CRYPTO_SERVICE = {
     return true;
   },
 
+  /**
+   * Clears the master encryption key from UserProperties and memory cache.
+   */
   clearMasterKey() {
     PropertiesService.getUserProperties().deleteProperty("CRYPTO_MASTER_KEY");
     delete this._memoryCache["AES_MASTER_KEY"];
@@ -134,6 +153,12 @@ const CRYPTO_SERVICE = {
     return bytes;
   },
   
+  /**
+   * Encrypts plaintext using AES-256-CTR via HMAC-SHA256 keystream.
+   * @param {string} plaintext - Text to encrypt.
+   * @returns {string} JSON-encoded ciphertext with IV, salt, HMAC, and version.
+   * @throws {Error} If encryption fails.
+   */
   encrypt(plaintext) {
     if (!plaintext) return "";
     try {
@@ -168,6 +193,13 @@ const CRYPTO_SERVICE = {
     }
   },
   
+  /**
+   * Decrypts a JSON-encoded ciphertext produced by encrypt().
+   * Verifies HMAC integrity before decrypting.
+   * @param {string} ciphertext - JSON-encoded ciphertext with IV, salt, HMAC.
+   * @returns {string} Decrypted plaintext.
+   * @throws {Error} If HMAC verification fails or decryption fails.
+   */
   decrypt(ciphertext) {
     if (!ciphertext) return "";
     try {
@@ -215,7 +247,17 @@ const CRYPTO_SERVICE = {
     throw new Error("CRYPTO_ERROR: Formato legacy requiere migración manual");
   },
   
+  /**
+   * Obfuscates a value via encryption (alias for encrypt).
+   * @param {string} p - Value to obfuscate.
+   * @returns {string} Obfuscated/encrypted value.
+   */
   obfuscate(p) { return this.encrypt(p); },
+  /**
+   * Deobfuscates a value via decryption (alias for decrypt).
+   * @param {string} c - Obfuscated value to restore.
+   * @returns {string} Deobfuscated plaintext.
+   */
   deobfuscate(c) { return this.decrypt(c); },
 };
 
@@ -237,12 +279,25 @@ const AuthService = {
     return CRYPTO_SERVICE.deobfuscate(stored);
   },
 
+  /**
+   * Securely stores an API key in ScriptProperties (encrypted).
+   * @param {string} keyName - Name/identifier for the key.
+   * @param {string} value - The API key value to store.
+   * @returns {boolean} true on success.
+   * @throws {Error} If keyName or value is empty.
+   */
   setApiKey(keyName, value) {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
     this._storeKey(keyName, value.trim());
     return true;
   },
 
+  /**
+   * Retrieves an API key, resolving first from PROXY_SECRET_SERVICE, then from encrypted storage.
+   * @param {string} keyName - Name/identifier for the key.
+   * @returns {string} The API key value.
+   * @throws {Error} If the key is not found in any source.
+   */
   getApiKey(keyName) {
     // Phase 2: No silent fallback - require secure configuration
     const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
@@ -254,11 +309,20 @@ const secureValue = this._loadKey(keyName);
      throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
   },
 
+  /**
+   * Removes an API key from ScriptProperties.
+   * @param {string} keyName - Name/identifier for the key.
+   */
   removeApiKey(keyName) {
     PropertiesService.getScriptProperties().deleteProperty(this.STORE_PREFIX + keyName);
     PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
   },
 
+  /**
+   * Checks whether an API key exists in ScriptProperties.
+   * @param {string} keyName - Name/identifier for the key.
+   * @returns {boolean} true if the key exists.
+   */
   hasApiKey(keyName) {
     return !!(
       PropertiesService.getScriptProperties().getProperty(this.STORE_PREFIX + keyName) ||
@@ -275,8 +339,11 @@ const secureValue = this._loadKey(keyName);
   },
 
   /**
-   * Validates and retrieves user role from AUTHORIZED_USERS JSON
+   * Validates and retrieves user role from AUTHORIZED_USERS JSON.
    * Schema: { "email@domain.com": "ADMIN|OPERATOR|VIEWER" }
+   * @param {string} email - User email to look up.
+   * @returns {string|null} Role (ADMIN, OPERATOR, VIEWER) or null if not found.
+   * @throws {Error} If AUTHORIZED_USERS config is corrupt.
    */
   getUserRole(email) {
     if (!email) return null;
@@ -295,7 +362,16 @@ const normalized = email.toLowerCase().trim();
      return validation.parsed[normalized] || null;
    },
 
-   checkPermission(accion) {
+    /**
+     * Checks whether the current user has permission to perform an action.
+     * Resolves the required role from PERMISSION_ROLES and compares against
+     * the user's assigned role using a hierarchy (ADMIN > OPERATOR > VIEWER).
+     * Trigger-safe actions bypass identity checks.
+     * @param {string} accion - Action key from PERMISSION_ROLES.
+     * @returns {void}
+     * @throws {Error} If action is unknown, user lacks role, or permission denied.
+     */
+    checkPermission(accion) {
     const requiredRole = PERMISSION_ROLES[accion];
     if (!requiredRole) {
       throw new Error('Acción desconocida: ' + accion + '. Revisa la configuración de PERMISSION_ROLES.');
@@ -378,6 +454,12 @@ const PROXY_SECRET_SERVICE = {
     return null;
   },
 
+  /**
+   * Sets the Secret Proxy endpoint URL in ScriptProperties.
+   * @param {string} url - HTTPS URL of the secret proxy service.
+   * @returns {boolean} true on success.
+   * @throws {Error} If URL is empty.
+   */
   setEndpointUrl(url) {
     if (!url || url.trim() === "") throw new Error("URL de Secret Proxy requerida.");
     PropertiesService.getScriptProperties().setProperty(
@@ -387,6 +469,12 @@ const PROXY_SECRET_SERVICE = {
     return true;
   },
 
+  /**
+   * Sets the HMAC secret for authenticating requests to the Secret Proxy.
+   * @param {string} secret - HMAC shared secret.
+   * @returns {boolean} true on success.
+   * @throws {Error} If secret is empty.
+   */
   setHmacSecret(secret) {
     if (!secret || secret.trim() === "") throw new Error("HMAC secret requerido.");
     PropertiesService.getScriptProperties().setProperty(
@@ -396,10 +484,20 @@ const PROXY_SECRET_SERVICE = {
     return true;
   },
 
+  /**
+   * Checks whether an HMAC secret has been configured.
+   * @returns {boolean} true if HMAC secret exists.
+   */
   hasHmacSecret() {
     return !!this._getHmacSecret();
   },
 
+  /**
+   * Resolves a secret value from the configured Secret Proxy endpoint.
+   * Returns null if no endpoint is configured.
+   * @param {string} secretName - Name of the secret to resolve.
+   * @returns {string|null} Secret value or null.
+   */
   resolveSecret(secretName) {
     const endpointUrl = this._getEndpointUrl();
     if (!endpointUrl) return null;

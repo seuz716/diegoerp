@@ -11,6 +11,11 @@
  */
 
 const SamplingStrategy = {
+  /**
+   * Segments items by age/delinquency buckets.
+   * @param {Array<{dias_vencido: number|null}>} items - Items with days overdue.
+   * @returns {Object<string, Array>} Buckets keyed by age category.
+   */
   segmentByAge(items) {
     const buckets = {
       SIN_FECHA: [],
@@ -43,6 +48,18 @@ const SamplingStrategy = {
     );
   },
 
+  /**
+   * Calculates an importance score for weighted random sampling.
+   * Factors: saldo, mora duration, proximity to due date, state.
+   * @param {Object} item - Item with saldo/valor, dias_vencido, estado etc.
+   * @param {Date} hoy - Current date for reference.
+   * @param {Object} [weightsConfig] - Optional weight multipliers.
+   * @param {number} [weightsConfig.saldoWeight=1]
+   * @param {number} [weightsConfig.moraWeight=1]
+   * @param {number} [weightsConfig.vencimientoProximoWeight=1]
+   * @param {number} [weightsConfig.estadoWeight=1]
+   * @returns {number} Importance score.
+   */
   calculateImportanceScore(item, hoy, weightsConfig = {}) {
     const {
       saldoWeight = 1,
@@ -79,6 +96,13 @@ const SamplingStrategy = {
     return score;
   },
 
+  /**
+   * Samples n items using weighted random selection without replacement.
+   * @param {Array} items - Items to sample from.
+   * @param {Date} hoy - Current date for importance score.
+   * @param {number} n - Number of items to sample.
+   * @returns {Array} Sampled items.
+   */
   weightedRandomSample(items, hoy, n) {
     if (n >= items.length) return items;
     if (n <= 0) return [];
