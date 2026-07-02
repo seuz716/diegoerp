@@ -60,6 +60,36 @@ const DAO_COMPRAS = {
     }
   },
 
+  crearMovimientosKardexBatch(movimientos) {
+    if (!movimientos || movimientos.length === 0) return { success: true, count: 0 };
+    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    try {
+      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      const C = DAO_COMPRAS.KARDEX_COL;
+      const rows = [];
+      for (let m = 0; m < movimientos.length; m++) {
+        const mov = movimientos[m];
+        const row = [];
+        row[C.id] = mov.id || ("KD" + Date.now() + "_" + m);
+        row[C.fecha] = mov.fecha || new Date();
+        row[C.id_producto] = mov.id_producto || "";
+        row[C.tipo_mov] = mov.tipo_mov || "";
+        row[C.cantidad] = mov.cantidad || 0;
+        row[C.stock_anterior] = mov.stock_anterior || 0;
+        row[C.stock_nuevo] = mov.stock_nuevo || 0;
+        row[C.referencia] = mov.referencia || "";
+        row[C.origen] = mov.origen || "";
+        row[C.usuario] = mov.usuario || "";
+        for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
+        rows.push(row);
+      }
+      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+      return { success: true, count: rows.length };
+    } finally {
+      if (lock) lock.releaseLock();
+    }
+  },
+
   /**
    * Retrieves kardex movements for a specific product, sorted by date descending.
    * @param {string} idProducto - Product ID.

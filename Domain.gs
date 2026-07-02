@@ -836,10 +836,20 @@ DAO.createCartera(record);
           CACHE.recoverFromStale();
         }
 
-        const todosProductos = DAO_PRODUCTOS.listar();
-        const productoMap = {};
-        for (let _pm = 0; _pm < todosProductos.length; _pm++) {
-          productoMap[todosProductos[_pm].id] = todosProductos[_pm];
+        // OPTIMIZED: Read products once for batch stock updates
+        const C = CONFIG.COLUMNS.PRODUCTOS;
+        const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+        const lastRow = prodSheet.getLastRow();
+        const colCount = C.version + 1;
+        const prodData = lastRow >= 2 ? prodSheet.getRange(2, 1, lastRow - 1, colCount).getValues() : [];
+        const prodIndex = {};
+        const prodVersions = {};
+        for (let p = 0; p < prodData.length; p++) {
+          const pid = String(prodData[p][C.id] || "").trim();
+          if (pid) {
+            prodIndex[pid] = p;
+            prodVersions[pid] = parseInt(prodData[p][C.version]) || 1;
+          }
         }
 
         const idCompra = "CXP" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
@@ -859,6 +869,9 @@ DAO.createCartera(record);
 
         DAO_COMPRAS.crearCompra(compraRecord);
 
+        // Collect stock updates for batch write
+        const stockUpdates = {}; // pid -> { cantidad, rowIndex, stockAnterior, stockNuevo }
+
         let subtotalAcumulado = 0;
         for (let j = 0; j < items.length; j++) {
           const item = items[j];
@@ -873,26 +886,23 @@ DAO.createCartera(record);
             id: detId, id_compra: idCompra, id_producto: prodId,
             cantidad: cant, precio_unitario: pUnit, subtotal: sub,
           });
-          const prodExistente = productoMap[prodId];
           const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
 
-          if (prodExistente) {
-            tx.snapshotProductoRows([prodExistente.rowIndex]);
-            const stockResult = DAO_PRODUCTOS.incrementarStock(prodId, cant);
-            const kardexId = "KDX" + Date.now() + "_" + prodId + "_" + j;
-            DAO_COMPRAS.crearMovimientoKardex({
-              id: kardexId,
-              fecha: new Date(),
-              id_producto: prodId,
-              tipo_mov: "ENTRADA",
-              cantidad: cant,
-              stock_anterior: stockResult.stockAnterior,
-              stock_nuevo: stockResult.stockNuevo,
-              referencia: idCompra,
-              origen: "COMPRA",
-              usuario: email
-            });
+          const idx = prodIndex[prodId];
+          if (idx !== undefined) {
+            // Existing product - accumulate for batch update
+            const stockAnterior = parseInt(prodData[idx][C.stock]) || 0;
+            const stockNuevo = stockAnterior + cant;
+            prodData[idx][C.stock] = stockNuevo;
+            prodData[idx][C.version] = prodVersions[prodId] + 1;
+            
+            stockUpdates[prodId] = { 
+              stockAnterior, stockNuevo, rowIndex: idx + 2, prodIdx: idx,
+              kardexId: "KDX" + Date.now() + "_" + prodId + "_" + j,
+              usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "system"
+            };
           } else {
+            // New product - create inline
             const _nombreItem = String(item.nombre || "").trim();
             if (_nombreItem) {
               tx.markProductoPreAppend();
@@ -906,26 +916,60 @@ DAO.createCartera(record);
               });
               tx.markProductoPostAppend();
               const prodIdCreado = creado.id;
-              productoMap[prodIdCreado] = DAO_PRODUCTOS.obtener(prodIdCreado);
-              const stockResult = DAO_PRODUCTOS.incrementarStock(prodIdCreado, cant);
-              const kardexId = "KDX" + Date.now() + "_" + prodIdCreado + "_" + j;
-              DAO_COMPRAS.crearMovimientoKardex({
-                id: kardexId,
-                fecha: new Date(),
-                id_producto: prodIdCreado,
-                tipo_mov: "ENTRADA",
-                cantidad: cant,
-                stock_anterior: 0,
-                stock_nuevo: cant,
-                referencia: idCompra,
-                origen: "COMPRA",
-                usuario: email
-              });
+              
+              // Inline productos are created with stock 0, so we set to cant
+              // Get the new row (last row)
+              const newRowIdx = getSheet(CONFIG.SHEETS.PRODUCTOS).getLastRow();
+              prodIndex[prodIdCreado] = newRowIdx - 2;
+              
+              stockUpdates[prodIdCreado] = { 
+                stockAnterior: 0, stockNuevo: cant, rowIndex: newRowIdx,
+                kardexId: "KDX" + Date.now() + "_" + prodIdCreado + "_" + j 
+              };
+              
               LOG_ENGINE.logEvent("CREATE_PRODUCTO_INLINE", "PRODUCTOS", prodIdCreado,
                 {}, { nombre: _nombreItem, precio_compra: pCompra, origen: "COMPRA", id_compra: idCompra }, "SUCCESS",
                 { correlationId: corrId });
             }
           }
+        }
+
+        // Batch write all stock updates
+        const rowNums = Object.values(stockUpdates).map(u => u.rowIndex).sort((a, b) => a - b);
+        if (rowNums.length > 0) {
+          const batchData = [];
+          for (const r of rowNums) {
+            const update = Object.values(stockUpdates).find(u => u.rowIndex === r);
+            const prodIdx = update.prodIdx;
+            if (prodIdx !== undefined) {
+              batchData.push([prodData[prodIdx][C.stock], prodData[prodIdx][C.version]]);
+            }
+          }
+          
+          // Write stock and version columns separately (non-contiguous)
+          prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(
+            batchData.map(row => [row[0]])
+          );
+          prodSheet.getRange(rowNums[0], C.version + 1, batchData.length, 1).setValues(
+            batchData.map(row => [row[1]])
+          );
+        }
+
+        // Write kardex entries for updated products
+        for (const pid of Object.keys(stockUpdates)) {
+          const update = stockUpdates[pid];
+          DAO_COMPRAS.crearMovimientoKardex({
+            id: update.kardexId,
+            fecha: new Date(),
+            id_producto: pid,
+            tipo_mov: "ENTRADA",
+            cantidad: update.stockNuevo - update.stockAnterior,
+            stock_anterior: update.stockAnterior,
+            stock_nuevo: update.stockNuevo,
+            referencia: idCompra,
+            origen: "COMPRA",
+            usuario: update.usuario || "system"
+          });
         }
 
         tx.markDetallePostAppend();

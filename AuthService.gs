@@ -19,6 +19,7 @@ const PERMISSION_ROLES = {
   registrar_venta: ROLES.OPERATOR,
   registrar_compra: ROLES.OPERATOR,
   registrar_pago_proveedor: ROLES.OPERATOR,
+  eliminar_tercero: ROLES.ADMIN,
   ver_cache: ROLES.ADMIN,
   configurar_ia: ROLES.ADMIN,
   ejecutar_mantenimiento: ROLES.ADMIN,

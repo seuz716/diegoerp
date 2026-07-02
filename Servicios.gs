@@ -526,46 +526,47 @@ function _descontarInventario(carrito) {
 }
 
 function _revertirDescuentoInventario(carrito) {
-  // === INICIO FIX M-07 ===
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
   try {
-  // === FIN FIX M-07 ===
-  const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-  const data = sheet.getDataRange().getValues();
-  const COL = CONFIG.COLUMNS.PRODUCTOS;
-  const updates = [];
+    const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
+    const data = sheet.getDataRange().getValues();
+    const COL = CONFIG.COLUMNS.PRODUCTOS;
+    const updates = [];
 
-  const index = {};
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][COL.id] || "").trim();
-    if (id) index[id] = i;
-  }
-
-  for (const item of carrito) {
-    const id = String(item.id || "").trim();
-    const cantidad = Number(item.cantidad) || 0;
-    if (!id || cantidad <= 0) continue;
-
-    const i = index[id];
-    if (i === undefined) continue;
-
-    const stockActual = Number(data[i][COL.stock]) || 0;
-    data[i][COL.stock] = stockActual + cantidad;
-    updates.push(i);
-  }
-
-  if (updates.length > 0) {
-    const minRow = Math.min(...updates);
-    const maxRow = Math.max(...updates);
-    const batchData = [];
-    for (let r = minRow; r <= maxRow; r++) {
-      batchData.push([data[r][COL.stock]]);
+    const index = {};
+    for (let i = 1; i < data.length; i++) {
+      const id = String(data[i][COL.id] || "").trim();
+      if (id) {
+        index[id] = { rowIndex: i, version: _parseMoneda(data[i][COL.version], 1) };
+      }
     }
-    sheet.getRange(minRow + 1, COL.stock + 1, batchData.length, 1).setValues(batchData);
-  }
-  // === INICIO FIX M-07 ===
+
+    for (const item of carrito) {
+      const id = String(item.id || "").trim();
+      const cantidad = Number(item.cantidad) || 0;
+      if (!id || cantidad <= 0) continue;
+
+      const info = index[id];
+      if (!info) continue;
+
+      const rowRange = sheet.getRange(info.rowIndex + 1, 1, 1, Object.keys(COL).length);
+      const rowValues = rowRange.getValues()[0];
+      
+      const currentVersion = _parseMoneda(rowValues[COL.version], 1);
+      if (currentVersion !== info.version) {
+        continue;
+      }
+      
+      const stockActual = _parseMoneda(rowValues[COL.stock], 0);
+      rowValues[COL.stock] = stockActual + cantidad;
+      rowValues[COL.version] = currentVersion + 1;
+      updates.push({ range: rowRange, values: [rowValues] });
+    }
+
+    for (const update of updates) {
+      update.range.setValues(update.values);
+    }
   } finally {
     lock.releaseLock();
   }
-  // === FIN FIX M-07 ===
 }
