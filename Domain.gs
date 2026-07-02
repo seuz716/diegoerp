@@ -2176,4 +2176,113 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
     return result;
   },
+
+  /**
+   * Trazabilidad completa: proveedor → producto → cliente.
+   * Rastrea cada producto desde su origen (proveedor) hasta su destino (cliente).
+   * @param {string} [idProducto] - Optional product ID filter
+   * @returns {Array} Trazas con proveedor, fecha compra, fecha venta, cliente, cantidades
+   */
+  getTrazabilidadCompleta(idProducto) {
+    const tz = _getTimeZone();
+    const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const lastRow = kardexSheet.getLastRow();
+
+    if (lastRow < 2) return [];
+
+    const numCols = Math.max.apply(null, Object.values(KCOL)) + 1;
+    const kardexData = kardexSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+    // Obtener datos base
+    const productos = DAO_PRODUCTOS.listar({});
+    const terceros = CACHE.terceros || DAO.getTerceros();
+    const cartera = CACHE.getCarteraBase() || [];
+
+    // Mapas de búsqueda
+    const productoMap = {};
+    for (let i = 0; i < productos.length; i++) {
+      productoMap[productos[i].id] = productos[i];
+    }
+
+    const terceroMap = {};
+    for (let i = 0; i < terceros.length; i++) {
+      terceroMap[terceros[i].id] = terceros[i];
+    }
+
+    const carteraMap = {};
+    for (let i = 0; i < cartera.length; i++) {
+      if (!carteraMap[cartera[i].id]) {
+        carteraMap[cartera[i].id] = [];
+      }
+      carteraMap[cartera[i].id].push(cartera[i]);
+    }
+
+    // Procesar trazas
+    const trazas = {};
+
+    for (let i = 0; i < kardexData.length; i++) {
+      const tipoMov = String(kardexData[i][KCOL.tipo_mov] || "").toUpperCase();
+      const prodId = String(kardexData[i][KCOL.id_producto] || "").trim();
+      if (idProducto && prodId !== idProducto) continue;
+      if (!prodId) continue;
+
+      const referencia = String(kardexData[i][KCOL.referencia] || "").trim();
+      const cantidad = _parseMoneda(kardexData[i][KCOL.cantidad], 0);
+      const fecha = kardexData[i][KCOL.fecha];
+
+      // ENTRADA: proveedor → producto
+      if (tipoMov === 'ENTRADA') {
+        // Buscar compra origen
+        const compra = carteraMap[referencia] ? carteraMap[referencia][0] : null;
+        const proveedorId = compra ? compra.id_tercero : null;
+        const proveedor = proveedorId ? terceroMap[proveedorId] : null;
+
+        if (!trazas[prodId]) {
+          trazas[prodId] = {
+            producto: prodId,
+            nombre_producto: productoMap[prodId] ? productoMap[prodId].nombre : prodId,
+            proveedor: proveedorId || 'DESCONOCIDO',
+            nombre_proveedor: proveedor ? proveedor.nombre : 'DESCONOCIDO',
+            fecha_entrada: fecha,
+            cantidad_entrada: cantidad,
+            salidas: []
+          };
+        } else {
+          trazas[prodId].cantidad_entrada += cantidad;
+        }
+        if (proveedorId && !trazas[prodId].proveedor) {
+          trazas[prodId].proveedor = proveedorId;
+          trazas[prodId].nombre_proveedor = proveedor ? proveedor.nombre : proveedorId;
+        }
+      }
+
+      // SALIDA: producto → cliente
+      if (tipoMov === 'SALIDA') {
+        if (!trazas[prodId]) {
+          trazas[prodId] = {
+            producto: prodId,
+            nombre_producto: productoMap[prodId] ? productoMap[prodId].nombre : prodId,
+            proveedor: 'SIN_ENTRADA_REGISTRADA',
+            nombre_proveedor: 'SIN ENTRADA',
+            cantidad_entrada: 0,
+            salidas: []
+          };
+        }
+
+        // Extraer cliente de la referencia
+        const clienteId = referencia.replace(/^VTA[-_]?/, '').split(/[-_]/)[0];
+        const cliente = terceroMap[clienteId] || null;
+
+        trazas[prodId].salidas.push({
+          fecha_salida: fecha,
+          cliente: clienteId || 'DESCONOCIDO',
+          nombre_cliente: cliente ? cliente.nombre : (clienteId || 'DESCONOCIDO'),
+          cantidad: cantidad
+        });
+      }
+    }
+
+    return Object.values(trazas);
+  },
 };
