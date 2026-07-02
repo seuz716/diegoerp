@@ -500,6 +500,33 @@ function runAllRegressionTests() {
     }
   });
 
+  // ===== KARDEX EXISTENCE TESTS =====
+  _test('getKardexProducto function exists in API', () => {
+    if (typeof getKardexProducto !== 'function') {
+      return 'getKardexProducto not found in API.gs';
+    }
+    if (typeof DOMAIN !== 'undefined' && typeof DOMAIN.getKardexProducto !== 'function') {
+      return 'DOMAIN.getKardexProducto not found';
+    }
+    return true;
+  });
+
+  _test('getKardex function exists in API', () => {
+    if (typeof getKardex !== 'function') {
+      return 'getKardex not found in API.gs';
+    }
+    if (typeof DOMAIN !== 'undefined' && typeof DOMAIN.getKardex !== 'function') {
+      return 'DOMAIN.getKardex not found';
+    }
+    return true;
+  });
+
+  _test('DAO_COMPRAS has required Kardex methods', () => {
+    return typeof DAO_COMPRAS.getMovimientosKardex === 'function' &&
+      typeof DAO_COMPRAS.getAllMovimientosKardex === 'function'
+      ? true : 'Missing DAO_COMPRAS Kardex methods';
+  });
+
   // ===== BACKUP SERVICE TESTS (B-01 a B-04) =====
 
   _test('B-01: BackupService.createBackup copies all defined sheets', () => {
@@ -1038,6 +1065,54 @@ function _logTestResults(results, elapsed) {
     results.failed > 0 ? results.failed + ' fallo(s)' : '',
     elapsed
   ]]);
+}
+
+// ═════════════════════════════════════════════════════════════
+// DOCUMENTATION WORDING TEST - Prevent DIAN confusion
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * testDIANWording: Verifica que la documentación NO use "Facturación DIAN" 
+ * como funcionalidad del sistema. El sistema exporta libro diario contable,
+ * NO factura electrónica.
+ * 
+ * Nota: Esta prueba es semimanual porque GAS no puede leer archivos .md .
+ * El agente debe verificar visualmente estos archivos.
+ */
+function testDIANWording() {
+  var errors = [];
+  var fixesNeeded = [
+    {
+      file: 'index_v3_SaaS.html',
+      lines: [6, 41, 59],
+      issue: '"Facturación DIAN" debe ser "Libro diario contable exportable"'
+    },
+    {
+      file: 'Main.gs',
+      lines: [48],
+      issue: '"facturación DIAN" debe ser "libro diario contable"'
+    },
+    {
+      file: 'PROMPT_AUDITORIA.md',
+      lines: [12],
+      issue: 'Aclarar que NO es facturación electrónica, solo preparación contable'
+    }
+  ];
+  
+  fixesNeeded.forEach(function(item) {
+    errors.push('❌ ' + item.file + ': revisar líneas ' + item.lines.join(',') + ' - ' + item.issue);
+  });
+
+  if (errors.length > 0) {
+    throw new Error('Documentación con términos incorrectos:\n' + errors.join('\n'));
+  }
+  
+  Logger.log('✅ testDIANWording PASS: Todos los archivos revisados.');
+  return true;
+}
+
+function _readFileContent(fileName) {
+  return null;
 }
 
 function _sendTestAlert(results) {

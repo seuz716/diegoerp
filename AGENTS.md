@@ -10,6 +10,7 @@
 - ✅ DOMAIN.registrarAbonoAtomic → validar saldo crediticio
 - ✅ DAO.updateCarteraBatch → optimistic locking atómico
 - ✅ CACHE → circuit breaker HALF_OPEN
+- ✅ Kardex: Historial movimientos por producto (getKardexProducto) y global (getKardex)
 
 ## CLI 1 - SEGURIDAD (completado)
 - ✅ SESSION_SERVICE consolidado como singleton en Config.gs
@@ -161,3 +162,12 @@ Test Suite (runAllRegressionTests): 30 tests
 - SQL optimizer/connection pool — este proyecto NO usa SQL, usa SpreadsheetApp
 - Logging async + 50MB rotation — GAS no soporta escritura asíncrona ni tamaño de archivo (worksheets)
 - /procesarIA endpoint — los endpoints GAS son funciones globales, no rutas HTTP
+## MATRIZ DE CORRELACIÓN - PRODUCTOS (Sección 7)
+
+| Función Frontend | Backend Call | Función Backend | Estado | Observaciones |
+|-----------------|--------------|-----------------|--------|---------------|
+| cargarProductos() | App.api.getProductos() | getProductos() | ✅ | CRUD completo con validación |
+| guardarProducto() | App.api.actualizarProducto() | actualizarProducto() | ✅ | Con optimistic locking |
+| toggleActivo() | App.api.toggleActivoProducto() | DAO_PRODUCTOS.toggleActivo() | ✅ | Cambia estado ACTIVO/INACTIVO |
+| (No UI directa) | getKardexProducto(id, limit) | DOMAIN.getKardexProducto(id, limit) | ✅ CORRECTO | Historial movimientos inventario por producto específico |
+| (No UI directa) | getKardex(limit) | DOMAIN.getKardex(limit) | ✅ CORRECTO | Kardex global: movimientos todos productos últimos 30 día |
