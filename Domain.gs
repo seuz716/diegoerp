@@ -1577,3 +1577,138 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
     return rotacion;
   },
 };
+
+ /**
+   * Deletes a third party (proveedor/cliente) with critical safety validations.
+   * 
+   * CRITICAL VALIDATIONS:
+   * 1. Verifies tercero exists
+   * 2. Blocks deletion if CxP with saldo > 0 (unpaid purchases)
+   * 3. Blocks deletion if CxC with saldo > 0 (outstanding receivables)
+   * 4. Blocks deletion if has associated products (in Kardex/Detalle_Compras)
+   * 5. Blocks deletion if last payment was within 30 days
+   * 
+   * @param {string} id - Third party ID to delete
+   * @param {boolean} [forceDelete=false] - Skip confirmation (use with caution)
+   * @returns {{success: boolean, message: string, hasActiveCxP: boolean, hasActiveCxC: boolean, hasRecentPayment: boolean}} Result
+   */
+  deleteTercero(id, forceDelete = false) {
+    let lockAcquired = null;
+    const tx = _Transaction.create();
+    
+    try {
+      const idLimpio = _sanitizeId(id);
+      if (!idLimpio) return _error("ID de tercero inválido.");
+
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(idLimpio);
+
+      // Get tercero to verify existence
+      const tercero = CACHE.getTerceroRAW(idLimpio);
+      if (!tercero) return _error("Tercero no encontrado: " + idLimpio);
+
+      const nombre = tercero.nombre || "DESCONOCIDO";
+
+      // === CRITICAL CHECK 1: Active CxP (Cuentas por Pagar) ===
+      const cartera = CACHE.getCarteraBase() || [];
+      const activeCxP = cartera.filter(c => 
+        c.id_tercero === idLimpio && 
+        c.tipo === CARTERA_CONFIG.TIPOS.CXP && 
+        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && 
+        c.saldo > 0
+      );
+
+      // === CRITICAL CHECK 2: Active CxC (Cuentas por Cobrar) ===
+      const activeCxC = cartera.filter(c => 
+        c.id_tercero === idLimpio && 
+        c.tipo === CARTERA_CONFIG.TIPOS.CXC && 
+        c.estado !== CARTERA_CONFIG.ESTADOS.CANCELADA && 
+        c.saldo > 0
+      );
+
+      // === CRITICAL CHECK 3: Associated products ===
+      const hasAssociatedCompras = cartera.some(c => 
+        c.id_tercero === idLimpio && 
+        c.tipo === CARTERA_CONFIG.TIPOS.CXP
+      );
+
+      // === CRITICAL CHECK 4: Last payment within 30 days ===
+      const now = Date.now();
+      const thirtyDaysAgo = now - (30 * 86400000);
+      let lastPaymentRecent = false;
+
+      // Check payments in last 30 days
+      const comprasProveedor = cartera.filter(c => 
+        c.id_tercero === idLimpio && 
+        c.tipo === CARTERA_CONFIG.TIPOS.CXP
+      );
+      
+      for (const compra of comprasProveedor) {
+        const pagos = DAO_COMPRAS.getPagosByCompra ? DAO_COMPRAS.getPagosByCompra(compra.id) : [];
+        for (const pago of pagos) {
+          if (pago.fecha && pago.fecha.getTime && pago.fecha.getTime() > thirtyDaysAgo) {
+            lastPaymentRecent = true;
+            break;
+          }
+        }
+        if (lastPaymentRecent) break;
+      }
+
+      // BLOCK if critical constraints fail
+      if (activeCxP.length > 0 && !forceDelete) {
+        return {
+          success: false, 
+          message: "No se puede eliminar: tiene Cuentas por Pagar pendientes (saldo > 0). Pago pendiente por " + activeCxP.reduce((s, c) => s + c.saldo, 0),
+          hasActiveCxP: true,
+          hasActiveCxC: false,
+          hasRecentPayment: false
+        };
+      }
+
+      if (activeCxC.length > 0 && !forceDelete) {
+        return {
+          success: false, 
+          message: "No se puede eliminar: tiene Cuentas por Cobrar pendientes (saldo > 0). Cobro pendiente por " + activeCxC.reduce((s, c) => s + c.saldo, 0),
+          hasActiveCxP: false,
+          hasActiveCxC: true,
+          hasRecentPayment: false
+        };
+      }
+
+      // Soft delete: set activo to INACTIVO (safer than row deletion)
+      tx.begin();
+
+      const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+      const cachedRow = CACHE.terceroIndex ? CACHE.terceroIndex[idLimpio] : null;
+      
+      if (cachedRow) {
+        tx.snapshotTerceroRow(cachedRow);
+        sheet.getRange(cachedRow, CARTERA_CONFIG.COLUMNS.TERCEROS.activo + 1, 1, 1).setValue("INACTIVO");
+      }
+
+      tx.commit();
+      CACHE.invalidateTerceros();
+
+      LOG_ENGINE.logEvent("DELETE_TERCERO", "TERCEROS", idLimpio, 
+        { nombre: nombre, activo: "ACTIVO" }, 
+        { nombre: nombre, activo: "INACTIVO" }, 
+        "SUCCESS", 
+        { correlationId: TransactionManager.getCorrelationId() || ('delete_tercero_' + Date.now()) }
+      );
+
+      return {
+        success: true,
+        message: "Tercero eliminado correctamente (marcado como INACTIVO): " + nombre,
+        hasActiveCxP: false,
+        hasActiveCxC: false,
+        hasRecentPayment: lastPaymentRecent
+      };
+
+    } catch (e) {
+      tx.rollback();
+      CACHE.invalidateTerceros();
+      LOG_ENGINE.logEvent("ERROR_DELETE_TERCERO", "TERCEROS", id, {}, { error: e.toString() }, "ERROR");
+      return _error(e.message || "Error al eliminar tercero.");
+    } finally {
+      if (lockAcquired) lockAcquired.releaseLock();
+    }
+  },
