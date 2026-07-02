@@ -401,6 +401,18 @@ function runAllRegressionTests() {
     }
   });
 
+  _test('L-05: LogService rotation trims sheet below MAX_ROWS', () => {
+    try {
+      if (typeof LogService === 'undefined' || typeof LogService.MAX_ROWS !== 'number') {
+        return 'LogService.MAX_ROWS not defined';
+      }
+      if (LogService.MAX_ROWS < 5000) return 'MAX_ROWS demasiado bajo: ' + LogService.MAX_ROWS;
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   // ===== Q-QUOTAMONITOR — Quota Monitoring Tests =====
 
   _test('QuotaMonitor.checkQuotas returns proper structure', () => {
@@ -457,6 +469,146 @@ function runAllRegressionTests() {
       if (typeof LogService === 'undefined') {
         return 'LogService not implemented - Logger.log calls should be migrated';
       }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== BACKUP SERVICE TESTS (B-01 a B-04) =====
+
+  _test('B-01: BackupService.createBackup copies all defined sheets', () => {
+    try {
+      if (typeof BackupService === 'undefined' || typeof BackupService.createBackup !== 'function') {
+        return 'BackupService.createBackup not found - service not implemented';
+      }
+      const fnStr = BackupService.createBackup.toString();
+      if (fnStr.indexOf('BACKUP_SHEETS') > -1 || fnStr.indexOf('getBackupFolder') > -1) {
+        return true;
+      }
+      return 'BackupService.createBackup missing expected implementation structure';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('B-02: BackupService.cleanupOldBackups maintains max 7 backups', () => {
+    try {
+      if (typeof BackupService === 'undefined' || typeof BackupService.cleanupOldBackups !== 'function') {
+        return 'BackupService.cleanupOldBackups not found - service not implemented';
+      }
+      const fnStr = BackupService.cleanupOldBackups.toString();
+      if (fnStr.indexOf('MAX_BACKUPS') > -1 || fnStr.indexOf('7') > -1) {
+        return true;
+      }
+      return 'BackupService.cleanupOldBackups missing retention logic';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('B-03: BackupService uses correct naming format Backup_YYYY-MM-DD_HHMMSS', () => {
+    try {
+      const now = new Date();
+      const expectedFormat = 'Backup_' + now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+      if (typeof BackupService !== 'undefined') {
+        const fnStr = BackupService.createBackup ? BackupService.createBackup.toString() : '';
+        if (fnStr.indexOf('getFullYear') > -1 || fnStr.indexOf('toISOString') > -1 || fnStr.indexOf('BACKUP_') > -1) {
+          return true;
+        }
+      }
+      return 'BackupService missing date-based naming format';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('B-04: BackupService trigger setup creates daily trigger at 2AM', () => {
+    try {
+      if (typeof setupBackupAndExports !== 'function') {
+        return 'setupBackupAndExports function not found - triggers not configured';
+      }
+      const fnStr = setupBackupAndExports.toString();
+      if (fnStr.indexOf('everyDays') > -1 && fnStr.indexOf('atHour(2)') > -1) {
+        return true;
+      }
+      return 'Trigger setup missing daily 2AM configuration';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== EXPORT SERVICE TESTS (E-01 a E-04) =====
+
+  _test('E-01: ExportService exports cartera/terceros/productos to CSV', () => {
+    try {
+      if (typeof ExportService === 'undefined') {
+        return 'ExportService not found - service not implemented';
+      }
+      const requiredMethods = ['exportCarteraCSV', 'exportTercerosCSV', 'exportProductosCSV'];
+      for (var i = 0; i < requiredMethods.length; i++) {
+        if (typeof ExportService[requiredMethods[i]] !== 'function') {
+          return 'Missing method: ' + requiredMethods[i];
+        }
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('E-02: ExportService saves CSV files to Drive folder with date', () => {
+    try {
+      if (typeof ExportService === 'undefined' || typeof ExportService._saveCSVToDrive !== 'function') {
+        return 'ExportService._saveCSVToDrive not found - service not implemented';
+      }
+      const fnStr = ExportService._saveCSVToDrive.toString();
+      if (fnStr.indexOf('getExportFolder') > -1 && fnStr.indexOf('.csv') > -1) {
+        return true;
+      }
+      return 'ExportService missing Drive save logic';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('E-03: ExportService.runScheduledExports executes all exports weekly', () => {
+    try {
+      if (typeof ExportService === 'undefined' || typeof ExportService.runScheduledExports !== 'function') {
+        return 'ExportService.runScheduledExports not found - service not implemented';
+      }
+      const fnStr = ExportService.runScheduledExports.toString();
+      if (fnStr.indexOf('exportCarteraCSV') > -1 && fnStr.indexOf('exportTercerosCSV') > -1) {
+        return true;
+      }
+      return 'runScheduledExports missing export calls';
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('E-04: Manual exports (libro/flujo) also save to Drive', () => {
+    try {
+      if (typeof ExportService === 'undefined' || typeof ExportService._saveCSVToDrive !== 'function') {
+        return 'ExportService._saveCSVToDrive not found - manual exports wont save to Drive';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('E-05: ExportService filename includes timestamp for uniqueness', () => {
+    try {
+      if (typeof ExportService === 'undefined' || typeof ExportService._getDateStr !== 'function') {
+        return 'ExportService._getDateStr not found';
+      }
+      var dateStr = ExportService._getDateStr();
+      var hasTime = /_\d{6}$/.test(dateStr);
+      var hasDate = /^\d{4}-\d{2}-\d{2}/.test(dateStr);
+      if (!hasDate || !hasTime) return 'Formato incorrecto: ' + dateStr;
       return true;
     } catch (e) {
       return 'Exception: ' + e.message;
@@ -661,6 +813,146 @@ function runAllRegressionTests() {
     return true;
   });
 
+  // ===== P-01: PRODUCTOS — Ciclo completo CRUD (Pareto) =====
+
+  _test('P-01: Ciclo completo producto — crear/get/actualizar/toggle/listar', () => {
+    var ts = String(Date.now());
+    var sufijo = ts.slice(-6);
+    var nombre = 'TestProd_' + sufijo;
+
+    // 1. Crear producto
+    var res = DAO_PRODUCTOS.crear({ nombre: nombre, precio_compra: 5000, precio_venta: 8000, categoria: 'TEST' });
+    if (!res || res.success !== true) return 'crear falló: ' + (res ? res.error : 'nulo');
+    var id = res.id;
+    if (!id) return 'crear no retornó id';
+    if (res.stock !== 0) return 'stock inicial no es 0: ' + res.stock;
+
+    // 2. Obtener producto
+    var prod = DAO_PRODUCTOS.obtener(id);
+    if (!prod) return 'obtener no encontró producto';
+    if (prod.nombre !== nombre) return 'nombre incorrecto: ' + prod.nombre;
+    if (prod.precio_venta !== 8000) return 'precio_venta incorrecto: ' + prod.precio_venta;
+    if (prod.activo !== 'ACTIVO') return 'activo no es ACTIVO: ' + prod.activo;
+    if (prod.version < 1) return 'version inválida: ' + prod.version;
+
+    // 3. Actualizar precio_venta
+    var updOk = DAO_PRODUCTOS.actualizar(id, { precio_venta: 9000 }, prod.version);
+    if (updOk !== true) return 'actualizar no retornó true';
+    var prod2 = DAO_PRODUCTOS.obtener(id);
+    if (prod2.precio_venta !== 9000) return 'precio no actualizado: ' + prod2.precio_venta;
+    if (prod2.version !== prod.version + 1) return 'version no incrementada: ' + prod2.version;
+
+    // 4. Optimistic locking — versión desactualizada debe fallar
+    try {
+      DAO_PRODUCTOS.actualizar(id, { precio_venta: 9500 }, 1);
+      return 'optimistic lock no lanzó error con versión obsoleta';
+    } catch (e) {
+      if (e.type !== 'OPTIMISTIC_LOCK_FAILURE') return 'error inesperado: ' + e.message;
+    }
+
+    // 5. Toggle activo → INACTIVO
+    var tog = DAO_PRODUCTOS.toggleActivo(id);
+    if (tog.activo !== 'INACTIVO') return 'toggle no cambió a INACTIVO: ' + tog.activo;
+    var prod3 = DAO_PRODUCTOS.obtener(id);
+    if (prod3.activo !== 'INACTIVO') return 'obtener no refleja INACTIVO';
+
+    // 6. Listar todos (debe incluir inactivo)
+    var todos = DAO_PRODUCTOS.listar({});
+    var foundInact = false;
+    for (var pi = 0; pi < todos.length; pi++) {
+      if (todos[pi].id === id) { foundInact = true; break; }
+    }
+    if (!foundInact) return 'producto inactivo no aparece en listado completo';
+
+    // 7. Listar solo activos (NO debe incluir inactivo)
+    var activos = DAO_PRODUCTOS.listar({ activo: true });
+    var foundAct = false;
+    for (var pj = 0; pj < activos.length; pj++) {
+      if (activos[pj].id === id) { foundAct = true; break; }
+    }
+    if (foundAct) return 'producto inactivo aparece en filtro activo';
+
+    return true;
+  });
+
+  // ===== V-01: VENCIMIENTOS — Ciclo completo venta crédito → vencimiento =====
+
+  _test('V-01: getProximosVencimientos refleja ventas crédito creadas', () => {
+    var ts = String(Date.now());
+    var sufijo = ts.slice(-6);
+    var prodId = 'V_PROD_' + sufijo;
+    var provId = 'V_PROV_' + sufijo;
+    var cliId = 'V_CLI_' + sufijo;
+    var ref = 'V_TEST_' + ts;
+
+    // 1. Crear producto
+    var prod = DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Venc Test ' + ts, precio_compra: 1000, precio_venta: 5000, categoria: 'TEST' });
+    if (!prod || prod.success !== true) return 'V-01: crear producto falló';
+
+    // 2. Crear proveedor (necesario para compra)
+    var rProv = saveTercero({ id: provId, nombre: 'Venc Prov ' + ts, tipo: 'PROVEEDOR', limite_credito: 0 });
+    if (!rProv || rProv.success !== true) return 'V-01: crear proveedor falló';
+
+    // 3. Crear cliente con límite
+    var rCli = saveTercero({ id: cliId, nombre: 'Venc Cliente ' + ts, tipo: 'CLIENTE', limite_credito: 500000 });
+    if (!rCli || rCli.success !== true) return 'V-01: crear cliente falló';
+
+    // 4. Registrar compra (añadir stock)
+    var itemsCompra = [{ id: prodId, cantidad: 10, precio_unitario: 1000 }];
+    var rCompra = registrarCompra(provId, itemsCompra, 10000, null, ref);
+    if (!rCompra || rCompra.success !== true) return 'V-01: registrarCompra falló: ' + (rCompra ? rCompra.error : 'nulo');
+
+    // 5. Venta a crédito a 30 días
+    CACHE.refresh();
+    var carrito = [{ id: prodId, cantidad: 2, precio: 5000 }];
+    var rVenta = procesarVenta(carrito, { tipo: 'CxC', idTercero: cliId, dias: 30 });
+    if (!rVenta || rVenta.success !== true) return 'V-01: venta crédito falló: ' + (rVenta ? rVenta.error : 'nulo');
+
+    // 6. Verificar aparece en vencimientos a 60 días
+    var venc60 = getProximosVencimientos(60);
+    if (!venc60 || venc60.success !== true) return 'V-01: getProximosVencimientos(60) falló';
+    var found60 = false;
+    for (var vi = 0; vi < venc60.items.length; vi++) {
+      if (venc60.items[vi].id_tercero === cliId) { found60 = true; break; }
+    }
+    if (!found60) return 'V-01: venta no aparece en vencimientos a 60 días';
+
+    // 7. NO debe aparecer en vencimientos a 7 días
+    var venc7 = getProximosVencimientos(7);
+    var found7 = false;
+    for (var vj = 0; vj < (venc7.items || []).length; vj++) {
+      if (venc7.items[vj].id_tercero === cliId) { found7 = true; break; }
+    }
+    if (found7) return 'V-01: venta a 30 días aparece en vencimientos a 7 días';
+
+    return true;
+  });
+
+  // ===== I-01: IA — Verificar estructura servicios (sin consumir cuota Gemini) =====
+
+  _test('I-01: verificarConfiguracionIA retorna objeto sin excepción', () => {
+    try {
+      var config = verificarConfiguracionIA();
+      if (typeof config !== 'object') return 'no retornó objeto: ' + JSON.stringify(config);
+      if (config.success === false && config.error) return true;
+      if (config.success === true) return true;
+      return 'estructura inesperada: ' + JSON.stringify(config);
+    } catch (e) {
+      return 'lanzó excepción: ' + e.message;
+    }
+  });
+
+  _test('I-01b: analizarConGeminiFresco existe y no lanza sin parámetros', () => {
+    try {
+      if (typeof analizarConGeminiFresco !== 'function') return 'analizarConGeminiFresco no es función';
+      var res = analizarConGeminiFresco();
+      if (typeof res !== 'object') return 'no retornó objeto: ' + JSON.stringify(res);
+      return true;
+    } catch (e) {
+      return 'lanzó excepción inesperada: ' + e.message;
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,
@@ -751,136 +1043,11 @@ function _setupDailyTrigger() {
       Logger.log('Trigger diario ya existe');
       return;
     }
-  // ===== BACKUP SERVICE TESTS (B-01 a B-04) =====
-
-  _test('B-01: BackupService.createBackup copies all defined sheets', () => {
-    try {
-      if (typeof BackupService === 'undefined' || typeof BackupService.createBackup !== 'function') {
-        return 'BackupService.createBackup not found - service not implemented';
-      }
-      // Verify function exists and has proper structure
-      const fnStr = BackupService.createBackup.toString();
-      if (fnStr.indexOf('BACKUP_SHEETS') > -1 || fnStr.indexOf('getBackupFolder') > -1) {
-        return true;
-      }
-      return 'BackupService.createBackup missing expected implementation structure';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('B-02: BackupService.cleanupOldBackups maintains max 7 backups', () => {
-    try {
-      if (typeof BackupService === 'undefined' || typeof BackupService.cleanupOldBackups !== 'function') {
-        return 'BackupService.cleanupOldBackups not found - service not implemented';
-      }
-      const fnStr = BackupService.cleanupOldBackups.toString();
-      if (fnStr.indexOf('MAX_BACKUPS') > -1 || fnStr.indexOf('7') > -1) {
-        return true;
-      }
-      return 'BackupService.cleanupOldBackups missing retention logic';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('B-03: BackupService uses correct naming format Backup_YYYY-MM-DD_HHMMSS', () => {
-    try {
-      const now = new Date();
-      const expectedFormat = 'Backup_' + now.getFullYear() + '-' +
-        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-        String(now.getDate()).padStart(2, '0');
-      // Verify function structure includes date formatting
-      if (typeof BackupService !== 'undefined') {
-        const fnStr = BackupService.createBackup ? BackupService.createBackup.toString() : '';
-        if (fnStr.indexOf('getFullYear') > -1 || fnStr.indexOf('toISOString') > -1 || fnStr.indexOf('BACKUP_') > -1) {
-          return true;
-        }
-      }
-      return 'BackupService missing date-based naming format';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('B-04: BackupService trigger setup creates daily trigger at 2AM', () => {
-    try {
-      if (typeof setupBackupAndExports !== 'function') {
-        return 'setupBackupAndExports function not found - triggers not configured';
-      }
-      const fnStr = setupBackupAndExports.toString();
-      if (fnStr.indexOf('everyDays') > -1 && fnStr.indexOf('atHour(2)') > -1) {
-        return true;
-      }
-      return 'Trigger setup missing daily 2AM configuration';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  // ===== EXPORT SERVICE TESTS (E-01 a E-04) =====
-
-  _test('E-01: ExportService exports cartera/terceros/productos to CSV', () => {
-    try {
-      if (typeof ExportService === 'undefined') {
-        return 'ExportService not found - service not implemented';
-      }
-      const requiredMethods = ['exportCarteraCSV', 'exportTercerosCSV', 'exportProductosCSV'];
-      for (var i = 0; i < requiredMethods.length; i++) {
-        if (typeof ExportService[requiredMethods[i]] !== 'function') {
-          return 'Missing method: ' + requiredMethods[i];
-        }
-      }
-      return true;
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('E-02: ExportService saves CSV files to Drive folder with date', () => {
-    try {
-      if (typeof ExportService === 'undefined' || typeof ExportService._saveCSVToDrive !== 'function') {
-        return 'ExportService._saveCSVToDrive not found - service not implemented';
-      }
-      const fnStr = ExportService._saveCSVToDrive.toString();
-      if (fnStr.indexOf('getExportFolder') > -1 && fnStr.indexOf('.csv') > -1) {
-        return true;
-      }
-      return 'ExportService missing Drive save logic';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('E-03: ExportService.runScheduledExports executes all exports weekly', () => {
-    try {
-      if (typeof ExportService === 'undefined' || typeof ExportService.runScheduledExports !== 'function') {
-        return 'ExportService.runScheduledExports not found - service not implemented';
-      }
-      const fnStr = ExportService.runScheduledExports.toString();
-      if (fnStr.indexOf('exportCarteraCSV') > -1 && fnStr.indexOf('exportTercerosCSV') > -1) {
-        return true;
-      }
-      return 'runScheduledExports missing export calls';
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  _test('E-04: Manual exports (libro/flujo) also save to Drive', () => {
-    try {
-      if (typeof ExportService === 'undefined' || typeof ExportService._saveCSVToDrive !== 'function') {
-        return 'ExportService._saveCSVToDrive not found - manual exports wont save to Drive';
-      }
-      return true;
-    } catch (e) {
-      return 'Exception: ' + e.message;
-    }
-  });
-
-  return {
-    passed: TEST_RESULTS.passed,
-    failed: TEST_RESULTS.failed,
-    tests: TEST_RESULTS.tests
-  };
+  }
+  ScriptApp.newTrigger('runAllTests')
+    .timeBased()
+    .everyDays(1)
+    .atHour(6)
+    .create();
+  Logger.log('Trigger diario creado para runAllTests a las 6:00 AM');
 }

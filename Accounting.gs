@@ -41,22 +41,67 @@ const FLUJO_CAJA_TIPOS = {
 };
 
 const LIBRO_DIARIO = {
+  /**
+   * Registers a customer payment (abono) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID.
+   * @param {string} tercero - Tercero/client ID.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarAbonoCliente(fecha, id, tercero, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.ABONO_CLIENTE, id, tercero, monto, usuario, "Abono de cliente");
   },
 
+  /**
+   * Registers a credit sale (venta crédito) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID.
+   * @param {string} tercero - Client ID.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarVentaCredito(fecha, id, tercero, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.VENTA_CREDITO, id, tercero, monto, usuario, "Venta crédito");
   },
 
+  /**
+   * Registers a cash sale (venta contado) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID.
+   * @param {string} tercero - Client ID.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarVentaContado(fecha, id, tercero, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.VENTA_CONTADO, id, tercero, monto, usuario, "Venta contado");
   },
 
+  /**
+   * Registers a generic sale (alias for registrarVentaContado) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID.
+   * @param {string} tercero - Client ID.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarVenta(fecha, id, tercero, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.VENTA_CONTADO, id, tercero, monto, usuario, "Venta");
   },
 
+  /**
+   * Registers a supplier payment (pago proveedor) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID.
+   * @param {string} proveedor - Supplier/proveedor ID.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarPagoProveedor(fecha, id, proveedor, monto, usuario) {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.PAGO_PROVEEDOR, id, proveedor, monto, usuario, "Pago a proveedor");
   },
@@ -103,6 +148,12 @@ const LIBRO_DIARIO = {
     }
   },
 
+  /**
+   * Exports libro diario entries to CSV format within a date range.
+   * @param {Date|string} fechaInicio - Start date (inclusive).
+   * @param {Date|string} fechaFin - End date (inclusive).
+   * @returns {string} CSV content.
+   */
   exportarCSV(fechaInicio, fechaFin) {
     const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
     return _generarCSV(CONFIG.SHEETS.LIBRO_DIARIO, COL,
@@ -124,6 +175,16 @@ const LIBRO_DIARIO = {
 const FLUJO_CAJA = {
   TIPOS: FLUJO_CAJA_TIPOS,
 
+  /**
+   * Registers a cash flow movement in the flujo de caja sheet.
+   * @param {Date|string} fecha - Movement date.
+   * @param {string} tipo - Movement type (from FLUJO_CAJA_TIPOS).
+   * @param {string} concepto - Description of the movement.
+   * @param {number} monto - Amount in centavos.
+   * @param {string} ref - Reference identifier.
+   * @param {string} usuario - User who registered the movement.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
   registrarMovimiento(fecha, tipo, concepto, monto, ref, usuario) {
     try {
       const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
@@ -159,6 +220,11 @@ const FLUJO_CAJA = {
     }
   },
 
+  /**
+   * Gets a daily summary of cash flow for the last N days.
+   * @param {number} dias - Number of days to look back.
+   * @returns {{entradas: number, salidas: number, neto: number, saldo_actual: number}}
+   */
   getResumenDiario(dias) {
     try {
       const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
@@ -195,6 +261,12 @@ const FLUJO_CAJA = {
     }
   },
 
+  /**
+   * Exports cash flow entries to CSV format within a date range.
+   * @param {Date|string} fechaInicio - Start date (inclusive).
+   * @param {Date|string} fechaFin - End date (inclusive).
+   * @returns {string} CSV content.
+   */
   exportarCSV(fechaInicio, fechaFin) {
     const COL = CONFIG.COLUMNS.FLUJO_CAJA;
     return _generarCSV(CONFIG.SHEETS.FLUJO_CAJA, COL,

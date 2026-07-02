@@ -16,11 +16,11 @@ var ExportService = {
   },
 
   /**
-   * Formats date for filenames.
+   * Formats date for filenames with timestamp for uniqueness.
    */
   _getDateStr: function(date) {
     date = date || new Date();
-    return Utilities.formatDate(date, _getTimeZone(), 'yyyy-MM-dd');
+    return Utilities.formatDate(date, _getTimeZone(), 'yyyy-MM-dd_HHmmss');
   },
 
   /**

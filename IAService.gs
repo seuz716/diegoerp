@@ -126,6 +126,14 @@ const SamplingStrategy = {
     return result;
   },
 
+  /**
+   * Performs stratified sampling by age buckets with proportional allocation.
+   * Ensures every bucket has at least 1 item.
+   * @param {Array} items - Items to sample from.
+   * @param {Date} hoy - Current date.
+   * @param {number} [maxItems=500] - Maximum items to return.
+   * @returns {Array} Stratified sample.
+   */
   stratifiedSample(items, hoy, maxItems = 500) {
     if (items.length <= maxItems) return items;
 
@@ -177,6 +185,13 @@ const SamplingStrategy = {
     return result.slice(0, maxItems);
   },
 
+  /**
+   * Computes sampling statistics comparing original vs sampled data.
+   * @param {Array} items - Original full dataset.
+   * @param {Array} sampled - Sampled subset.
+   * @param {Date} hoy - Current date.
+   * @returns {{originalCount: number, sampledCount: number, bucketDistribution: Object, importanceScoreRange: {min: number, max: number, avg: number}}}
+   */
   getSamplingStats(items, sampled, hoy) {
     const sampledBuckets = this.segmentByAge(sampled);
     const bucketNames = ["SIN_FECHA", "SIN_VENCER", "MORA_1_30", "MORA_31_90", "MORA_91_180", "MORA_180_PLUS"];
@@ -198,6 +213,14 @@ const SamplingStrategy = {
     };
   },
 
+  /**
+   * Validates whether the sampled data is representative of the original.
+   * Checks bucket coverage and average importance score.
+   * @param {Array} sampled - Sampled items.
+   * @param {Array} original - Original full dataset.
+   * @param {Date} hoy - Current date.
+   * @returns {{representative: boolean, warnings: string[]}}
+   */
   validateSamplingRepresentativeness(sampled, original, hoy) {
     const originalBuckets = this.segmentByAge(original);
     const sampledBuckets = this.segmentByAge(sampled);
@@ -504,6 +527,13 @@ ${JSON.stringify(movimientosComprimidos)}`;
     return prompt;
   },
 
+  /**
+   * Extracts and prepares financial data for Gemini analysis.
+   * Reads from CACHE (terceros, cartera) and sheet (movimientos).
+   * Converts centavos to pesos, filters last 12 months.
+   * @param {boolean} [forceRefresh=false] - Force cache refresh before extraction.
+   * @returns {{fecha_corte: string, resumen: Object, terceros: Array, cartera: Array, movimientos: Array}}
+   */
   extractData(forceRefresh = false) {
     CACHE.refresh(forceRefresh);
 
@@ -903,6 +933,10 @@ REGLAS DE NEGOCIO:
     };
   },
 
+  /**
+   * Ejecuta un análisis fresco forzando recarga completa de datos (sin caché).
+   * @returns {Object} Resultado del análisis con metadatos.
+   */
   ejecutarAnalisisFresco() {
     return this.ejecutarAnalisis(true);
   },
@@ -942,6 +976,11 @@ function removeGeminiKey() {
   return { success: true, message: "API Key eliminada." };
 }
 
+/**
+ * Verifica el estado de configuración del servicio IA.
+ * Revisa si la API Key de Gemini está configurada y si hay proxy configurado.
+ * @returns {{success: boolean, checks: Object, configurada: boolean, key_preview: null, modelo: string, cache_ttl_ms: number, advertencia: string|null}}
+ */
 IA_SERVICE.verificarConfiguracion = function () {
   const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
   const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
@@ -961,8 +1000,9 @@ IA_SERVICE.verificarConfiguracion = function () {
 };
 
 /**
- * Public entry point: analizarConGeminiCompleto()
- * Called from frontend via google.script.run
+ * Public entry point called from frontend via google.script.run.
+ * Executes full IA analysis with permission check and error handling.
+ * @returns {Object} Analysis result or error object.
  */
 function analizarConGeminiCompleto() {
   try {

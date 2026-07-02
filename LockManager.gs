@@ -54,11 +54,12 @@ const LOCK_MANAGER = {
   },
 
   /**
-   * Intenta obtener un lock específico de recurso mediante PropertiesService,
-   * coordinado con un lock global para asegurar atomicidad.
-   * TTL Protocol: Si el lock existe pero expiró (expiresAt < now), se elimina
-   * y se adquiere de inmediato. Si el lock tiene un TTL anormalmente largo
-   * (expiresAt > now + RESOURCE_LOCK_MAX_TTL_MS), se loguea como corrupto.
+   * Acquires a resource-specific lock via PropertiesService with global lock coordination.
+   * TTL Protocol: expired locks are deleted and re-acquired. Corrupt locks with absurd TTL
+   * are treated as expired.
+   * @param {string} resourceId - Resource identifier for the lock.
+   * @returns {{releaseLock: Function}} Lock handle with releaseLock method.
+   * @throws {Error} If lock cannot be acquired after retries or timeout.
    */
   acquireResourceLock(resourceId) {
     const properties = PropertiesService.getScriptProperties();
@@ -347,7 +348,13 @@ const LOCK_MANAGER = {
     }
   },
 
-  /** Fallback genérico para acciones masivas (Ej: cache refreshes generales) */
+  /**
+   * Acquires a global script lock with retry and exponential backoff.
+   * Returns a dummy lock if already reentrant (lockDepth > 0).
+   * @param {number} [timeout=this.GLOBAL_TIMEOUT] - Timeout in ms for lock attempt.
+   * @returns {{releaseLock: Function}} Lock handle with releaseLock method.
+   * @throws {Error} If lock cannot be acquired after MAX_RETRIES.
+   */
   acquireGlobalLock(timeout = this.GLOBAL_TIMEOUT) {
     // === INICIO FIX M-04 ===
     if (this._lockDepth > 0) {
@@ -382,7 +389,10 @@ const LOCK_MANAGER = {
     return baseWait / 2 + Math.random() * baseWait;  // [0.5, 1.5]×baseWait
   },
 };
-// Global wrapper required for time-driven trigger
+/**
+ * Global wrapper for time-driven trigger to clean up expired locks.
+ * Delegates to LOCK_MANAGER.cleanupExpiredLocks().
+ */
 function cleanupExpiredLocks() {
   try {
     LOCK_MANAGER.cleanupExpiredLocks();

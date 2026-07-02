@@ -8,6 +8,7 @@
 const LogService = {
   LOG_SHEET_NAME: 'Logs',
   MAX_MESSAGE_LENGTH: 500,
+  MAX_ROWS: 10000,
   COLUMNS: {
     TIMESTAMP: 0,
     LEVEL: 1,
@@ -59,6 +60,11 @@ const LogService = {
       if (!sheet) {
         console.log('[LogService] Fallback: ' + level + ' - ' + message);
         return false;
+      }
+
+      var totalRows = sheet.getLastRow();
+      if (totalRows > this.MAX_ROWS + 5) {
+        sheet.deleteRows(1, totalRows - this.MAX_ROWS);
       }
 
       var correlationId = (context && context.correlationId) ? context.correlationId : '';

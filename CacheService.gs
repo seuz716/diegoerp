@@ -21,6 +21,12 @@
 })();
 
 class CacheIntegrityError extends Error {
+  /**
+   * Creates a cache integrity error for checksum mismatch.
+   * @param {string} kind - Data type ('terceros' or 'cartera').
+   * @param {string} currentChecksum - Computed checksum from spreadsheet.
+   * @param {string} storedChecksum - Stored checksum from last refresh.
+   */
   constructor(kind, currentChecksum, storedChecksum) {
     super(`Cache integrity mismatch for ${kind}: current=${currentChecksum}, stored=${storedChecksum}`);
     this.name = "CacheIntegrityError";
@@ -118,7 +124,7 @@ _incrementMetric(name) {
   // === FIN FIX CACHE-METRICS ===
 
   /**
-   * Invalida SOLO la caché de terceros
+   * Invalidates only the terceros cache and increments cache version.
    */
 invalidateTerceros() {
      this.terceros = null;
@@ -143,6 +149,9 @@ invalidateTerceros() {
      }
    },
 
+/**
+   * Invalidates only the cartera cache and increments cache version.
+   */
 invalidateCartera() {
      this.cartera = null;
      this.carteraIndex = {};
@@ -167,7 +176,7 @@ invalidateCartera() {
    },
 
   /**
-   * Invalida todo el caché 
+   * Invalidates both terceros and cartera caches.
    */
   invalidate() {
     this.invalidateTerceros();
@@ -370,8 +379,13 @@ invalidateCartera() {
   },
   // === FIN FIX C-02 ===
 
+/**
+   * Checks whether the terceros cache is valid (not stale, circuit not open/half_open).
+   * Automatically attempts circuit recovery if in OPEN state.
+   * @returns {boolean} true if cache is usable.
+   */
 isTercerosValid() {
-     if (this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL) {
+      if (this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL) {
        this._hitsTerceros++;
      } else {
        this._missesTerceros++;
@@ -410,8 +424,13 @@ isTercerosValid() {
      return this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL;
    },
 
+/**
+   * Checks whether the cartera cache is valid (not stale, circuit not open/half_open).
+   * Automatically attempts circuit recovery if in OPEN state.
+   * @returns {boolean} true if cache is usable.
+   */
 isCarteraValid() {
-     if (this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL) {
+      if (this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL) {
        this._hitsCartera++;
      } else {
        this._missesCartera++;
@@ -450,7 +469,12 @@ isCarteraValid() {
 return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
     },
  
-   refresh(forceRefresh = false) {
+  /**
+   * Refreshes cache data if stale, expired, or forceRefresh is requested.
+   * Checks circuit breaker state and attempts half-open transitions before refresh.
+   * @param {boolean} [forceRefresh=false] - If true, invalidates all caches before refresh.
+   */
+  refresh(forceRefresh = false) {
     validateAndMapSchemas();
     if (!this._metricsLoaded) this._loadMetrics();
 
@@ -470,6 +494,11 @@ return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CA
     }
   },
 
+/**
+   * Recovers from stale data by invalidating and refreshing all caches.
+   * Uses global lock and retries up to 3 times.
+   * @returns {boolean} true if recovery succeeded.
+   */
 recoverFromStale() {
      Logger.log("CACHE: Iniciando protocolo de recuperación por datos obsoletos");
      if (!LOCK_MANAGER._safeTryLock(5000)) {
@@ -506,6 +535,10 @@ recoverFromStale() {
      }
    },
 
+  /**
+   * Verifies cache consistency by comparing checksums against spreadsheet data.
+   * @returns {{terceros: boolean, cartera: boolean, mismatched: boolean}}
+   */
   verifyConsistency() {
     const tResult = this._verifyChecksum('terceros');
     const cResult = this._verifyChecksum('cartera');
@@ -620,6 +653,11 @@ _handleIntegrityFailure(kind) {
     return true;
   },
 
+  /**
+   * Returns detailed staleness and health info for terceros and cartera caches.
+   * Includes validity, age, stale duration, fail count, circuit state, hit ratios.
+   * @returns {Object} Staleness information object with terceros/cartera/metrics/ttl.
+   */
   getStalenessInfo() {
     return {
       terceros: {
@@ -880,23 +918,42 @@ ttl: this.CACHE_TTL
      }
    },
 
+  /**
+   * Gets an active tercero by ID, refreshing cache if needed.
+   * @param {string} id - Tercero ID.
+   * @returns {Object|null} Tercero object or null if not found or inactive.
+   */
   getTerceroActivo(id) {
     this.refresh();
     const t = this.terceros.find(x => x.id === _sanitizeId(id) && x.activo);
     return t || null;
   },
 
+  /**
+   * Gets a tercero by ID regardless of active/inactive status.
+   * @param {string} id - Tercero ID.
+   * @returns {Object|null} Tercero object or null if not found.
+   */
   getTerceroRAW(id) {
     this.refresh();
     const t = this.terceros.find(x => x.id === _sanitizeId(id));
     return t || null;
   },
 
+  /**
+   * Gets all active terceros, refreshing cache if needed.
+   * @returns {Array<Object>} List of active terceros.
+   */
   getTerceros() {
     this.refresh();
     return this.terceros.filter(t => t.activo);
   },
 
+  /**
+   * Gets cartera items for a specific tercero, from cache or sheet.
+   * @param {string} idTercero - Tercero ID to filter by.
+   * @returns {Array<Object>} Cartera items for the given tercero.
+   */
   getCarteraPorTercero(idTercero) {
     const idClean = _sanitizeId(idTercero);
     if (!idClean) return [];
@@ -965,6 +1022,11 @@ ttl: this.CACHE_TTL
     return items;
   },
 
+  /**
+   * Gets the current balance (saldo) for a tercero, using pre-built saldo map for O(1) lookup.
+   * @param {string} idTercero - Tercero ID.
+   * @returns {number} Current balance (0 if not found or canceled).
+   */
   getSaldoTercero(idTercero) {
     // === INICIO FIX M-03 ===
     const idClean = _sanitizeId(idTercero);
@@ -1026,6 +1088,10 @@ ttl: this.CACHE_TTL
     return saldo;
   },
 
+  /**
+   * Gets the full cartera array from cache (all items, no filter).
+   * @returns {Array<Object>} Full cartera data.
+   */
   getCarteraBase() {
     this.refresh();
     return this.cartera || [];
@@ -1121,6 +1187,11 @@ _putNativeCache(keyPrefix, data) {
     return count;
   },
 
+  /**
+   * Returns comprehensive health status for both caches.
+   * Includes hit rates, circuit states, stale counts, memory usage, fail counts.
+   * @returns {Object} Health info for terceros, cartera, and global.
+   */
   getHealth() {
     const tState = this.getCircuitState('terceros');
     const cState = this.getCircuitState('cartera');
