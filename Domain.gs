@@ -934,7 +934,7 @@ DAO.createCartera(record);
           }
         }
 
-        // Batch write all stock updates
+        // Write stock and version columns
         const rowNums = Object.values(stockUpdates).map(u => u.rowIndex).sort((a, b) => a - b);
         if (rowNums.length > 0) {
           const batchData = [];
@@ -946,7 +946,6 @@ DAO.createCartera(record);
             }
           }
           
-          // Write stock and version columns separately (non-contiguous)
           prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(
             batchData.map(row => [row[0]])
           );
@@ -955,10 +954,11 @@ DAO.createCartera(record);
           );
         }
 
-        // Write kardex entries for updated products
+        // Batch write kardex entries
+        const kardexEntries = [];
         for (const pid of Object.keys(stockUpdates)) {
           const update = stockUpdates[pid];
-          DAO_COMPRAS.crearMovimientoKardex({
+          kardexEntries.push({
             id: update.kardexId,
             fecha: new Date(),
             id_producto: pid,
@@ -970,6 +970,9 @@ DAO.createCartera(record);
             origen: "COMPRA",
             usuario: update.usuario || "system"
           });
+        }
+        if (kardexEntries.length > 0) {
+          DAO_COMPRAS.crearMovimientosKardexBatch(kardexEntries);
         }
 
         tx.markDetallePostAppend();
