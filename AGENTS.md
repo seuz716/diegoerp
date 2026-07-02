@@ -177,3 +177,24 @@ Test Suite (runAllRegressionTests): 30 tests
 | FunciÃ³n Frontend | Backend Call | FunciÃ³n Backend | Estado | Observaciones |
 |-----------------|--------------|-----------------|--------|---------------|
 | (No UI directa) | App.api.getVentasDelDia() | getVentasDelDia() | âœ… CORRECTO | Reporte de ventas del dÃ­a actual. Ãštil para corte de caja diario. Retorna total y lista de ventas. |
+
+## ?? IMPLEMENTACIÓN VERIFICADA - SmokeTests.gs
+
+| Función | Archivo | Estado |
+|---------|---------|--------|
+| SmokeTests.runAll() | SmokeTests.gs | ? Creado |
+| SmokeTests.testHealthCheck() | SmokeTests.gs | ? Usa getHealthStatus (Main.gs) |
+| SmokeTests.testSheetsExist() | SmokeTests.gs | ? Usa CARTERA_CONFIG, CONFIG, COMPRAS_CONFIG |
+| SmokeTests.testCriticalFunctions() | SmokeTests.gs | ? Usa getTerceros, getProductos, CACHE.getHealth, DAO_COMPRAS.getMovimientosKardex |
+| SmokeTests.testConfiguration() | SmokeTests.gs | ? Usa PropertiesService |
+| SmokeTests.testTriggersExist() | SmokeTests.gs | ? Usa ScriptApp.getProjectTriggers() |
+| runSmokeTests() | SmokeTests.gs | ? Función principal exportada |
+| sendSmokeAlert() | SmokeTests.gs | ? Usa SESSION_SERVICE.getCurrentUser, MailApp |
+
+Todas las dependencias existen en el proyecto:
+- CARTERA_CONFIG, CONFIG, COMPRAS_CONFIG en Config.gs
+- CACHE en CacheService.gs  
+- DAO_COMPRAS en DAOCompras.gs
+- getTerceros, getProductos en API.gs
+- getHealthStatus en Main.gs
+- SESSION_SERVICE en Config.gs
