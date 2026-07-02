@@ -14,14 +14,14 @@ function generateCorrelationId() {
   _apiCallCounter++;
   const tz = 'UTC';
   let timezone = tz;
-  try { timezone = Session.getScriptTimeZone(); } catch (_) {}
+  try { timezone = SESSION_SERVICE.getScriptTimeZone(); } catch (_) {}
   return 'REQ-' + Utilities.formatDate(new Date(), timezone, 'yyyyMMdd') + '-' + _apiCallCounter;
 }
 
 function _safeError(context, error, correlationId) {
   _errorCounter++;
   let tz = 'UTC';
-  try { tz = Session.getScriptTimeZone(); } catch (_) {}
+  try { tz = SESSION_SERVICE.getScriptTimeZone(); } catch (_) {}
   const corrId = correlationId || 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;

@@ -139,3 +139,25 @@ Test Suite (runAllRegressionTests): 30 tests
 ### 🔒 Seguridad - Circuit Breaker Hardening
 - ✅ CacheService: Validate timestamps (max 24h window) to prevent corruption
 - ✅ Main.gs: Removed keyLength from checkIAKey output
+
+## CLI 4 - BACKEND REFACTOR (completado)
+- ✅ CacheService: `_refreshTerceros()` missing `tercerosCircuitState = 'open'` — corregido
+- ✅ CacheService: `_handleIntegrityFailure()` missing `_setCircuitState()` — corregido
+- ✅ CacheService: `CIRCUIT_AUTO_CLOSE_MS` cambiado de 300000 a 30000 (30s exactos)
+- ✅ CacheService: HALF_OPEN stuck fix — `isTercerosValid()`/`isCarteraValid()` fuerza refresh en half_open
+- ✅ CacheService: Flujo CLOSED→OPEN→HALF_OPEN→CLOSED verificado y funcional
+- ✅ Config.gs: `_getTimeZone()` usa `SESSION_SERVICE.getScriptTimeZone()` en vez de `Session.getScriptTimeZone()`
+- ✅ API.gs: `generateCorrelationId()` y `_safeError()` usan `SESSION_SERVICE.getScriptTimeZone()`
+- ✅ SESSION_SERVICE: 0 bypasses externos, solo llamado interno en definición
+- ✅ IAService: Rate limiter cambiado a token bucket (100 req/min)
+- ✅ IAService: Error message actualizado a "Límite de solicitudes excedido, reintente en 60 segundos."
+- ✅ IAService: Validación de entrada — >500 registros rechaza con RATE_LIMITED
+- ✅ DAO.updateCarteraBatch(): Optimistic locking verificado (3 retries, version increment, rollback no necesario)
+- ✅ AuditLog.logEvent(): Lock adquirido ANTES de getLastRow() — purge atómico correcto
+- ✅ Frontend wrappers getCacheHealth/getCacheMetrics/verificarConfiguracionIA presentes en app.html
+- ✅ Archivos setup redundantes (INSTALL_SCRIPT.gs, SETUP_ONE_CLICK.gs, init_spreadsheet.gs) eliminados
+
+### ❌ No aplica al stack GAS
+- SQL optimizer/connection pool — este proyecto NO usa SQL, usa SpreadsheetApp
+- Logging async + 50MB rotation — GAS no soporta escritura asíncrona ni tamaño de archivo (worksheets)
+- /procesarIA endpoint — los endpoints GAS son funciones globales, no rutas HTTP

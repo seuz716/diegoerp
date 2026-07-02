@@ -59,7 +59,7 @@ let CACHE = {
   // === INICIO FIX C-02 ===
   _circuitOpenTercerosTimestamp: 0,
   _circuitOpenCarteraTimestamp: 0,
-  CIRCUIT_AUTO_CLOSE_MS: 300000,
+  CIRCUIT_AUTO_CLOSE_MS: 30000,
   // === FIN FIX C-02 ===
   // === INICIO FIX CACHE-METRICS ===
   circuitOpens: 0,
@@ -196,19 +196,8 @@ invalidateCartera() {
   },
 
   /**
-   * Half-open circuit breaker: allows one test request to check if service is back
-   * @param {string} kind - 'terceros' or 'cartera'
-   * @param {boolean} testResult - true if test succeeded, false otherwise
-   * @returns {boolean} true if circuit is now closed (service recovered)
-   */
-  /**
-   * Half-open circuit breaker: verifies health before closing
-   * @param {string} kind - 'terceros' or 'carrtera'
-   * @param {boolean} testResult - true if test succeeded, false otherwise
-   * @returns {boolean} true if circuit is now closed (service recovered)
-   */
-  /**
-   * Executes a function with circuit breaker protection and retry logic
+   * Executes a function with circuit breaker protection and retry logic.
+   * In HALF_OPEN state, allows one test request to verify service recovery.
    * @param {string} kind - 'terceros' or 'cartera'
    * @param {Function} fn - Function to execute
    * @param {number} maxRetries - Maximum retries (default 3)
@@ -222,17 +211,11 @@ invalidateCartera() {
       throw new Error(`Circuit breaker OPEN for ${kind}. Service unavailable.`);
     }
     
-    // If circuit is HALF_OPEN, only allow one request at a time
-    if (state === 'half_open') {
-      // Already in half-open, execute with test
-      // The _autoRecoverCircuitBreaker will handle the actual test via executeWithCircuit retry
-    }
-    
     let lastError;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = fn();
-        // Success - close circuit
+        // Success - close circuit (or verify recovery from half_open)
         this._halfOpenCircuit(kind, true);
         return result;
       } catch (e) {
@@ -387,24 +370,27 @@ invalidateCartera() {
   // === FIN FIX C-02 ===
 
 isTercerosValid() {
-     // Track hit/miss
      if (this.terceros !== null && (Date.now() - this.lastRefreshTerceros) < this.CACHE_TTL) {
        this._hitsTerceros++;
      } else {
        this._missesTerceros++;
      }
-     
-     // Check circuit state and auto-recover
+
      const circuitState = this._getCircuitState('terceros');
-     
+
      if (circuitState === 'open') {
        this._autoRecoverCircuitBreaker('terceros');
        const newState = this._getCircuitState('terceros');
        if (newState === 'open') {
-         return false; // Still open after recovery check
+         return false;
        }
      }
-     
+
+     if (circuitState === 'half_open') {
+       Logger.log("[FIX-C-02] Half_open detected, forcing refresh as test request");
+       return false;
+     }
+
      if (this.tercerosStale) {
        if (this.tercerosStaleStart > 0 && (Date.now() - this.tercerosStaleStart) > this.MAX_STALE_MS) {
          return false;
@@ -424,24 +410,27 @@ isTercerosValid() {
    },
 
 isCarteraValid() {
-     // Track hit/miss
      if (this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL) {
        this._hitsCartera++;
      } else {
        this._missesCartera++;
      }
-     
-     // Check circuit state and auto-recover
+
      const circuitState = this._getCircuitState('cartera');
-     
+
      if (circuitState === 'open') {
        this._autoRecoverCircuitBreaker('cartera');
        const newState = this._getCircuitState('cartera');
        if (newState === 'open') {
-         return false; // Still open after recovery check
+         return false;
        }
      }
-     
+
+     if (circuitState === 'half_open') {
+       Logger.log("[FIX-C-02] Half_open detected, forcing refresh as test request");
+       return false;
+     }
+
      if (this.carteraStale) {
        if (this.carteraStaleStart > 0 && (Date.now() - this.carteraStaleStart) > this.MAX_STALE_MS) {
          return false;
@@ -564,21 +553,21 @@ _handleIntegrityFailure(kind) {
      this._checksumMismatchTimestamps.push(Date.now());
      this._cleanupChecksumMismatchTimestamps();
      
-     // Check if we should auto-open circuit breaker
-     if (this._shouldAutoOpenCircuitForChecksum()) {
-       Logger.log("CACHE: Checksum mismatches threshold exceeded, opening circuit breaker");
-       if (kind === 'terceros') {
-         this.tercerosCircuitOpen = true;
-         this._incrementMetric('circuitOpens');
-         this._circuitOpenTercerosTimestamp = Date.now();
-         PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
-       } else {
-         this.carteraCircuitOpen = true;
-         this._incrementMetric('circuitOpens');
-         this._circuitOpenCarteraTimestamp = Date.now();
-         PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
-       }
-     }
+      if (this._shouldAutoOpenCircuitForChecksum()) {
+        Logger.log("CACHE: Checksum mismatches threshold exceeded, opening circuit breaker");
+        this._setCircuitState(kind, 'open');
+        if (kind === 'terceros') {
+          this.tercerosCircuitOpen = true;
+          this._incrementMetric('circuitOpens');
+          this._circuitOpenTercerosTimestamp = Date.now();
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
+        } else {
+          this.carteraCircuitOpen = true;
+          this._incrementMetric('circuitOpens');
+          this._circuitOpenCarteraTimestamp = Date.now();
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_CARTERA_TS', String(this._circuitOpenCarteraTimestamp));
+        }
+      }
      
      this.recoverFromStale();
      return false;
@@ -793,10 +782,11 @@ ttl: this.CACHE_TTL
        if (this.tercerosStaleStart === 0) {
          this.tercerosStaleStart = Date.now();
        }
-       if (this.tercerosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
-         this.tercerosCircuitOpen = true;
-         this._incrementMetric('circuitOpens');
-         this._circuitOpenTercerosTimestamp = Date.now();
+        if (this.tercerosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
+          this.tercerosCircuitOpen = true;
+          this.tercerosCircuitState = 'open';
+          this._incrementMetric('circuitOpens');
+          this._circuitOpenTercerosTimestamp = Date.now();
          try {
            PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(this._circuitOpenTercerosTimestamp));
          } catch (e) {

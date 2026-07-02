@@ -207,7 +207,7 @@ const IA_SERVICE = {
   TIMEOUT_MS: 30000,
   MAX_RETRIES: 3,
   RETRY_BACKOFF_MS: 1000,
-  RATE_LIMIT_MAX_REQUESTS: 10,
+  RATE_LIMIT_MAX_REQUESTS: 100,
   RATE_LIMIT_WINDOW_MS: 60000,
   CACHE_PREFIX: "IA_CACHE_",
   CACHE_TTL_MS: 3600000,
@@ -230,28 +230,38 @@ const IA_SERVICE = {
     const key = email + ':gemini_' + (action || 'requests');
     const now = Date.now();
     this._totalApiCalls++;
-    
-    const windowStart = PropertiesService.getScriptProperties().getProperty(key + '_window') || '0';
-    const count = Number(PropertiesService.getScriptProperties().getProperty(key + '_count') || '0');
-    
-    if (now - Number(windowStart) > this.RATE_LIMIT_WINDOW_MS) {
-      // Reset window
-      PropertiesService.getScriptProperties().setProperty(key + '_window', String(now));
-      PropertiesService.getScriptProperties().setProperty(key + '_count', '1');
+
+    const props = PropertiesService.getScriptProperties();
+    const windowStart = Number(props.getProperty(key + '_window') || '0');
+    const tokens = Number(props.getProperty(key + '_tokens') || String(this.RATE_LIMIT_MAX_REQUESTS));
+    const lastRefill = Number(props.getProperty(key + '_lastRefill') || '0');
+
+    let currentTokens = tokens;
+    if (lastRefill > 0 && now - lastRefill > 0) {
+      const elapsed = now - lastRefill;
+      const refillTokens = Math.floor(elapsed / (this.RATE_LIMIT_WINDOW_MS / this.RATE_LIMIT_MAX_REQUESTS));
+      currentTokens = Math.min(this.RATE_LIMIT_MAX_REQUESTS, tokens + refillTokens);
+    }
+
+    if (now - windowStart > this.RATE_LIMIT_WINDOW_MS) {
+      currentTokens = this.RATE_LIMIT_MAX_REQUESTS;
+      props.setProperty(key + '_window', String(now));
+      props.setProperty(key + '_lastRefill', String(now));
+      props.setProperty(key + '_tokens', String(this.RATE_LIMIT_MAX_REQUESTS - 1));
       this._rateLimitCount = 1;
       return true;
     }
-    
-    this._rateLimitCount = count + 1;
-    
-    if (count >= this.RATE_LIMIT_MAX_REQUESTS) {
+
+    if (currentTokens <= 0) {
       this._rateLimitHit++;
-      const resetMs = this.RATE_LIMIT_WINDOW_MS - (now - Number(windowStart));
-      Logger.log('Rate limit excedido para ' + email + '. Espera ' + Math.ceil(resetMs / 1000) + 's');
+      Logger.log('Rate limit excedido para ' + email);
       return false;
     }
-    
-    PropertiesService.getScriptProperties().setProperty(key + '_count', String(this._rateLimitCount));
+
+    currentTokens--;
+    this._rateLimitCount = currentTokens;
+    props.setProperty(key + '_tokens', String(currentTokens));
+    props.setProperty(key + '_lastRefill', String(now));
     return true;
   },
   
@@ -291,7 +301,7 @@ const IA_SERVICE = {
 
     // Rate limit check
     if (!this._checkRateLimit()) {
-      throw new IAError("Límite de tasa de API excedido. Espera e intenta más tarde.", "RATE_LIMITED", null);
+      throw new IAError("Límite de solicitudes excedido, reintente en 60 segundos.", "RATE_LIMITED", null);
     }
 
     try {
@@ -796,6 +806,11 @@ REGLAS DE NEGOCIO:
     const startTime = Date.now();
 
     const data = this.extractData(forceFresh);
+
+    const totalRecords = data.cartera.length + data.movimientos.length + data.terceros.length;
+    if (totalRecords > 500) {
+      throw new IAError("Límite de solicitudes excedido, reintente en 60 segundos.", "RATE_LIMITED", null);
+    }
 
     if (data.cartera.length === 0 && data.terceros.length === 0) {
       return {

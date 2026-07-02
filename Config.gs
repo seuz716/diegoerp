@@ -386,7 +386,7 @@ function _captureError(context, error) {
 
 function _getTimeZone() {
   try {
-    return Session.getScriptTimeZone() || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    return SESSION_SERVICE.getScriptTimeZone() || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   } catch (e) {
     return 'UTC';
   }
