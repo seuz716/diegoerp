@@ -611,6 +611,22 @@ function cargarCartera(append) {
 function cargarAbonoSelect() {
   var select = document.getElementById('abono-cliente');
   select.innerHTML = '<option value="">Seleccione un tercero...</option>';
+  // Wire abono draft auto-save (one-time setup)
+  App.drafts.wireForm('abono', '#view-abono input, #view-abono select', function () {
+    return {
+      cliente: document.getElementById('abono-cliente').value,
+      tipo: document.getElementById('abono-tipo').value,
+      monto: document.getElementById('abono-monto').value,
+      referencia: document.getElementById('abono-referencia').value,
+    };
+  });
+  App.drafts.showRestorePrompt('abono', null, function (data) {
+    if (data.cliente) document.getElementById('abono-cliente').value = data.cliente;
+    if (data.tipo) document.getElementById('abono-tipo').value = data.tipo;
+    if (data.monto) document.getElementById('abono-monto').value = data.monto;
+    if (data.referencia) document.getElementById('abono-referencia').value = data.referencia;
+    App.drafts._showIndicator('abono');
+  });
   var promise = App.data.terceros ? Promise.resolve(App.data.terceros) : App.api.getTerceros(null);
   return promise
     .then(function (data) {
@@ -655,6 +671,7 @@ function ejecutarAbono() {
         errorEl.textContent = r.message || 'Error al registrar el abono.';
         errorEl.classList.add('show');
       } else {
+        App.drafts.clear('abono');
         document.getElementById('abono-monto').value = '';
         document.getElementById('abono-referencia').value = '';
         var successEl = document.getElementById('abono-success');
@@ -937,6 +954,24 @@ async function cargarVentas() {
   container.innerHTML = '';
   agregarFilaProducto();
   calcularTotalVenta();
+  // Draft auto-save for static fields
+  App.drafts.wireForm('venta', '#view-ventas select, #view-ventas input:not([type=hidden])', function () {
+    return {
+      tipo: document.getElementById('venta-tipo').value,
+      cliente: document.getElementById('venta-cliente').value,
+      dias: document.getElementById('venta-dias').value,
+    };
+  });
+  App.drafts.showRestorePrompt('venta', null, function (data) {
+    if (data.tipo) {
+      document.getElementById('venta-tipo').value = data.tipo;
+      if (data.tipo === 'CxC') { document.getElementById('venta-tercero-row').style.display = ''; document.getElementById('venta-dias-row').style.display = ''; }
+      else { document.getElementById('venta-tercero-row').style.display = 'none'; document.getElementById('venta-dias-row').style.display = 'none'; }
+    }
+    if (data.cliente) document.getElementById('venta-cliente').value = data.cliente;
+    if (data.dias) document.getElementById('venta-dias').value = data.dias;
+    App.drafts._showIndicator('venta');
+  });
 }
 function cargarVentasProductos() {
   return App.api.getProductos().then(function (data) {
@@ -994,10 +1029,13 @@ function agregarFilaProducto() {
   var row = container.lastElementChild;
   var selects = row.querySelectorAll('.venta-producto-select, .venta-cantidad, .venta-precio');
   selects.forEach(function (el) {
-    if (el.tagName === 'SELECT') el.value = '';
-    else if (el.classList.contains('venta-cantidad')) el.value = '1';
-    else if (el.classList.contains('venta-precio')) el.value = '0';
+    if (el.tagName === 'SELECT') { el.value = ''; el.setAttribute('aria-label', 'Producto'); }
+    else if (el.classList.contains('venta-cantidad')) { el.value = '1'; el.setAttribute('aria-label', 'Cantidad'); }
+    else if (el.classList.contains('venta-precio')) { el.value = '0'; el.setAttribute('aria-label', 'Precio'); }
   });
+  // Add aria-label to remove button
+  var removeBtn = row.querySelector('.btn-remove-producto');
+  if (removeBtn) { removeBtn.setAttribute('aria-label', 'Eliminar producto'); }
   llenarSelectProductos(row.querySelector('.venta-producto-select'));
   row.querySelector('.venta-producto-select').addEventListener('change', function () {
     var opt = this.options[this.selectedIndex];
@@ -1107,6 +1145,7 @@ function registrarVenta() {
         errorEl.textContent = r.message || 'Error al registrar venta.';
         errorEl.classList.add('show');
       } else {
+        App.drafts.clear('venta');
         successEl.textContent = 'Venta registrada exitosamente. Total: ' + App.formatearMoneda(r.total) + ' | Tipo: ' + (r.tipo === 'CxC' ? 'CrÃ©dito' : 'Contado');
         successEl.style.display = 'block';
         setTimeout(function(){ successEl.style.display = 'none'; }, 4000);
@@ -1204,6 +1243,8 @@ function cargarProductos() {
 function abrirModalProducto(producto) {
   var modal = document.getElementById('modal-producto');
   document.getElementById('producto-error').style.display = 'none';
+  var isNew = !producto;
+  var draftKey = isNew ? 'producto_new' : 'producto_' + producto.id;
   if (producto) {
     document.getElementById('modal-producto-title').textContent = 'Editar producto';
     document.getElementById('producto-id').value = producto.id;
@@ -1223,6 +1264,34 @@ function abrirModalProducto(producto) {
     document.getElementById('producto-precio-compra').value = '0';
     document.getElementById('producto-precio-venta').value = '0';
   }
+  // Draft prompt container
+  var draftContainer = document.getElementById('draft-prompt-' + draftKey);
+  if (!draftContainer) {
+    draftContainer = document.createElement('div');
+    draftContainer.id = 'draft-prompt-' + draftKey;
+    document.getElementById('producto-error').parentNode.insertBefore(draftContainer, document.getElementById('producto-error'));
+  }
+  draftContainer.innerHTML = '';
+  // Check for unsaved draft
+  App.drafts.showRestorePrompt(draftKey, null, function (data) {
+    if (data.nombre !== undefined) document.getElementById('producto-nombre').value = data.nombre;
+    if (data.categoria !== undefined) document.getElementById('producto-categoria').value = data.categoria;
+    if (data.stock !== undefined) document.getElementById('producto-stock').value = data.stock;
+    if (data.precioCompra !== undefined) document.getElementById('producto-precio-compra').value = data.precioCompra;
+    if (data.precioVenta !== undefined) document.getElementById('producto-precio-venta').value = data.precioVenta;
+    App.drafts._showIndicator(draftKey);
+  });
+  // Wire auto-save
+  App.drafts.wireForm(draftKey, '#modal-producto input, #modal-producto select', function () {
+    return {
+      nombre: document.getElementById('producto-nombre').value,
+      categoria: document.getElementById('producto-categoria').value,
+      stock: document.getElementById('producto-stock').value,
+      precioCompra: document.getElementById('producto-precio-compra').value,
+      precioVenta: document.getElementById('producto-precio-venta').value,
+    };
+  });
+  App.drafts.save(draftKey, null); // clear stale for new
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
@@ -1269,6 +1338,7 @@ function guardarProducto() {
       errorEl.style.display = 'block';
       return;
     }
+    App.drafts.clear(id ? 'producto_' + id : 'producto_new');
     cerrarModalProducto();
     cargarProductos();
     App.api.getProductos().then(function (data) {
@@ -1383,6 +1453,30 @@ function abrirModalNuevaCompra() {
       llenarSelectProductos(s, true);
     });
   }
+  // Draft prompt container
+  var draftContainer = document.getElementById('draft-prompt-compra');
+  if (!draftContainer) {
+    draftContainer = document.createElement('div');
+    draftContainer.id = 'draft-prompt-compra';
+    var errEl = document.getElementById('compra-error');
+    errEl.parentNode.insertBefore(draftContainer, errEl);
+  }
+  draftContainer.innerHTML = '';
+  App.drafts.showRestorePrompt('compra', null, function (data) {
+    if (data.proveedor) document.getElementById('compra-proveedor').value = data.proveedor;
+    if (data.factura !== undefined) document.getElementById('compra-factura').value = data.factura;
+    if (data.vencimiento !== undefined) document.getElementById('compra-vencimiento').value = data.vencimiento;
+    if (data.total !== undefined) { document.getElementById('compra-total').value = data.total; document.getElementById('compra-total').dataset.userEdited = '1'; }
+    App.drafts._showIndicator('compra');
+  });
+  App.drafts.wireForm('compra', '#modal-compra input, #modal-compra select', function () {
+    return {
+      proveedor: document.getElementById('compra-proveedor').value,
+      factura: document.getElementById('compra-factura').value,
+      vencimiento: document.getElementById('compra-vencimiento').value,
+      total: document.getElementById('compra-total').value,
+    };
+  });
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
@@ -1404,6 +1498,16 @@ function agregarFilaItemCompra() {
   container.appendChild(fragment);
   var row = container.lastElementChild;
   var select = row.querySelector('.compra-producto-select');
+  var cantidadInput = row.querySelector('.compra-cantidad');
+  var precioInput = row.querySelector('.compra-precio');
+  var removeBtn = row.querySelector('.btn-remove-item');
+  
+  // Set aria-labels for accessibility
+  if (select) select.setAttribute('aria-label', 'Producto');
+  if (cantidadInput) cantidadInput.setAttribute('aria-label', 'Cantidad');
+  if (precioInput) precioInput.setAttribute('aria-label', 'Precio');
+  if (removeBtn) removeBtn.setAttribute('aria-label', 'Eliminar item');
+  
   llenarSelectProductos(select, true);
   select.addEventListener('change', function () {
     var inputNuevo = row.querySelector('.compra-producto-nuevo');
@@ -1469,6 +1573,7 @@ function guardarCompra() {
       errEl.style.display = 'block';
       return;
     }
+    App.drafts.clear('compra');
     document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
     document.getElementById('compra-success').style.display = 'block';
     App.api.getProductos().then(function (data) {
@@ -1487,10 +1592,27 @@ function guardarCompra() {
 function abrirModalPagoCompra(idCompra, saldo) {
   var modal = document.getElementById('modal-pago-compra');
   App.state.pagos.compraId = idCompra;
+  var draftKey = 'pago_compra_' + idCompra;
   document.getElementById('pago-compra-title').textContent = 'Pagar compra #' + idCompra;
   document.getElementById('pago-compra-monto').value = Math.round(parseInt(saldo) / 100) || '';
   document.getElementById('pago-compra-ref').value = '';
   document.getElementById('pago-compra-error').style.display = 'none';
+  // Draft prompt
+  var draftContainer = document.getElementById('draft-prompt-' + draftKey);
+  if (!draftContainer) {
+    draftContainer = document.createElement('div');
+    draftContainer.id = 'draft-prompt-' + draftKey;
+    document.getElementById('pago-compra-error').parentNode.insertBefore(draftContainer, document.getElementById('pago-compra-error'));
+  }
+  draftContainer.innerHTML = '';
+  App.drafts.showRestorePrompt(draftKey, null, function (data) {
+    if (data.monto !== undefined) document.getElementById('pago-compra-monto').value = data.monto;
+    if (data.ref !== undefined) document.getElementById('pago-compra-ref').value = data.ref;
+    App.drafts._showIndicator(draftKey);
+  });
+  App.drafts.wireForm(draftKey, '#modal-pago-compra input', function () {
+    return { monto: document.getElementById('pago-compra-monto').value, ref: document.getElementById('pago-compra-ref').value };
+  });
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
@@ -1524,6 +1646,7 @@ function ejecutarPagoCompra() {
       errEl.style.display = 'block';
       return;
     }
+    App.drafts.clear('pago_compra_' + App.state.pagos.compraId);
     cerrarModalPagoCompra();
     showToast('Pago registrado exitosamente', 'success');
     cargarCompras();

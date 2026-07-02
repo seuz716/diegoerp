@@ -302,14 +302,14 @@
 
         <div class="form-row">
           <label class="form-label">Tercero</label>
-          <select class="form-field" id="abono-cliente">
+          <select class="form-field" id="abono-cliente" aria-label="Tercero">
             <option value="">Seleccione un tercero...</option>
           </select>
         </div>
 
         <div class="form-row">
           <label class="form-label">Tipo de movimiento</label>
-          <select class="form-field" id="abono-tipo">
+          <select class="form-field" id="abono-tipo" aria-label="Tipo de movimiento">
             <option value="CxC">Cobro a Cliente (CxC)</option>
             <option value="CxP">Pago a Proveedor (CxP)</option>
           </select>
@@ -317,12 +317,12 @@
 
         <div class="form-row">
           <label class="form-label">Monto</label>
-          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="0.01" step="0.01" required inputmode="decimal" data-cents-only>
+          <input type="number" class="form-field" id="abono-monto" placeholder="0" min="0.01" step="0.01" required inputmode="decimal" data-cents-only aria-label="Monto">
         </div>
 
         <div class="form-row" style="margin-bottom:var(--space-6)">
           <label class="form-label">Referencia</label>
-          <input type="text" class="form-field" id="abono-referencia" placeholder="Ej: Recibo 001" maxlength="100">
+          <input type="text" class="form-field" id="abono-referencia" placeholder="Ej: Recibo 001" maxlength="100" aria-label="Referencia">
         </div>
 
         <div id="abono-error" class="error-banner" style="margin-bottom:var(--space-3)" aria-live="assertive"></div>
@@ -371,7 +371,7 @@
 
         <div class="form-row">
           <label class="form-label">Tipo de venta</label>
-          <select class="form-field" id="venta-tipo">
+          <select class="form-field" id="venta-tipo" aria-label="Tipo de venta">
             <option value="CONTADO">Contado</option>
             <option value="CxC">CrÃ©dito</option>
           </select>
@@ -379,14 +379,14 @@
 
         <div class="form-row" id="venta-tercero-row" style="display:none;">
           <label class="form-label">Cliente (para crÃ©dito)</label>
-          <select class="form-field" id="venta-cliente">
+          <select class="form-field" id="venta-cliente" aria-label="Cliente">
             <option value="">Seleccione un cliente...</option>
           </select>
         </div>
 
         <div class="form-row" id="venta-dias-row" style="display:none;">
           <label class="form-label">DÃ­as de crÃ©dito</label>
-          <input type="number" class="form-field" id="venta-dias" value="30" min="1" max="365">
+          <input type="number" class="form-field" id="venta-dias" value="30" min="1" max="365" aria-label="DÃ­as de crÃ©dito">
         </div>
 
         <div style="margin-bottom:var(--space-4);">
@@ -400,20 +400,20 @@
             <div class="venta-producto-row" style="display:grid;grid-template-columns:1fr 80px 100px 44px;gap:var(--space-2);margin-bottom:var(--space-2);align-items:end;">
               <div>
                 <label class="form-label">Producto</label>
-                <select class="form-field venta-producto-select" style="font-size:var(--text-sm);">
+                <select class="form-field venta-producto-select" aria-label="Producto" style="font-size:var(--text-sm);">
                   <option value="">Seleccionar...</option>
                 </select>
               </div>
               <div>
                 <label class="form-label">Cantidad</label>
-                <input type="number" class="form-field venta-cantidad" value="1" min="1" style="font-size:var(--text-sm);">
+                <input type="number" class="form-field venta-cantidad" aria-label="Cantidad" value="1" min="1" style="font-size:var(--text-sm);">
               </div>
               <div>
                 <label class="form-label">Precio</label>
-                <input type="number" class="form-field venta-precio" value="0" min="0" style="font-size:var(--text-sm);">
+                <input type="number" class="form-field venta-precio" aria-label="Precio" value="0" min="0" style="font-size:var(--text-sm);">
               </div>
               <div style="display:flex;align-items:end;padding-bottom:4px;">
-                <button class="btn btn-sm btn-remove-producto" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">âœ•</button>
+                <button class="btn btn-sm btn-remove-producto" aria-label="Eliminar producto" style="min-width:44px;min-height:44px;font-size:var(--text-base);padding:0;border-color:var(--red);color:var(--red);display:flex;align-items:center;justify-content:center;">âœ•</button>
               </div>
             </div>
           </template>
@@ -439,10 +439,10 @@
     <div class="page-header">
       <h2 class="page-title">Compras <em>a proveedores</em></h2>
       <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-        <select id="compras-filter-prov" class="form-field" style="width:auto;max-width:180px;">
+        <select id="compras-filter-prov" class="form-field" style="width:auto;max-width:180px;" aria-label="Filtrar por proveedor">
           <option value="">Todos los proveedores</option>
         </select>
-        <select id="compras-filter-estado" class="form-field" style="width:auto;">
+        <select id="compras-filter-estado" class="form-field" style="width:auto;" aria-label="Filtrar por estado">
           <option value="">Todos los estados</option>
           <option value="PENDIENTE">Pendiente</option>
           <option value="PARCIAL">Parcial</option>
@@ -478,7 +478,7 @@
     <div class="page-header">
       <h2 class="page-title">PrÃ³ximos <em>vencimientos</em></h2>
       <div style="display:flex;gap:var(--space-2);">
-        <select id="venc-dias" class="form-field" style="width:auto;">
+        <select id="venc-dias" class="form-field" style="width:auto;" aria-label="Días de vencimiento a mostrar">
           <option value="7">7 dÃ­as</option>
           <option value="15">15 dÃ­as</option>
           <option value="30" selected>30 dÃ­as</option>
@@ -552,19 +552,19 @@
       <div class="modal-title" id="modal-compra-title">Registrar compra</div>
       <div class="form-row">
         <label class="form-label">Proveedor</label>
-        <select class="form-field" id="compra-proveedor"><option value="">Seleccionar...</option></select>
+        <select class="form-field" id="compra-proveedor" aria-label="Proveedor"><option value="">Seleccionar...</option></select>
       </div>
       <div class="form-row">
         <label class="form-label">Factura / Documento</label>
-        <input type="text" class="form-field" id="compra-factura" placeholder="FAC-001" maxlength="50">
+        <input type="text" class="form-field" id="compra-factura" placeholder="FAC-001" maxlength="50" aria-label="Factura / Documento">
       </div>
       <div class="form-row">
         <label class="form-label">Fecha de vencimiento</label>
-        <input type="date" class="form-field" id="compra-vencimiento">
+        <input type="date" class="form-field" id="compra-vencimiento" aria-label="Fecha de vencimiento">
       </div>
       <div class="form-row">
         <label class="form-label">Total ($)</label>
-        <input type="number" class="form-field" id="compra-total" placeholder="0" min="1" step="1">
+        <input type="number" class="form-field" id="compra-total" placeholder="0" min="1" step="1" aria-label="Total">
       </div>
       <div class="form-row" style="margin-bottom:var(--space-4);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3);">
@@ -616,11 +616,11 @@
       <div class="modal-title" id="pago-compra-title">Pagar compra</div>
       <div class="form-row">
         <label class="form-label">Monto a pagar ($)</label>
-        <input type="number" class="form-field" id="pago-compra-monto" placeholder="0" min="1" step="1">
+        <input type="number" class="form-field" id="pago-compra-monto" aria-label="Monto a pagar" placeholder="0" min="1" step="1">
       </div>
       <div class="form-row" style="margin-bottom:var(--space-6);">
         <label class="form-label">Referencia</label>
-        <input type="text" class="form-field" id="pago-compra-ref" placeholder="Transferencia / Efectivo" maxlength="100">
+        <input type="text" class="form-field" id="pago-compra-ref" aria-label="Referencia" placeholder="Transferencia / Efectivo" maxlength="100">
       </div>
       <div id="pago-compra-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
       <div style="display:flex;gap:var(--space-2);">
@@ -636,15 +636,15 @@
       <div class="modal-title" id="modal-tercero-title">Nuevo tercero</div>
       <div class="form-row">
         <label class="form-label">NIT / IdentificaciÃ³n</label>
-        <input type="text" class="form-field" id="tercero-nit" placeholder="NIT o cÃ©dula" maxlength="30" autocomplete="off">
+        <input type="text" class="form-field" id="tercero-nit" aria-label="NIT / Identificación" placeholder="NIT o cÃ©dula" maxlength="30" autocomplete="off">
       </div>
       <div class="form-row">
         <label class="form-label">Nombre</label>
-        <input type="text" class="form-field" id="tercero-nombre" placeholder="Nombre del tercero" maxlength="200">
+        <input type="text" class="form-field" id="tercero-nombre" aria-label="Nombre" placeholder="Nombre del tercero" maxlength="200">
       </div>
       <div class="form-row">
         <label class="form-label">Tipo</label>
-        <select class="form-field" id="tercero-tipo">
+        <select class="form-field" id="tercero-tipo" aria-label="Tipo de tercero">
           <option value="CLIENTE">Cliente</option>
           <option value="PROVEEDOR">Proveedor</option>
           <option value="AMBOS">Ambos</option>
@@ -652,11 +652,11 @@
       </div>
       <div class="form-row">
         <label class="form-label">LÃ­mite de crÃ©dito</label>
-        <input type="number" class="form-field" id="tercero-limite" placeholder="0" min="0">
+        <input type="number" class="form-field" id="tercero-limite" aria-label="Límite de crédito" placeholder="0" min="0">
       </div>
       <div class="form-row">
         <label class="form-label">TelÃ©fono</label>
-        <input type="text" class="form-field" id="tercero-telefono" placeholder="TelÃ©fono" maxlength="30">
+        <input type="text" class="form-field" id="tercero-telefono" aria-label="Teléfono" placeholder="TelÃ©fono" maxlength="30">
       </div>
       <div class="form-row" style="margin-bottom:var(--space-6)">
         <label style="display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--muted);cursor:pointer;">
@@ -678,23 +678,23 @@
       <input type="hidden" id="producto-id">
       <div class="form-row">
         <label class="form-label">Nombre</label>
-        <input type="text" class="form-field" id="producto-nombre" placeholder="Nombre del producto" maxlength="200" required>
+        <input type="text" class="form-field" id="producto-nombre" aria-label="Nombre" placeholder="Nombre del producto" maxlength="200" required>
       </div>
       <div class="form-row">
         <label class="form-label">CategorÃ­a</label>
-        <input type="text" class="form-field" id="producto-categoria" placeholder="Ej: Insumos, Empaques..." maxlength="100">
+        <input type="text" class="form-field" id="producto-categoria" aria-label="Categoría" placeholder="Ej: Insumos, Empaques..." maxlength="100">
       </div>
       <div class="form-row">
         <label class="form-label">Stock inicial</label>
-        <input type="number" class="form-field" id="producto-stock" value="0" min="0" step="1">
+        <input type="number" class="form-field" id="producto-stock" aria-label="Stock inicial" value="0" min="0" step="1">
       </div>
       <div class="form-row">
         <label class="form-label">Precio de compra ($)</label>
-        <input type="number" class="form-field" id="producto-precio-compra" value="0" min="0" step="1">
+        <input type="number" class="form-field" id="producto-precio-compra" aria-label="Precio de compra" value="0" min="0" step="1">
       </div>
       <div class="form-row" style="margin-bottom:var(--space-6);">
         <label class="form-label">Precio de venta ($)</label>
-        <input type="number" class="form-field" id="producto-precio-venta" value="0" min="0" step="1">
+        <input type="number" class="form-field" id="producto-precio-venta" aria-label="Precio de venta" value="0" min="0" step="1">
       </div>
       <div id="producto-error" style="display:none;padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--red);background:var(--red-dim);color:var(--red);font-size:var(--text-sm);"></div>
       <div style="display:flex;gap:var(--space-2);">
@@ -739,3 +739,5 @@
 <?!= HtmlService.createHtmlOutputFromFile('frontend/init').getContent() ?>
 </body>
 </html>
+
+
