@@ -120,7 +120,7 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-Test Suite (runAllRegressionTests): 30 tests
+Test Suite (runAllRegressionTests): 122 tests
     - AuthService: 3 tests (auth, whitelist, unknown action)
     - LockManager: 2 tests (cleanup, index)
     - CacheService: 6 tests (circuit, health, consistency, reset)
@@ -131,6 +131,9 @@ Test Suite (runAllRegressionTests): 30 tests
     - Integrity: 4 tests (purge race, commit/rollback, opt-locking, validation)
     - Business Validation: 3 tests (credit limit, idempotency)
     - API Validation: 5 tests (validateTipo, validatePageSize, validateEstado, validatePageToken, getProductos)
+    - Inventory: 8 tests (KARDEX integrity, trazabilidad, stock consistency)
+    - Purchases: 5 tests (COMP-01 to COMP-05)
+    - Sales -> Kardex REAL VALIDATION: 5 tests (VTA-01 a VTA-05 con ejecución real)
 
 ### 🔒 Seguridad - Logging Sanitizado
 - ✅ AuthService logging: removed keyName/secretName from console.log output
@@ -178,9 +181,68 @@ Test Suite (runAllRegressionTests): 30 tests
 |-----------------|--------------|-----------------|--------|---------------|
 | (No UI directa) | App.api.getVentasDelDia() | getVentasDelDia() | ✅ CORRECTO | Reporte de ventas del día actual. Útil para corte de caja diario. Retorna total y lista de ventas. |
 
-## ?? IMPLEMENTACI�N VERIFICADA - SmokeTests.gs
+## ?? VALIDACIÓN REAL - Tests con ejecución de lógica (TestRegression.gs)
 
-| Funci�n | Archivo | Estado |
+### Tests VTA-01 a VTA-05 - Ventas → Kardex (Validación Real)
+- ✅ VTA-01: Registrar venta crea movimiento SALIDA en kardex
+  - Crea producto de prueba con stock
+  - Crea cliente de prueba
+  - Ejecuta registrarVentaAtomic()
+  - Verifica movimiento SALIDA en kardex con cantidad correcta
+  - Verifica stock decrementado correctamente
+
+- ✅ VTA-02: Cantidad vendida coincide con kardex SALIDA
+  - Obtiene ventas reales de la base de datos
+  - Calcula cantidad vendida por venta
+  - Compara con cantidad en kardex SALIDA
+  - Reporta diferencias encontradas
+
+- ✅ VTA-03: Venta con stock insuficiente rechazada
+  - Crea producto con stock limitado (1 unidad)
+  - Intenta vender cantidad mayor al stock
+  - Verifica que la venta es rechazada
+  - Verifica mensaje de error menciona "stock"
+
+- ✅ VTA-04: Precio venta registrado correctamente en kardex
+  - Crea producto de prueba
+  - Registra venta con precio específico
+  - Verifica precio_unitario en movimiento kardex SALIDA
+
+- ✅ VTA-05: Anular venta genera movimiento ENTRADA reversa
+  - Crea producto/cliente de prueba
+  - Registra venta
+  - Intenta anular (si función existe)
+  - Verifica ENTRADA de reversa y stock restaurado
+
+### Tests REP-03 a REP-05 - Reportes Inventario
+- ✅ REP-03: Quiebres detectados (stock=0 con ventas recientes)
+  - Identifica productos con stock <= 0 y movimientos SALIDA recientes
+  - Reporta como INFO (no error bloqueante)
+
+- ✅ REP-04: Exceso de inventario calculado
+  - Verifica getExcesoInventario() retorna array
+  - Valida estructura mínima de respuesta
+
+- ✅ REP-05: Margen bajo reportado (< 10%)
+  - Verifica getMargenPorProducto() retorna objeto
+  - Valida array margenBajo existe
+  - Verifica estructura de elementos
+
+### Tests PROV-01 - Trazabilidad Proveedor
+- ✅ PROV-01: Trazabilidad proveedor → producto completa
+  - Obtiene compras y sus detalles
+  - Mapea proveedores a productos
+  - Verifica integridad de datos
+
+### Tests STK-01 - Stock Consistency
+- ✅ STK-01: Stock de productos concuerda con kardex calculado
+  - Calcula stock por producto desde kardex
+  - Compara con stock registrado
+  - Reporta discrepancias
+
+## ?? IMPLEMENTACI�N VERIFICADA - SmokeTests.gs
+
+| Funci�n | Archivo | Estado |
 |---------|---------|--------|
 | SmokeTests.runAll() | SmokeTests.gs | ? Creado |
 | SmokeTests.testHealthCheck() | SmokeTests.gs | ? Usa getHealthStatus (Main.gs) |
@@ -188,7 +250,7 @@ Test Suite (runAllRegressionTests): 30 tests
 | SmokeTests.testCriticalFunctions() | SmokeTests.gs | ? Usa getTerceros, getProductos, CACHE.getHealth, DAO_COMPRAS.getMovimientosKardex |
 | SmokeTests.testConfiguration() | SmokeTests.gs | ? Usa PropertiesService |
 | SmokeTests.testTriggersExist() | SmokeTests.gs | ? Usa ScriptApp.getProjectTriggers() |
-| runSmokeTests() | SmokeTests.gs | ? Funci�n principal exportada |
+| runSmokeTests() | SmokeTests.gs | ? Funci�n principal exportada |
 | sendSmokeAlert() | SmokeTests.gs | ? Usa SESSION_SERVICE.getCurrentUser, MailApp |
 
 Todas las dependencias existen en el proyecto:
@@ -198,3 +260,49 @@ Todas las dependencias existen en el proyecto:
 - getTerceros, getProductos en API.gs
 - getHealthStatus en Main.gs
 - SESSION_SERVICE en Config.gs
+
+## Extension Points / Puntos de Extensión
+
+### Exportar nuevas funciones:
+1. Agregar en `DOMAIN.<functionName>()` en Domain.gs
+2. NO usar guion bajo (_) al inicio del nombre
+3. Usar `@param` y `@returns` en JSDoc
+4. Agregar test en TestRegression.gs con prefijo correspondiente
+
+### Utilidades disponibles:
+- `DOMAIN.createTTLCache(ttlSeconds)` - Cache con expiración
+- `DOMAIN.getProductosCached()` - Productos con cache automático
+- `DOMAIN.binarySearchByDate(arr, fecha, key)` - Búsqueda binaria
+- `DOMAIN.processBatch(items, batchCallback, batchSize)` - Procesamiento por lotes
+
+### Performance:
+- Índices: KARDEX(id_producto), MOV_CARTERA(fecha), TERCEROS(id), PRODUCTOS(id)
+- TTL Cache: productos/terceros=300s, kardex=60s
+- Batch processing: usar `DOMAIN.processBatch()` para >100 items
+
+### Setup Service:
+- `setupService.runSetup()` - Crear hojas faltantes
+- `verifyConfig()` - Verificar configuración
+- `migrateLegacy()` - Migrar datos legacy
+
+### Estructura de datos kardex:
+- id: string (KDX-YYYYMMDD-XXXXX)
+- fecha: Date
+- tipo_mov: "ENTRADA" | "SALIDA"
+- id_producto: string
+- cantidad: number
+- costo_unitario: number
+- precio_unitario: number
+- stock_anterior: number
+- stock_nuevo: number
+- origen: string (compraId, ventaId, "AJUSTE", "MERMA")
+- referencia: string
+
+### Índices de performance:
+- KARDEX: id_producto
+- MOV_CARTERA: fecha
+- TERCEROS: id
+- PRODUCTOS: id
+
+### TTL Cache:
+- productos: 300s, terceros: 300s, kardex: 60s
