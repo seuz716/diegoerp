@@ -32,7 +32,8 @@ function _safeError(context, error, correlationId, executionTimeMs) {
   try { tz = SESSION_SERVICE.getScriptTimeZone(); } catch (_) {}
   const corrId = correlationId || 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
-  const execTime = executionTimeMs !== undefined ? executionTimeMs : (Date.now() - (parseInt(PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || Date.now()));
+  const startTimeProp = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId);
+  const execTime = executionTimeMs !== undefined ? executionTimeMs : (Date.now() - (parseInt(startTimeProp) || Date.now()));
   LogService.logError(context + ': ' + message, { functionName: context, correlationId: corrId, error: error });
   return { success: false, error: message, correlationId: corrId, executionTimeMs: execTime };
 }

@@ -569,6 +569,12 @@ const SESSION_SERVICE = {
 
 function setupSistema() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    return { 
+      success: false, 
+      error: "No hay spreadsheet activo. Vincule el script a un spreadsheet desde Archivo > Nuevo > Proyecto de Apps Script desde una hoja de cálculo." 
+    };
+  }
   const ssId = ss.getId();
   PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssId);
 

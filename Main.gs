@@ -1,4 +1,3 @@
-
 /**
  * Entry point — GAS Web App
  * Sanitiza todos los parámetros URL antes de procesarlos.
@@ -71,9 +70,8 @@ function doGet(e) {
 
     return tpl.evaluate()
       .setTitle('MicroERP · Cartera Pro')
-      .setFaviconUrl('https://placehold.co/64x64/1A1814/D4A82A/png?text=%CE%BC')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY)
-      .setSandboxMode(HtmlService.SandboxMode.STRICT);
+      .setFaviconUrl('https://placehold.co/64x64/1A1814/D4A82A/png')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
 
   } catch (err) {
     Logger.log("ERROR doGet: " + err.message);
