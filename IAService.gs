@@ -339,9 +339,10 @@ const IA_SERVICE = {
     };
   },
 
-  _retryablePost(url, payload, attempt = 0) {
-    if (!this._startTime) this._startTime = Date.now();
-    const elapsed = Date.now() - this._startTime;
+  _retryablePost(url, payload, attempt = 0, startTime) {
+    // Use local startTime if not provided (for recursive calls)
+    startTime = startTime || Date.now();
+    const elapsed = Date.now() - startTime;
     if (elapsed > 300000) {
       throw new IAError("Tiempo de ejecución de GAS casi agotado. Abortando llamada a IA.", "GAS_TIMEOUT", null);
     }
@@ -373,7 +374,7 @@ const IA_SERVICE = {
         const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
         Logger.log(`Retryable error (${status}), retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms`);
         Utilities.sleep(wait);
-        return this._retryablePost(url, payload, attempt + 1);
+        return this._retryablePost(url, payload, attempt + 1, startTime);
       }
 
       throw err;
@@ -384,7 +385,7 @@ const IA_SERVICE = {
         const wait = this.RETRY_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 500;
         Logger.log(`Network error, retry ${attempt + 1}/${this.MAX_RETRIES} after ${wait}ms: ${e.message}`);
         Utilities.sleep(wait);
-        return this._retryablePost(url, payload, attempt + 1);
+        return this._retryablePost(url, payload, attempt + 1, startTime);
       }
       throw new IAError("Error de red con IA tras reintentos: " + e.message, "NETWORK", null);
     }
@@ -861,9 +862,19 @@ REGLAS DE NEGOCIO:
 
     const data = this.extractData(forceFresh);
 
-    const totalRecords = data.cartera.length + data.movimientos.length + data.terceros.length;
-    if (totalRecords > 500) {
-      throw new IAError("Límite de solicitudes excedido, reintente en 60 segundos.", "RATE_LIMITED", null);
+    // Check total records after sampling will be applied (cartera + movimientos)
+    // terceros are already truncated to 150 in _buildUserPrompt
+    const recordsAfterSampling = Math.min(data.cartera.length, 500) + Math.min(data.movimientos.length, 500);
+    if (recordsAfterSampling > 500) {
+      // Use stratified sampling to reduce to manageable size
+      const carteraSampled = this._stratifiedSample(data.cartera, new Date(), 250);
+      const movimientosSampled = this._stratifiedSample(data.movimientos, new Date(), 250);
+      
+      // Update data with sampled arrays for prompt building
+      data.cartera = carteraSampled;
+      data.movimientos = movimientosSampled;
+      
+      Logger.log("IA_SERVICE: Datos reducidos por muestreo estratificado (" + recordsAfterSampling + " -> " + (carteraSampled.length + movimientosSampled.length) + ")");
     }
 
     if (data.cartera.length === 0 && data.terceros.length === 0) {

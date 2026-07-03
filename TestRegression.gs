@@ -224,6 +224,18 @@ function runAllRegressionTests() {
       return 'Exception: ' + e.message;
     }
   });
+
+  _test('FLUJO_CAJA.obtenerSaldoActual exists and returns numeric value', () => {
+    try {
+      if (typeof FLUJO_CAJA.obtenerSaldoActual !== 'function') {
+        return 'FLUJO_CAJA.obtenerSaldoActual not found - function missing';
+      }
+      const result = FLUJO_CAJA.obtenerSaldoActual();
+      return typeof result === 'number' ? true : 'Expected number, got: ' + typeof result;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
   
   _test('AuditLog purge race condition protection', () => {
     try {

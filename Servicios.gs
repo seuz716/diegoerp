@@ -15,21 +15,21 @@ function _createStateMachine() {
       for (let i = this.compensations.length - 1; i >= 0; i--) {
         const comp = this.compensations[i];
         try {
-          Logger.warn(`Rollback: ${comp.name}`);
+          Logger.log(`[ROLLBACK] ${comp.name}`);
           comp.fn();
         } catch (e) {
-          Logger.warn(`Rollback error in ${comp.name}: ${e.message}`);
+          Logger.log(`[ROLLBACK] Error in ${comp.name}: ${e.message}`);
         }
       }
       return _error(reason);
     },
     transition(name, fn, compensation) {
-      this.current = VENTA_STATES[name];
-      fn();
       this.transitions.push(name);
       if (compensation) {
         this.compensations.push({ name, fn: compensation });
       }
+      this.current = VENTA_STATES[name];
+      fn();
     }
   };
   return state;
@@ -91,8 +91,9 @@ function procesarVentaV2(carrito, opciones) {
   if (!opciones || typeof opciones !== 'object') {
     return _error("Opciones de venta inválidas.");
   }
-  if (!opciones.tipo) {
-    return _error("El tipo de venta es requerido.");
+  const tipoValido = Object.values(CARTERA_CONFIG.TIPOS).includes(opciones.tipo);
+  if (!tipoValido) {
+    return _error("Tipo de venta inválido: " + opciones.tipo + ". Use " + CARTERA_CONFIG.TIPOS.CXC + " para crédito o contado.");
   }
 
   const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
@@ -143,12 +144,13 @@ function procesarVentaV2(carrito, opciones) {
 
     state.transition('CARTERA_CREATED', () => {
       if (esCredito && idTercero) {
-        const diasCredito = opciones.diasCredito || 30;
+        const diasCredito = Number(opciones.diasCredito) || 30;
+        if (!Number.isInteger(diasCredito) || diasCredito <= 0) {
+          throw new Error("diasCredito debe ser un entero positivo.");
+        }
         DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
       }
     });
-
-    state.current = VENTA_STATES.COMPLETED;
 
     // === GENERAR ASIENTO CONTABLE ===
     const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
@@ -156,21 +158,19 @@ function procesarVentaV2(carrito, opciones) {
     if (esCredito && idTercero) {
       LIBRO_DIARIO.registrarVentaCredito(
         new Date(), 
-        "VENTA-" + Date.now(), 
+        "VENTA-" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), 
         idTercero, 
         totalVenta, 
         usuario
       );
-      // Registrar entrada de caja cuando llegue el abono
     } else {
       LIBRO_DIARIO.registrarVentaContado(
         new Date(),
-        "VENTA-" + Date.now(),
+        "VENTA-" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
         idTercero || "CONTADO",
         totalVenta,
         usuario
       );
-      // Registrar entrada inmediata (venta contado)
       FLUJO_CAJA.registrarMovimiento(
         new Date(),
         FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
@@ -180,6 +180,8 @@ function procesarVentaV2(carrito, opciones) {
         usuario
       );
     }
+
+    state.current = VENTA_STATES.COMPLETED;
 
     LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
       { items: carritoConsolidado.length },
@@ -222,7 +224,6 @@ function actualizarVencimientos() {
   try {
     AuthService.checkPermission("ejecutar_mantenimiento");
 
-    // === INICIO FIX m-01 ===
     try {
       lock = LOCK_MANAGER.acquireGlobalLock(30000);
     } catch (e) {
@@ -230,7 +231,6 @@ function actualizarVencimientos() {
         {}, { error: "No se pudo adquirir el lock: " + e.message }, "FAILED");
       return _error("No se pudo adquirir el lock para actualizar vencimientos.");
     }
-    // === FIN FIX m-01 ===
 
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
@@ -286,9 +286,14 @@ function actualizarVencimientos() {
       } else if (!estaVencido && estadoActual === CARTERA_CONFIG.ESTADOS.VENCIDA) {
         const total = _parseMoneda(row[COL.total], 0);
         const saldo = _parseMoneda(row[COL.saldo], 0);
-        const nuevoEstado = saldo < total
-          ? CARTERA_CONFIG.ESTADOS.PARCIAL
-          : CARTERA_CONFIG.ESTADOS.ABIERTA;
+        let nuevoEstado;
+        if (saldo === 0) {
+          nuevoEstado = CARTERA_CONFIG.ESTADOS.CANCELADA;
+        } else if (saldo < total) {
+          nuevoEstado = CARTERA_CONFIG.ESTADOS.PARCIAL;
+        } else {
+          nuevoEstado = CARTERA_CONFIG.ESTADOS.ABIERTA;
+        }
         cambios.push({ rowIndex: i + 2, saldo, estado: nuevoEstado, vencida_timestamp: null });
         revertidos++;
       }
@@ -318,11 +323,9 @@ function actualizarVencimientos() {
     _notificarErrorTrigger("actualizarVencimientos", e);
     return _error("Error en actualización de vencimientos: " + e.message);
   } finally {
-    // === INICIO FIX m-01 ===
     if (lock) {
       try { lock.releaseLock(); } catch (_) {}
     }
-    // === FIN FIX m-01 ===
   }
 }
 
@@ -439,26 +442,22 @@ function _registrarAbonoServicio(idTercero, valorAbono, referencia, tipoCartera)
 }
 
 function _validarStockCarrito(carrito) {
-  // Use cache instead of sheet read
-  CACHE.refresh();
-  const productosMap = CACHE.productos || {};
-  const productosCache = {};
-  if (Array.isArray(CACHE.productos)) {
-    for (let i = 0; i < CACHE.productos.length; i++) {
-      productosCache[CACHE.productos[i].id] = CACHE.productos[i];
-    }
+  const productos = DAO_PRODUCTOS.listar();
+  const index = {};
+  for (let i = 0; i < productos.length; i++) {
+    index[productos[i].id] = productos[i];
   }
-  
+
   for (const item of carrito) {
     const id = String(item.id || "").trim();
     const cantidad = Number(item.cantidad) || 0;
     if (!id || cantidad <= 0) continue;
 
-    const prod = productosCache[id] || CACHE.getProductoRAW(id);
+    const prod = index[id];
     if (!prod) {
       return `Producto ${id} no encontrado en inventario.`;
     }
-    
+
     const stock = Number(prod.stock) || 0;
     if (stock < cantidad) {
       return `Stock insuficiente para ${prod.nombre || id}: disponible ${stock}, solicitado ${cantidad}`;
@@ -470,6 +469,7 @@ function _validarStockCarrito(carrito) {
 function _descontarInventario(carrito) {
   const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
   const COL = CONFIG.COLUMNS.PRODUCTOS;
+  const numCols = Math.max(...Object.values(COL)) + 1;
   const updates = [];
   const lock = LOCK_MANAGER.acquireGlobalLock(15000);
 
@@ -499,10 +499,7 @@ function _descontarInventario(carrito) {
         throw new Error(`Stock insuficiente para ${id}: disponible ${stockActual}, solicitado ${cantidad}`);
       }
 
-      const rowRange = sheet.getRange(info.rowIndex + 1, 1, 1, Object.keys(COL).length);
-      const rowValues = rowRange.getValues()[0];
-      
-      const currentVersion = _parseMoneda(rowValues[COL.version], 1);
+      const currentVersion = _parseMoneda(data[info.rowIndex][COL.version], 1);
       if (currentVersion !== info.version) {
         const err = new Error(
           "OptimisticLockError: Producto " + id + " fue modificado concurrentemente " +
@@ -512,17 +509,17 @@ function _descontarInventario(carrito) {
         err.productId = id;
         throw err;
       }
-      
-      rowValues[COL.stock] = nuevoStock;
-      rowValues[COL.version] = currentVersion + 1;
-      updates.push({ range: rowRange, values: [rowValues] });
+
+      data[info.rowIndex][COL.stock] = nuevoStock;
+      data[info.rowIndex][COL.version] = currentVersion + 1;
+      updates.push({ rowIndex: info.rowIndex + 1, values: data[info.rowIndex].slice(0, numCols) });
     }
 
     for (const update of updates) {
-      update.range.setValues(update.values);
+      sheet.getRange(update.rowIndex, 1, 1, numCols).setValues([update.values]);
     }
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
@@ -532,7 +529,7 @@ function _revertirDescuentoInventario(carrito) {
     const sheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
     const data = sheet.getDataRange().getValues();
     const COL = CONFIG.COLUMNS.PRODUCTOS;
-    const updates = [];
+    const numCols = Math.max(...Object.values(COL)) + 1;
 
     const index = {};
     for (let i = 1; i < data.length; i++) {
@@ -542,32 +539,40 @@ function _revertirDescuentoInventario(carrito) {
       }
     }
 
+    const updates = [];
+    let skipped = 0;
     for (const item of carrito) {
       const id = String(item.id || "").trim();
       const cantidad = Number(item.cantidad) || 0;
       if (!id || cantidad <= 0) continue;
 
       const info = index[id];
-      if (!info) continue;
-
-      const rowRange = sheet.getRange(info.rowIndex + 1, 1, 1, Object.keys(COL).length);
-      const rowValues = rowRange.getValues()[0];
-      
-      const currentVersion = _parseMoneda(rowValues[COL.version], 1);
-      if (currentVersion !== info.version) {
+      if (!info) {
+        skipped++;
         continue;
       }
-      
-      const stockActual = _parseMoneda(rowValues[COL.stock], 0);
-      rowValues[COL.stock] = stockActual + cantidad;
-      rowValues[COL.version] = currentVersion + 1;
-      updates.push({ range: rowRange, values: [rowValues] });
+
+      const currentVersion = _parseMoneda(data[info.rowIndex][COL.version], 1);
+      if (currentVersion !== info.version) {
+        Logger.log("[ROLLBACK] Version mismatch for " + id + ": expected " + info.version + ", actual " + currentVersion);
+        skipped++;
+        continue;
+      }
+
+      const stockActual = _parseMoneda(data[info.rowIndex][COL.stock], 0);
+      data[info.rowIndex][COL.stock] = stockActual + cantidad;
+      data[info.rowIndex][COL.version] = currentVersion + 1;
+      updates.push({ rowIndex: info.rowIndex + 1, values: data[info.rowIndex].slice(0, numCols) });
     }
 
     for (const update of updates) {
-      update.range.setValues(update.values);
+      sheet.getRange(update.rowIndex, 1, 1, numCols).setValues([update.values]);
+    }
+
+    if (skipped > 0) {
+      Logger.log("[ROLLBACK] " + skipped + " producto(s) saltados por version mismatch o no encontrados");
     }
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }

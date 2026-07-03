@@ -585,15 +585,16 @@ function _validateTabla(tabla) {
  * API Pública: Obtener historial de auditoría
  */
 function getAuditHistory(tabla, idRegistro, limit = 50) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_auditoria");
     const tablaValidada = _validateTabla(tabla);
     const idValidado = INPUT_VALIDATOR.sanitizeString(idRegistro, 50);
     const limitValidado = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
-    return { ...LOG_ENGINE.getHistory(tablaValidada, idValidado, limitValidado), correlationId };
+    return { ...LOG_ENGINE.getHistory(tablaValidada, idValidado, limitValidado), correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getAuditHistory", e, correlationId);
+    return _safeError("getAuditHistory", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -747,7 +748,7 @@ function getProductos(filtro) {
     });
     return { success: true, productos: productos, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getProductos", e, correlationId);
+    return _safeError("getProductos", e, correlationId, Date.now() - startTime);
   }
 }
 
