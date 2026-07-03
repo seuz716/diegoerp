@@ -199,6 +199,7 @@ function callServer(funcName) {
       })
       [funcName].apply(null, args);
   });
+}
 App.api = {
   getDashboard: function () { return callServer('getDashboardCartera'); },
   getCartera: function (filtroTipo, filtroEstado, pageSize, pageToken) { return callServer('getCartera', filtroTipo, filtroEstado, pageSize, pageToken); },

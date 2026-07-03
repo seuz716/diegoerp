@@ -292,6 +292,10 @@ const DAO = {
         const cachedRow = CACHE.terceroIndex[id];
 
         // Validate unique name using cache (no sheet read)
+        // === INICIO FIX-3.4: Refresh caché si está obsoleta antes de validar duplicados ===
+        if (!CACHE.isTercerosValid && !CACHE.isTercerosValid()) {
+          CACHE.refresh();
+        }
         const nombreNormalizado = nombre.trim().toLowerCase();
         for (let i = 0; i < CACHE.terceros.length; i++) {
           const existing = CACHE.terceros[i];
@@ -299,6 +303,7 @@ const DAO = {
           // Skip if updating same record
           if (cachedRow && existing.id === id) continue;
           if (String(existing.nombre).trim().toLowerCase() === nombreNormalizado) {
+            Logger.log("[DAO] Duplicado detectado: nombre '" + nombre + "' ya existe para ID " + existing.id);
             throw new Error("Ya existe un tercero con el nombre '" + nombre + "'.");
           }
         }

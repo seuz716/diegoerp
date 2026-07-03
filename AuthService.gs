@@ -268,22 +268,40 @@ const AuthService = {
   STORE_PREFIX: "AUTH_SEC_",
 
   _storeKey(keyName, value) {
-    PropertiesService.getScriptProperties().setProperty(
-      this.STORE_PREFIX + keyName,
-      CRYPTO_SERVICE.obfuscate(value)
-    );
+    // Use SecretService (UserProperties) instead of CRYPTO_SERVICE (ScriptProperties)
+    SecretService.setSecret(keyName, value);
   },
 
   _loadKey(keyName) {
-    const stored = PropertiesService.getScriptProperties().getProperty(
-      this.STORE_PREFIX + keyName
-    );
-    if (!stored) return null;
-    return CRYPTO_SERVICE.deobfuscate(stored);
+    // Try SecretService (UserProperties) first
+    const userSecret = SecretService.getSecret(keyName);
+    if (userSecret) return userSecret;
+    
+    // Fallback to legacy ScriptProperties for backward compatibility
+    const props = PropertiesService.getScriptProperties();
+    const legacy = props.getProperty(this.STORE_PREFIX + keyName);
+    if (legacy) {
+      // Try to migrate legacy encrypted value
+      try {
+        const parsed = JSON.parse(legacy);
+        if (parsed.c && parsed.i && parsed.s) {
+          // Legacy CRYPTO_SERVICE format - try to decrypt
+          const decrypted = CRYPTO_SERVICE.deobfuscate(legacy);
+          if (decrypted) {
+            // Migrate to new location
+            SecretService.setSecret(keyName, decrypted);
+            props.deleteProperty(this.STORE_PREFIX + keyName);
+            return decrypted;
+          }
+        }
+      } catch (_) {}
+      return legacy; // Plaintext legacy value
+    }
+    return null;
   },
 
   /**
-   * Securely stores an API key in ScriptProperties (encrypted).
+   * Securely stores an API key in UserProperties (obfuscated).
    * @param {string} keyName - Name/identifier for the key.
    * @param {string} value - The API key value to store.
    * @returns {boolean} true on success.
@@ -296,7 +314,7 @@ const AuthService = {
   },
 
   /**
-   * Retrieves an API key, resolving first from PROXY_SECRET_SERVICE, then from encrypted storage.
+   * Retrieves an API key, resolving first from PROXY_SECRET_SERVICE, then from SecretService.
    * @param {string} keyName - Name/identifier for the key.
    * @returns {string} The API key value.
    * @throws {Error} If the key is not found in any source.
@@ -306,33 +324,43 @@ const AuthService = {
     const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
     if (proxyValue) return proxyValue;
     
-const secureValue = this._loadKey(keyName);
-     if (secureValue) return secureValue;
-     
-     throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
+    const secureValue = this._loadKey(keyName);
+    if (secureValue) return secureValue;
+    
+    throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
   },
 
   /**
-   * Removes an API key from ScriptProperties.
+   * Removes an API key from both SecretService and legacy ScriptProperties.
    * @param {string} keyName - Name/identifier for the key.
    */
   removeApiKey(keyName) {
+    SecretService.deleteSecret(keyName);
     PropertiesService.getScriptProperties().deleteProperty(this.STORE_PREFIX + keyName);
     PropertiesService.getScriptProperties().deleteProperty("API_KEY_" + keyName);
   },
 
   /**
    * Checks whether an API key exists and has a non-empty value.
-   * Checks both PROXY_SECRET_SERVICE and encrypted storage.
+   * Checks PROXY_SECRET_SERVICE, SecretService (UserProperties), and ScriptProperties.
    * @param {string} keyName - Name/identifier for the key.
    * @returns {boolean} true if the key exists with a non-empty value.
    */
   hasApiKey(keyName) {
+    // Check proxy first
+    const proxyUrl = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
+    if (proxyUrl) {
+      const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
+      if (proxyValue) return true;
+    }
+    
+    // Check SecretService (UserProperties)
+    if (SecretService.hasSecret(keyName)) return true;
+    
+    // Check legacy ScriptProperties
     const props = PropertiesService.getScriptProperties();
-    const stored = props.getProperty(this.STORE_PREFIX + keyName);
-    const legacy = props.getProperty("API_KEY_" + keyName);
-    const hasValue = (stored && stored.trim().length > 0) || (legacy && legacy.trim().length > 0);
-    return !!hasValue;
+    const legacy = props.getProperty(this.STORE_PREFIX + keyName);
+    return !!(legacy && legacy.trim().length > 0);
   },
 
   _getCurrentUser() {

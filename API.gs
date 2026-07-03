@@ -388,9 +388,11 @@ function getDashboardCartera() {
   try {
     AuthService.checkPermission("ver_dashboard");
 
-    // === INICIO FIX M-05 ===
-    // Ensure cache is fresh
-    _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
+    // === INICIO FIX-PERF-2.4 ===
+    // Conditional refresh: only if cache is stale or circuit is open
+    if (!CACHE.isCarteraValid()) {
+      _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
+    }
 
     const hoy = _today();
 
@@ -559,7 +561,7 @@ function getDashboardCartera() {
       topDeudores: DOMAIN.getRankingDeudores(5),
       concentracionProveedores: DOMAIN.getConcentracionProveedores(),
     };
-    // === FIN FIX M-05 ===
+    // === FIN FIX-PERF-2.4 ===
   } catch (e) {
     return _safeError("getDashboardCartera", e, correlationId, Date.now() - startTime);
   }
@@ -626,7 +628,11 @@ function getCacheMetrics() {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cache");
-    _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
+    // === INICIO FIX-PERF-2.4 ===
+    // Conditional refresh: only if cache is stale
+    if (!CACHE.isTercerosValid() || !CACHE.isCarteraValid()) {
+      _withRetry(function() { CACHE.refresh(); }, 'cartera', 1);
+    }
     return {
       success: true,
       metrics: {
@@ -833,13 +839,20 @@ function getVentasDelDia() {
     const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
     if (!sheetAudit) return { success: true, ventas: [], total: 0, correlationId };
 
-    const data = sheetAudit.getDataRange().getValues();
+    // === INICIO FIX-PERF-2.5 ===
+    // Limit to last 5000 rows to prevent memory/time issues with large audit logs
+    const MAX_ROWS = 5000;
+    const lastRow = sheetAudit.getLastRow();
+    const numCols = Object.keys(CARTERA_CONFIG.COLUMNS.AUDIT_LOG).length;
+    const rowsToRead = Math.min(lastRow, MAX_ROWS + 1) - 1; // -1 for header
+    const data = rowsToRead > 0 ? sheetAudit.getRange(2, 1, rowsToRead, numCols).getValues() : [];
+    // === FIN FIX-PERF-2.5 ===
     const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
     
     const hoy = new Date();
     const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    const ventas = data.slice(1)
+    const ventas = data
       .filter(r => {
         const tabla = String(r[COL.tabla]).trim();
         const timestamp = r[COL.timestamp];
@@ -972,7 +985,8 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
     filtroEstado = INPUT_VALIDATOR.validateEstado(filtroEstado);
     page = INPUT_VALIDATOR.validatePageToken(page);
     pageSize = INPUT_VALIDATOR.validatePageSize(pageSize);
-    CACHE.refresh();
+    // === INICIO FIX-PERF-2.4 ===
+    // Removed unconditional CACHE.refresh() - CACHE.getTerceros() handles it internally
     if (!page && page !== 0) page = 0;
     if (!pageSize) pageSize = 5000;
     pageSize = Math.min(5000, pageSize);

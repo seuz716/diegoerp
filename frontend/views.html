@@ -750,29 +750,30 @@ function cargarTerceros() {
           datosFiltrados.forEach(function (item) {
             var tipoInfo = App.mapearTipoTercero(item.tipo);
             var tr = document.createElement('tr');
-          var tdId = document.createElement('td');
-          tdId.className = 'td-mono td-muted';
-          tdId.textContent = item.id || '\u2014';
-          tr.appendChild(tdId);
-          var tdNombre = document.createElement('td');
-          tdNombre.style.fontWeight = '500';
-          tdNombre.textContent = item.nombre || '\u2014';
-          tr.appendChild(tdNombre);
-          var tdTipo = document.createElement('td');
-          var tipoSpan = document.createElement('span');
-          tipoSpan.className = 'badge ' + tipoInfo.cls;
-          tipoSpan.textContent = tipoInfo.label;
-          tdTipo.appendChild(tipoSpan);
-          tr.appendChild(tdTipo);
-          var tdLimite = document.createElement('td');
-          tdLimite.className = 'td-mono';
-          tdLimite.textContent = App.formatearMoneda(item.limite_credito);
-          tr.appendChild(tdLimite);
-          var tdAcciones = document.createElement('td');
-          tdAcciones.style.display = 'none';
-          tr.appendChild(tdAcciones);
-          tbody.appendChild(tr);
-        });
+            var tdId = document.createElement('td');
+            tdId.className = 'td-mono td-muted';
+            tdId.textContent = item.id || '\u2014';
+            tr.appendChild(tdId);
+            var tdNombre = document.createElement('td');
+            tdNombre.style.fontWeight = '500';
+            tdNombre.textContent = item.nombre || '\u2014';
+            tr.appendChild(tdNombre);
+            var tdTipo = document.createElement('td');
+            var tipoSpan = document.createElement('span');
+            tipoSpan.className = 'badge ' + tipoInfo.cls;
+            tipoSpan.textContent = tipoInfo.label;
+            tdTipo.appendChild(tipoSpan);
+            tr.appendChild(tdTipo);
+            var tdLimite = document.createElement('td');
+            tdLimite.className = 'td-mono';
+            tdLimite.textContent = App.formatearMoneda(item.limite_credito);
+            tr.appendChild(tdLimite);
+            var tdAcciones = document.createElement('td');
+            tdAcciones.style.display = 'none';
+            tr.appendChild(tdAcciones);
+            tbody.appendChild(tr);
+          });
+        }
       }
     })
     .catch(function (err) {

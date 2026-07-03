@@ -22,11 +22,17 @@ function _csvEscape(valor) {
 function _generarCSV(sheetName, colMap, headerRow, fieldGetter, fechaInicio, fechaFin) {
   try {
     const sheet = getSheet(sheetName);
-    const data = sheet.getDataRange().getValues();
+    const lastRow = sheet.getLastRow();
+    const numCols = Math.max(...Object.values(colMap)) + 1;
+    const MAX_ROWS = 50000; // Limit to prevent memory issues and timeouts
+    const rowsToRead = Math.min(Math.max(lastRow, 1) - 1, MAX_ROWS);
+    
+    // Read in blocks for large sheets (same pattern as _readSheetRaw in CacheService)
+    const data = rowsToRead > 0 ? _readSheetInBlocks(sheet, 2, rowsToRead, numCols) : [];
     const tz = _getTimeZone();
     const fi = _safeDate(fechaInicio);
     const ff = _safeDate(fechaFin);
-    const rows = data.slice(1).filter(r => {
+    const rows = data.filter(r => {
       const f = _safeDate(r[colMap.fecha]);
       return (!fi || !f || f >= fi) && (!ff || !f || f <= ff);
     });
@@ -36,9 +42,25 @@ function _generarCSV(sheetName, colMap, headerRow, fieldGetter, fechaInicio, fec
     }
     return csv.join("\n");
   } catch (e) {
-    Logger.log("ERROR _generarCSV(" + sheetName + "): " + e.toString());
+    Logger.log("ERROR _generarCSV(" + sheetName + "): limit reached");
     return "";
   }
+}
+
+function _readSheetInBlocks(sheet, startRow, totalRows, numCols) {
+  if (totalRows <= 0) return [];
+  const ITEMS_PER_BLOCK = 20000;
+  if (totalRows <= 50000) {
+    return sheet.getRange(startRow, 1, totalRows, numCols).getValues();
+  }
+  Logger.log("[FIX-PERF-2.3] Large sheet: " + totalRows + " rows, reading in blocks of " + ITEMS_PER_BLOCK);
+  let result = [];
+  for (let offset = 0; offset < totalRows; offset += ITEMS_PER_BLOCK) {
+    const blockSize = Math.min(ITEMS_PER_BLOCK, totalRows - offset);
+    const block = sheet.getRange(startRow + offset, 1, blockSize, numCols).getValues();
+    result = result.concat(block);
+  }
+  return result;
 }
 
 const FLUJO_CAJA_TIPOS = {

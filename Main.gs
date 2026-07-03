@@ -2,6 +2,7 @@
 /**
  * Entry point — GAS Web App
  * Sanitiza todos los parámetros URL antes de procesarlos.
+ * Configuración de ssid requiere token de seguridad.
  */
 function doGet(e) {
   try {
@@ -9,12 +10,33 @@ function doGet(e) {
 
     if (params.ssid) {
       try {
-        var ssid = INPUT_VALIDATOR.validateId(params.ssid);
-        if (ssid && /^[a-zA-Z0-9-_]+$/.test(ssid)) {
-          PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssid);
-          Logger.log("INFO: SPREADSHEET_ID configurado desde parámetro URL (sanitizado)");
+        // 🔒 SECURITY FIX: Requerir token para configuración remota de ssid
+        if (!params.token) {
+          Logger.log("WARN: ssid configuración rechazada - token no proporcionado");
+          // No exponer error al cliente, continuar sin cambiar ssid
         } else {
-          Logger.log("WARN: ssid inválido rechazado: " + params.ssid);
+          const storedToken = PropertiesService.getScriptProperties().getProperty("SETUP_TOKEN");
+          if (!storedToken || params.token !== storedToken) {
+            Logger.log("WARN: ssid configuración rechazada - token inválido");
+            // No exponer error al cliente, continuar sin cambiar ssid
+          } else {
+            const ssid = INPUT_VALIDATOR.validateId(params.ssid);
+            if (ssid && /^[a-zA-Z0-9-_]+$/.test(ssid)) {
+              // Validar que el spreadsheet es accesible
+              try {
+                SpreadsheetApp.openById(ssid);
+                PropertiesService.getScriptProperties().setProperty("SPREADSHEET_ID", ssid);
+                Logger.log("INFO: SPREADSHEET_ID configurado desde parámetro URL (validado con token)");
+                // Revocar token después de uso (one-time)
+                PropertiesService.getScriptProperties().deleteProperty("SETUP_TOKEN");
+                Logger.log("INFO: SETUP_TOKEN revocado tras uso exitoso");
+              } catch (ssErr) {
+                Logger.log("WARN: ssid no accesible: " + ssErr.message);
+              }
+            } else {
+              Logger.log("WARN: ssid inválido rechazado: " + params.ssid);
+            }
+          }
         }
       } catch (err) {
         Logger.log("WARN: ssid inválido: " + err.message);
@@ -61,8 +83,7 @@ function doGet(e) {
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
       '</head><body><h2>Error de configuración</h2>' +
       '<p>' + err.message + '</p>' +
-      '<p><strong>Solución:</strong> Visita esta URL con el parámetro ssid:</p>' +
-      '<code>https://script.google.com/macros/s/AKfycbzM7IMFbsWlzD3tmDgQtD6FytBpxEQupohTMylvH7I/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
+      '<p><strong>Solución:</strong> Ejecuta la función generateSetupToken() desde el editor.</p>' +
       '</body></html>'
     );
   }
@@ -438,5 +459,47 @@ function migrarEstructuraCompras() {
   } catch (e) {
     Logger.log("[MIGRACION] Error en migrarEstructuraCompras: " + e.toString());
     return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Generate a one-time setup token for remote SPREADSHEET_ID configuration.
+ * Execute this from the Apps Script editor to get a token for secure setup.
+ * @returns {Object} Contains the token and full setup URL
+ */
+function generateSetupToken() {
+  try {
+    const token = Utilities.getUuid();
+    PropertiesService.getScriptProperties().setProperty("SETUP_TOKEN", token);
+    const scriptUrl = ScriptApp.getService().getUrl();
+    Logger.log("=== SETUP TOKEN GENERATED ===");
+    Logger.log("Token: " + token);
+    Logger.log("Use URL: " + scriptUrl + "?ssid=YOUR_SSID&token=" + token);
+    Logger.log("============================");
+    return {
+      success: true,
+      token: token,
+      message: "Token generado. Revisa los logs para obtener la URL completa."
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Revoke the current setup token (if any exists).
+ * @returns {Object} Result of revocation
+ */
+function revokeSetupToken() {
+  try {
+    const hadToken = PropertiesService.getScriptProperties().getProperty("SETUP_TOKEN");
+    PropertiesService.getScriptProperties().deleteProperty("SETUP_TOKEN");
+    return {
+      success: true,
+      revoked: !!hadToken,
+      message: hadToken ? "Token revocado exitosamente" : "No había token activo"
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 }

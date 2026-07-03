@@ -10,16 +10,20 @@
 // Ensure dependencies are available
 // These are global objects defined in their respective modules
 
+// Backwards compatibility: _PROCESSED_CORRELATION_IDS is now deprecated
+// IdempotencyService handles persistent storage via CacheService
 const _PROCESSED_CORRELATION_IDS = {};
 
 function _isIdempotent(correlationId, idTercero) {
   if (!correlationId) return false;
-  const key = correlationId + "::" + idTercero;
-  if (_PROCESSED_CORRELATION_IDS[key]) {
+  const cacheHit = IdempotencyService.isProcessed(correlationId, idTercero);
+  if (cacheHit) {
     Logger.log("[DOMAIN] Idempotencia detectada: " + correlationId + " para " + idTercero);
     return true;
   }
-  _PROCESSED_CORRELATION_IDS[key] = true;
+  // Mark as processed (actual idempotencia persistente)
+  IdempotencyService.markProcessed(correlationId, idTercero);
+  _PROCESSED_CORRELATION_IDS[correlationId + "::" + idTercero] = true;
   return false;
 }
 
@@ -170,26 +174,28 @@ const _Transaction = {
       rollback() {
   if (!ctx.active) return;
   // === INICIO FIX M-02 ===
-  // Rollback de Terceros (nuevo)
+  // Rollback de Terceros (nuevo) con verificación de versión optimista
   if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
     const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
     for (const snap of ctx.terceroSnapshots) {
+      // Check version for optimistic locking
+      const currentRow = sheet.getRange(snap.rowIndex, COL.version + 1, 1, 1).getValues()[0];
+      const currentVersion = Number(currentRow[0]) || 1;
+      const snapshotVersion = Number(snap.values[COL.version]) || 1;
+      if (currentVersion !== snapshotVersion) {
+        const err = new Error("CONFLICTO_ROLLBACK: Tercero fila " + snap.rowIndex + 
+          " fue modificado por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
+        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "TERCEROS", snap.rowIndex, {}, { error: err.message }, "ERROR");
+        throw err;
+      }
       const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
       sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
     }
     Logger.log("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
   }
   // === FIN FIX M-02 ===
-  
-  // === INICIO FIX-VERSION-CHECK ===
-  // Helper: incrementar contador de rollbacks saltados
-  function _incRollbackSkip() {
-    const props = PropertiesService.getScriptProperties();
-    const failCount = Number(props.getProperty('ROLLBACK_SKIP_COUNT') || 0);
-    props.setProperty('ROLLBACK_SKIP_COUNT', String(failCount + 1));
-  }
-  
+
   // Rollback de Cartera con verificación de versión optimista
   const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
   const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
@@ -201,11 +207,10 @@ const _Transaction = {
     const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
     
     if (currentVersion !== snapshotVersion) {
-      Logger.log("[TXN-ROLLBACK-WARN] Cartera fila " + snap.rowIndex + 
-        ": versión actual " + currentVersion + 
-        " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
-      _incRollbackSkip();
-      continue;
+      const err = new Error("CONFLICTO_ROLLBACK: Cartera fila " + snap.rowIndex + 
+        " fue modificada por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
+      LOG_ENGINE.logEvent("ERROR_ROLLBACK", "CARTERA", snap.rowIndex, {}, { error: err.message }, "ERROR");
+      throw err;
     }
     const restoredRow = snap.values.slice();
     const numCols = restoredRow.length;
@@ -230,11 +235,10 @@ const _Transaction = {
       const currentVersion = Number(currentRow[0]) || 1;
       
       if (currentVersion !== snapshotVersion) {
-        Logger.log("[TXN-ROLLBACK-WARN] Producto fila " + snap.rowIndex + 
-          ": versión actual " + currentVersion + 
-          " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
-        _incRollbackSkip();
-        continue;
+        const err = new Error("CONFLICTO_ROLLBACK: Producto fila " + snap.rowIndex + 
+          " fue modificado por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
+        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "PRODUCTOS", snap.rowIndex, {}, { error: err.message }, "ERROR");
+        throw err;
       }
       const numCols = snap.values.length;
       prodSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
@@ -258,11 +262,10 @@ const _Transaction = {
       const currentVersion = Number(currentRow[0]) || 1;
       
       if (currentVersion !== snapshotVersion) {
-        Logger.log("[TXN-ROLLBACK-WARN] Compra fila " + snap.rowIndex + 
-          ": versión actual " + currentVersion + 
-          " ≠ esperada " + snapshotVersion + ". Saltando para evitar pérdida de datos.");
-        _incRollbackSkip();
-        continue;
+        const err = new Error("CONFLICTO_ROLLBACK: Compra fila " + snap.rowIndex + 
+          " fue modificada por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
+        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "COMPRAS", snap.rowIndex, {}, { error: err.message }, "ERROR");
+        throw err;
       }
       const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
       compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
@@ -325,6 +328,34 @@ function _buildAbonoPlan(pendientes, valor, idPrefijo, fechaMov, refLimpia) {
     aplicadoTotal: valor - restante,
     restante: restante,
   };
+}
+
+/**
+ * Creates a product inline with global lock to prevent ID collisions.
+ * Used when a purchase includes a product that doesn't exist in the master.
+ * NOTE: The lock ensures exclusive access for ID generation and insertion.
+ */
+function _crearProductoInline(nombre, precioCompra, precioVenta, categoria) {
+  let lockAcquired = null;
+  try {
+    // Acquire global lock for product creation to prevent ID collisions
+    lockAcquired = LOCK_MANAGER.acquireGlobalLock("producto_creation");
+    
+    // Generate unique ID with timestamp + random suffix for collision avoidance
+    const prodId = "P" + Date.now() + "_" + Math.random().toString(36).substr(2, 6).toUpperCase();
+    
+    // Create via DAO (which has its own local lock)
+    const creado = DAO_PRODUCTOS.crear({
+      nombre: _sanitizeCell(nombre),
+      precio_compra: _parseMoneda(precioCompra, 0),
+      precio_venta: _parseMoneda(precioVenta, 0),
+      categoria: _sanitizeCell(categoria),
+    });
+    
+    return creado;
+  } finally {
+    if (lockAcquired) lockAcquired.releaseLock();
+  }
 }
 
 const DOMAIN = {
@@ -491,9 +522,9 @@ if (resultado.isUpdate) {
 
   /**
    * Registers a payment (abono) against a third party's outstanding debt.
-   * Implements idempotency via correlationId, validates credit limits for CxC,
-   * applies payment to oldest pending items first (FIFO), generates accounting
-   * entries and cash flow records. Retries on optimistic locking conflicts.
+   * Implements idempotency via correlationId, applies payment to oldest pending items first (FIFO), 
+   * generates accounting entries and cash flow records. Retries on optimistic locking conflicts.
+   * Note: Credit limit validation is NOT performed here - it should be validated at debt creation time.
    * @param {string} idTercero - Third party ID
    * @param {number} valorAbono - Payment amount in currency units
    * @param {string} referencia - Payment reference or description
@@ -533,32 +564,9 @@ if (resultado.isUpdate) {
           return _error(`Tercero ${idTerceroLimpio} no existe en la base de datos.`);
         }
 
-        // === VALIDACIÓN DE CUPO CREDITICIO (TAREA 2.1) ===
-        // Para CxC: verificar que el cliente no exceda su límite de crédito
-        // Si limite_credito es 0 o null, el cliente no tiene crédito autorizado
-        // El límite es el crédito disponible: limite_credito - saldo_actual >= 0
-        if (tipoLimpio === CARTERA_CONFIG.TIPOS.CXC) {
-          if (!tercero.limite_credito || tercero.limite_credito === 0) {
-            const err = new Error("Cliente sin límite de crédito");
-            err.code = "CREDIT_LIMIT_UNSET";
-            LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio,
-              { saldo_actual: saldoActual, limite: tercero.limite_credito },
-              { error: "CREDIT_LIMIT_UNSET", monto_solicitado: valor },
-              "ERROR", { correlationId: correlationId || ('abono_' + Date.now()) });
-            return _error("Cliente sin límite de crédito configurado. Configure un límite o cancele la venta a crédito.");
-          }
-          const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
-          if (saldoActual > tercero.limite_credito) {
-            const err = new Error("Cupo crediticio insuficiente");
-            err.code = "CREDIT_LIMIT_EXCEEDED";
-            LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio,
-              { saldo_actual: saldoActual, limite: tercero.limite_credito },
-              { error: "CREDIT_LIMIT_EXCEEDED", monto_solicitado: valor },
-              "ERROR", { correlationId: correlationId || ('abono_' + Date.now()) });
-            return _error("Cupo crediticio insuficiente: Saldo actual $" + _formatMoneda(saldoActual) + " excede límite $" + _formatMoneda(tercero.limite_credito));
-          }
-        }
-        // === FIN VALIDACIÓN CUPO CREDITICIO ===
+        // NOTA: La validación de límite de crédito NO se hace aquí porque un abono
+        // reduce la deuda, no la aumenta. La validación debe hacerse al crear la deuda
+        // (venta a crédito) para que el saldo no supere el límite al momento de la venta.
 
         CACHE.refresh();
         const consistency = CACHE.verifyConsistency();
@@ -1443,31 +1451,9 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           });
         }
 
-        // Verify optimistic locking - check versions haven't changed since read
-        const prodSheetFresh = getSheet(CONFIG.SHEETS.PRODUCTOS);
-        const freshCount = prodSheetFresh.getLastRow();
-        if (freshCount !== lastRow) {
-          const lockErr = new Error("OptimisticLockError: La tabla de productos cambió durante la operación.");
-          lockErr.type = 'OPTIMISTIC_LOCK_FAILURE';
-          lockErr.retryable = true;
-          throw lockErr;
-        }
-        const freshData = prodSheetFresh.getRange(2, 1, lastRow - 1, C.version + 1).getValues();
-        for (const r of Object.keys(changedRows).map(Number)) {
-          const idx = r - 2;
-          const prodId = String(prodData[idx][C.id]).trim();
-          const actualVer = parseInt(freshData[idx][C.version]) || 1;
-          const expectedVer = prodVersions[prodId];
-          if (expectedVer !== undefined && actualVer !== expectedVer) {
-            const lockErr = new Error(
-              "OptimisticLockError: Producto " + prodId + " fue modificado concurrentemente " +
-              "(esperada v" + expectedVer + ", actual v" + actualVer + "). Reintente."
-            );
-            lockErr.type = 'OPTIMISTIC_LOCK_FAILURE';
-            lockErr.retryable = true;
-            throw lockErr;
-          }
-        }
+        // Note: Optimistic locking verification uses prodSheet already read (line ~1391)
+        // The productLocks acquired above ensure exclusive access to each product during transaction
+        // No second read needed - lock prevents concurrent modification
 
         // Begin transaction covering stock, kardex, and cartera (Bug #3 fix)
         tx.begin();

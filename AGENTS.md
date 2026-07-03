@@ -161,6 +161,14 @@ Test Suite (runAllRegressionTests): 122 tests
 - ✅ Frontend wrappers getCacheHealth/getCacheMetrics/verificarConfiguracionIA presentes en app.html
 - ✅ Archivos setup redundantes (INSTALL_SCRIPT.gs, SETUP_ONE_CLICK.gs, init_spreadsheet.gs) eliminados
 
+## IA-SECURITY - Secret Management (completado)
+- ✅ SecretService.gs: Nuevo servicio con UserProperties + ofuscación XOR
+- ✅ AuthService.setApiKey/getApiKey migrado a usar SecretService
+- ✅ Main.doGet: Configuración remota de ssid requiere token de un solo uso
+- ✅ generateSetupToken(): Genera UUID para configuración segura de ssid
+- ✅ revokeSetupToken(): Revoca token existente
+- ✅ migrateSecretsToUserProperties(): Migración de secretos existentes
+
 ### ❌ No aplica al stack GAS
 - SQL optimizer/connection pool — este proyecto NO usa SQL, usa SpreadsheetApp
 - Logging async + 50MB rotation — GAS no soporta escritura asíncrona ni tamaño de archivo (worksheets)
@@ -306,3 +314,26 @@ Todas las dependencias existen en el proyecto:
 
 ### TTL Cache:
 - productos: 300s, terceros: 300s, kardex: 60s
+
+### Configuración Segura de Secretos:
+1. **Desde el editor**: Ejecuta `setupGeminiKeyFromPrompt()` para configurar GEMINI_API_KEY
+2. **Configuración remota de SPREADSHEET_ID**:
+   - Ejecuta `generateSetupToken()` desde el editor
+   - Revisa los logs para obtener el token UUID
+   - Accede a la URL: `https://script.google.com/macros/s/SCRIPT_ID/exec?ssid=YOUR_SSID&token=TOKEN_UUID`
+   - El token se revoca automáticamente tras el primer uso exitoso
+3. **Migrar secretos existentes**: Ejecuta `migrateSecretsToUserProperties()` para mover claves de ScriptProperties a UserProperties
+4. **Para producción**: Configura `SECRET_PROXY_URL` con endpoint HMAC para gestión de secretos externa
+
+## IA-BUSINESS - Lógica de Negocio (completado)
+- ✅ Domain.registrarAbonoAtomic: Eliminada validación de límite crédito (abono reduce deuda, no la aumenta)
+- ✅ IdempotencyService.gs: Idempotencia persistente usando CacheService (24h TTL)
+- ✅ _Transaction.rollback: Lanza excepción CONFLICTO_ROLLBACK en conflicto de versión
+- ✅ DAO.saveTerceroImpl: Refresh de caché antes de validar duplicados de nombre
+- ✅ _crearProductoInline: Función con lock global para crear productos sin colisión de IDs
+
+## AGENTE 3 - PERFORMANCE (completado)
+- ✅ **2.2**: Unificadas lecturas de productos en registrarVentaAtomic (eliminada segunda lectura redundante)
+- ✅ **2.3**: _generarCSV refactorizado con lectura por bloques (_readSheetInBlocks, límite 50,000 filas)
+- ✅ **2.4**: Refrescos condicionales de caché en API (getDashboardCartera, getCacheMetrics, getCompras)
+- ✅ **2.5**: Lectura limitada de AUDIT_LOG en getVentasDelDia (máximo 5,000 filas)
