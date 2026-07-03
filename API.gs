@@ -23,18 +23,18 @@ function generateCorrelationId() {
  * @param {string} context - Nombre de la operación donde ocurrió el error.
  * @param {*} error - Objeto error o mensaje.
  * @param {string} [correlationId] - ID de trazabilidad (se genera uno si no se provee).
+ * @param {number} [executionTimeMs] - Tiempo de ejecución en ms (se calcula si no se provee).
  * @returns {{success: false, error: string, correlationId: string, executionTimeMs: number}}
  */
-function _safeError(context, error, correlationId) {
+function _safeError(context, error, correlationId, executionTimeMs) {
   _errorCounter++;
   let tz = 'UTC';
   try { tz = SESSION_SERVICE.getScriptTimeZone(); } catch (_) {}
   const corrId = correlationId || 'ERR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + _errorCounter;
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
-  const startTime = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || 0;
-  const executionTime = startTime > 0 ? Date.now() - parseInt(startTime) : 0;
+  const execTime = executionTimeMs !== undefined ? executionTimeMs : (Date.now() - (parseInt(PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId) || Date.now()));
   LogService.logError(context + ': ' + message, { functionName: context, correlationId: corrId, error: error });
-  return { success: false, error: message, correlationId: corrId, executionTimeMs: executionTime };
+  return { success: false, error: message, correlationId: corrId, executionTimeMs: execTime };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -280,7 +280,7 @@ function registrarAbono(idTercero, valorAbono, referencia, tipo) {
     LATENCY_HISTOGRAM.record(Date.now() - startTime);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("registrarAbono", e, correlationId);
+    return _safeError("registrarAbono", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -299,7 +299,7 @@ function getTerceros(filtroTipo = null) {
     }
     return { items: resultado, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getTerceros", e, correlationId);
+    return _safeError("getTerceros", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -310,8 +310,9 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
   const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
+    RATE_LIMITER.check("getCartera");
     AuthService.checkPermission("ver_cartera");
-    filtroTipo = INPUT_VALIDATOR.validateTipo(filtroTipo, ['CXC', 'CXp']);
+    filtroTipo = INPUT_VALIDATOR.validateTipo(filtroTipo, ['CXC', 'CxP']);
     filtroEstado = INPUT_VALIDATOR.validateEstado(filtroEstado);
     pageSize = INPUT_VALIDATOR.validatePageSize(pageSize);
     pageToken = INPUT_VALIDATOR.validatePageToken(pageToken);
@@ -321,13 +322,11 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
       LogService.logError("Resultado inválido de DOMAIN.getCartera", { functionName: 'getCartera', details: { result: result } });
-      return { items: [], nextPageToken: null, error: "Error al obtener cartera. Intente de nuevo.", correlationId, executionTimeMs: Date.now() - startTime };
     }
     
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    Logger.log("ERROR getCartera: " + e.toString());
-    return { items: [], nextPageToken: null, error: _safeError("getCartera", e, correlationId).error, correlationId, executionTimeMs: Date.now() - startTime };
+    return _safeError("getCartera", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -344,7 +343,7 @@ function saveTercero(tercero) {
     const result = DOMAIN.saveTercero(terceroValidado);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("saveTercero", e, correlationId);
+    return _safeError("saveTercero", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -361,7 +360,7 @@ function deleteTercero(id) {
     const result = DOMAIN.deleteTercero(idLimpio);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("deleteTercero", e, correlationId);
+    return _safeError("deleteTercero", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -376,7 +375,7 @@ function getUltimoPagoProveedor(idProveedor) {
     const result = DOMAIN.getUltimoPagoProveedor(idProveedor);
     return { success: true, pago: result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getUltimoPagoProveedor", e, correlationId);
+    return _safeError("getUltimoPagoProveedor", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -562,8 +561,24 @@ function getDashboardCartera() {
     };
     // === FIN FIX M-05 ===
   } catch (e) {
-    return _safeError("getDashboardCartera", e);
+    return _safeError("getDashboardCartera", e, correlationId, Date.now() - startTime);
   }
+}
+
+/**
+ * Valida nombre de tabla contra lista blanca.
+ * @param {string} tabla - Nombre de tabla a validar.
+ * @returns {string} Nombre validado.
+ * @throws {Error} Si la tabla no está permitida.
+ */
+function _validateTabla(tabla) {
+  if (!tabla || typeof tabla !== 'string') throw new Error('Tabla inválida');
+  const allowedTabs = ['TERCEROS', 'CARTERA', 'Movimientos_Cartera', 'VENTAS', 'COMPRAS', 'PRODUCTOS', 'AUDIT_LOG', 'DETALLE_COMPRAS', 'PAGOS_PROVEEDORES', 'KARDEX', 'LIBRO_DIARIO', 'FLUJO_CAJA'];
+  const sanitized = String(tabla).trim().toUpperCase();
+  if (allowedTabs.indexOf(sanitized) === -1) {
+    throw new Error('Tabla no permitida: ' + tabla);
+  }
+  return sanitized;
 }
 
 /**
@@ -573,7 +588,10 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_auditoria");
-    return { ...LOG_ENGINE.getHistory(tabla, idRegistro, limit), correlationId };
+    const tablaValidada = _validateTabla(tabla);
+    const idValidado = INPUT_VALIDATOR.sanitizeString(idRegistro, 50);
+    const limitValidado = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
+    return { ...LOG_ENGINE.getHistory(tablaValidada, idValidado, limitValidado), correlationId };
   } catch (e) {
     return _safeError("getAuditHistory", e, correlationId);
   }
@@ -583,6 +601,7 @@ function getAuditHistory(tabla, idRegistro, limit = 50) {
  * API Pública: Obtener estado de la caché (staleness info)
  */
 function getCacheHealth() {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cache");
@@ -590,10 +609,11 @@ function getCacheHealth() {
       staleness: CACHE.getStalenessInfo(),
       consistency: CACHE.verifyConsistency(),
       timestamp: new Date().toISOString(),
-      correlationId
+      correlationId,
+      executionTimeMs: Date.now() - startTime
     };
   } catch (e) {
-    return _safeError("getCacheHealth", e, correlationId);
+    return _safeError("getCacheHealth", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -601,6 +621,7 @@ function getCacheHealth() {
  * API Pública: Métricas de salud del caché (circuit breaker, persistidas)
  */
 function getCacheMetrics() {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_cache");
@@ -614,10 +635,11 @@ function getCacheMetrics() {
         consistency: CACHE.verifyConsistency(),
       },
       timestamp: new Date().toISOString(),
-      correlationId
+      correlationId,
+      executionTimeMs: Date.now() - startTime
     };
   } catch (e) {
-    return _safeError("getCacheMetrics", e, correlationId);
+    return _safeError("getCacheMetrics", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -625,12 +647,13 @@ function getCacheMetrics() {
  * API Pública: Forzar análisis fresco (sin caché de IA)
  */
 function analizarConGeminiFresco() {
+  const startTime = Date.now();
   try {
     RATE_LIMITER.check("analizarGemini");
     AuthService.checkPermission("analizar_ia");
     return IA_SERVICE.ejecutarAnalisisFresco();
   } catch (e) {
-    return _safeError("analizarConGeminiFresco", e);
+    return _safeError("analizarConGeminiFresco", e, null, Date.now() - startTime);
   }
 }
 
@@ -638,11 +661,12 @@ function analizarConGeminiFresco() {
  * API Pública: Verificar configuración de IA (Gemini key + proxy)
  */
 function verificarConfiguracionIA() {
+  const startTime = Date.now();
   try {
     AuthService.checkPermission("ver_configuracion");
     return IA_SERVICE.verificarConfiguracion();
   } catch (e) {
-    return _safeError("verificarConfiguracionIA", e);
+    return _safeError("verificarConfiguracionIA", e, null, Date.now() - startTime);
   }
 }
 
@@ -650,6 +674,8 @@ function verificarConfiguracionIA() {
  * API Pública: Obtener información del usuario actual (email y rol)
  */
 function getUserInfo() {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_dashboard");
     const email = SESSION_SERVICE.getCurrentUser().getEmail();
@@ -657,9 +683,9 @@ function getUserInfo() {
       throw new Error("No se pudo verificar la identidad del usuario");
     }
     const role = AuthService.getUserRole(email);
-    return { email: email, role: role };
+    return { email: email, role: role, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getUserInfo", e);
+    return _safeError("getUserInfo", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -685,7 +711,7 @@ function procesarVenta(carrito, opciones) {
     const result = procesarVentaV2(carrito, opciones);
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("procesarVenta", e, correlationId);
+    return _safeError("procesarVenta", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -742,7 +768,7 @@ AuthService.checkPermission("revisar_inventario");
     const result = DAO_PRODUCTOS.crear({ nombre: nombreLimpio, precio_compra: pc, precio_venta: pv, categoria: cat });
     return { success: true, id: result.id, nombre: result.nombre, stock: 0, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("crearProducto", e, correlationId);
+    return _safeError("crearProducto", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -750,15 +776,16 @@ AuthService.checkPermission("revisar_inventario");
  * API Pública: Obtener producto por ID
  */
 function getProducto(id) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
     const idValidado = INPUT_VALIDATOR.validateId(id);
     const producto = DAO_PRODUCTOS.obtener(idValidado);
     if (!producto) throw new Error("Producto no encontrado: " + idValidado);
-    return { success: true, producto: producto, correlationId: correlationId };
+    return { success: true, producto: producto, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getProducto", e, correlationId);
+    return _safeError("getProducto", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -766,6 +793,7 @@ function getProducto(id) {
  * API Pública: Actualizar producto
  */
 function actualizarProducto(id, cambios) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("actualizarProducto");
@@ -787,9 +815,9 @@ AuthService.checkPermission("revisar_inventario");
     if (Object.keys(cambiosLimpios).length === 0) throw new Error("No hay campos válidos para actualizar");
     const result = DAO_PRODUCTOS.actualizar(idValidado, cambiosLimpios);
     const producto = DAO_PRODUCTOS.obtener(idValidado);
-    return { success: true, id: idValidado, producto: producto, correlationId: correlationId };
+    return { success: true, id: idValidado, producto: producto, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("actualizarProducto", e, correlationId);
+    return _safeError("actualizarProducto", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -797,10 +825,12 @@ AuthService.checkPermission("revisar_inventario");
  * API Pública: Obtener historial de ventas del día
  */
 function getVentasDelDia() {
-  AuthService.checkPermission("ver_dashboard");
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
+    AuthService.checkPermission("ver_dashboard");
     const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
-    if (!sheetAudit) return { success: true, ventas: [], total: 0 };
+    if (!sheetAudit) return { success: true, ventas: [], total: 0, correlationId };
 
     const data = sheetAudit.getDataRange().getValues();
     const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
@@ -831,10 +861,9 @@ function getVentasDelDia() {
 
     const total = ventas.reduce((sum, v) => sum + (v.total || 0), 0);
     
-    return { success: true, ventas, total };
+    return { success: true, ventas, total, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    Logger.log("ERROR getVentasDelDia: " + e.toString());
-    return { success: false, ventas: [], total: 0, error: e.message };
+    return _safeError("getVentasDelDia", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -842,12 +871,15 @@ function getVentasDelDia() {
  * API Pública: Registrar venta de productos (reduce stock, registra kardex)
  */
 function registrarVentaAtomic(clienteId, items, total, correlationId) {
+  const startTime = Date.now();
+  const corrId = correlationId || generateCorrelationId();
   try {
+    RATE_LIMITER.check("registrarVentaAtomic");
     AuthService.checkPermission("registrar_venta");
-    const result = DOMAIN.registrarVentaAtomic(clienteId, items, total, correlationId);
-    return result;
+    const result = DOMAIN.registrarVentaAtomic(clienteId, items, total, corrId);
+    return { ...result, correlationId: corrId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("registrarVentaAtomic", e, correlationId);
+    return _safeError("registrarVentaAtomic", e, corrId, Date.now() - startTime);
   }
 }
 

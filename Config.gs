@@ -84,23 +84,8 @@ const CONFIG = {
 
 // ─ GLOBALES DE ESQUEMA ─
 
-// === INICIO FIX m-03 ===
 let _schemaVersion = 0;
 let _schemaValidated = false;
-
-// Load persisted schema version at startup (avoids re-computation every execution)
-(function _initSchemaVersion() {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const stored = props.getProperty('SCHEMA_VERSION');
-    if (stored) {
-      _schemaVersion = Number(stored);
-      Logger.log("[FIX-m-03] Loaded persisted schema version: " + _schemaVersion);
-    }
-  } catch (e) {
-    Logger.log("[FIX-m-03] Error loading schema version at startup: " + e.toString());
-  }
-})();
 
 function _loadSchemaVersion() {
   try {
@@ -111,7 +96,7 @@ function _loadSchemaVersion() {
       return _schemaVersion;
     }
   } catch (e) {
-    Logger.log("[FIX-m-03] Error loading schema version: " + e.toString());
+    Logger.log("Error loading schema version: " + e.toString());
   }
   return 0;
 }
@@ -120,10 +105,11 @@ function _saveSchemaVersion(version) {
   try {
     PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', String(version));
   } catch (e) {
-    Logger.log("[FIX-m-03] Error saving schema version: " + e.toString());
+    Logger.log("Error saving schema version: " + e.toString());
   }
 }
-// === FIN FIX m-03 ===
+
+_schemaVersion = _loadSchemaVersion();
 
 // ─ UTILIDADES BÁSICAS ─
 
@@ -173,9 +159,8 @@ function getSheet(name) {
     throw new Error("Hoja no encontrada: " + name);
   }
 
-  // Limitar caché a 10 hojas, eliminar la más antigua (orden de inserción)
   const keys = Object.keys(_SHEETS_CACHE);
-  if (keys.length >= 10) {
+  if (keys.length >= 20) {
     delete _SHEETS_CACHE[keys[0]];
   }
 
@@ -252,19 +237,18 @@ CONFIG.reloadSchema = function() {
 };
 
 CONFIG.isSchemaStale = function(maxAgeMs) {
-  // === INICIO FIX m-03 ===
-  // Load persisted version if not loaded
-  if (!_schemaVersion) {
-    _loadSchemaVersion();
-  }
-  // === FIN FIX m-03 ===
+  if (!_schemaVersion) _loadSchemaVersion();
   if (maxAgeMs === undefined) maxAgeMs = 3600000;
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
+  const allSheets = getActiveSpreadsheet().getSheets();
+  const sheetMap = {};
+  for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
+
   for (const name of criticalSheets) {
-    const sheet = getActiveSpreadsheet().getSheetByName(name);
+    const sheet = sheetMap[name];
     if (!sheet) continue;
     const meta = _SHEETS_CACHE[name + '_meta'];
     if (!meta) return true;
@@ -360,11 +344,16 @@ function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(
 
 /**
  * Sanitiza un valor para escritura segura en hoja.
+ * Protege contra inyección de fórmulas (=, +, -, @, tab) en Google Sheets.
  * Devuelve el valor apropiado según su tipo.
  */
 function _sanitizeCell(v) {
   if (v === null || v === undefined) return "";
-  if (typeof v === "string") return v;
+  if (typeof v === "string") {
+    // Protect against formula injection in Google Sheets
+    const needsEscape = /^[=+\-@]/.test(v);
+    return needsEscape ? "'" + v : v;
+  }
   if (typeof v === "number" || typeof v === "boolean") return v;
   return String(v);
 }
@@ -396,9 +385,13 @@ function _captureError(context, error) {
   LogService.logError(stack, { functionName: context, correlationId: corrId, error: error });
 }
 
+let _CACHED_TIMEZONE = null;
+
 function _getTimeZone() {
+  if (_CACHED_TIMEZONE) return _CACHED_TIMEZONE;
   try {
-    return SESSION_SERVICE.getScriptTimeZone() || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    _CACHED_TIMEZONE = SESSION_SERVICE.getScriptTimeZone() || SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    return _CACHED_TIMEZONE;
   } catch (e) {
     return 'UTC';
   }
@@ -454,16 +447,31 @@ function _formatMoneda(centavos) {
 }
 
 function crearBackup() {
-   AuthService.checkPermission("ejecutar_mantenimiento");
-   const ss = getActiveSpreadsheet();
-   const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
-   const backupId = ss.getId();
-   const backupFolder = DriveApp.getRootFolder();
-   const backupFile = DriveApp.getFileById(backupId).makeCopy(backupName, backupFolder);
-   const backupUrl = backupFile.getUrl();
-   Logger.log('Backup creado: ' + backupName + ' -> ' + backupUrl);
-   return { success: true, name: backupName, url: backupUrl };
- }
+  AuthService.checkPermission("ejecutar_mantenimiento");
+  const ss = getActiveSpreadsheet();
+  const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
+  const backupId = ss.getId();
+  const backupFolder = DriveApp.getRootFolder();
+  const backupFile = DriveApp.getFileById(backupId).makeCopy(backupName, backupFolder);
+  const backupUrl = backupFile.getUrl();
+  Logger.log('Backup creado: ' + backupName + ' -> ' + backupUrl);
+
+  const prefix = 'BACKUP_' + ss.getName() + '_';
+  const allFiles = backupFolder.getFiles();
+  const backups = [];
+  while (allFiles.hasNext()) {
+    const f = allFiles.next();
+    if (f.getName().indexOf(prefix) === 0) backups.push(f);
+  }
+  backups.sort(function(a, b) { return a.getDateCreated() - b.getDateCreated(); });
+  while (backups.length > BACKUP_CONFIG.MAX_BACKUPS) {
+    const old = backups.shift();
+    old.setTrashed(true);
+    Logger.log('Backup rotado: ' + old.getName());
+  }
+
+  return { success: true, name: backupName, url: backupUrl };
+}
 
  // ─ TRANSACTION MANAGER ─
 
@@ -492,7 +500,6 @@ function crearBackup() {
 
    _takeSnapshot() {
      const carteraSnapshot = [];
-     const terceroSnapshot = [];
      try {
        const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
        if (carteraSheet && carteraSheet.getLastRow() > 1) {
@@ -510,7 +517,7 @@ function crearBackup() {
      } catch (e) {
        Logger.log("TransactionManager: error snapshot cartera: " + e.toString());
      }
-     return { cartera: carteraSnapshot, tercero: terceroSnapshot };
+     return { cartera: carteraSnapshot };
    }
  };
 
@@ -582,12 +589,12 @@ function setupSistema() {
         const expectedNames = Object.values(expected);
         if (lastCol > 0) {
           const headers = hoja.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) { return String(h || "").trim(); });
+          const missing = [];
           for (const key in expected) {
-            if (headers.indexOf(expected[key]) === -1) {
-              hoja.getRange(1, lastCol + 1).setValue(expected[key]);
-              lastCol++;
-              headers.push(expected[key]);
-            }
+            if (headers.indexOf(expected[key]) === -1) missing.push(expected[key]);
+          }
+          if (missing.length > 0) {
+            hoja.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
           }
         } else {
           if (expectedNames.length > 0) {

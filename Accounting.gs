@@ -346,6 +346,44 @@ registrarMovimiento(fecha, tipo, concepto, monto, ref, usuario) {
   },
 
   /**
+   * Calculates the current cash balance from all movements.
+   * @returns {number} Current cash balance (entradas - salidas).
+   */
+  obtenerSaldoActual() {
+    try {
+      const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+      if (!sheet) return 0;
+      
+      const COL = CONFIG.COLUMNS.FLUJO_CAJA;
+      const lastRow = Math.max(sheet.getLastRow(), 1);
+      const MAX_ROWS = 10000;
+      const rowsToRead = Math.min(lastRow, MAX_ROWS);
+      const data = rowsToRead > 1 ? sheet.getRange(2, 1, rowsToRead - 1, Object.keys(COL).length).getValues() : [];
+      
+      let entradas = 0;
+      let salidas = 0;
+      
+      for (let i = 0; i < data.length; i++) {
+        const m = _parseMoneda(data[i][COL.monto], 0);
+        const t = String(data[i][COL.tipo] || "").trim();
+        if (t === FLUJO_CAJA_TIPOS.ENTRADA_ABONO ||
+            t === FLUJO_CAJA_TIPOS.ENTRADA_VENTA) {
+          entradas += m;
+        } else if (t === FLUJO_CAJA_TIPOS.SALIDA_PAGO_PROV ||
+                   t === FLUJO_CAJA_TIPOS.SALIDA_COMPRA ||
+                   t === FLUJO_CAJA_TIPOS.SALIDA_VENTA) {
+          salidas += m;
+        }
+      }
+      
+      return entradas - salidas;
+    } catch (e) {
+      Logger.log("ERROR FLUJO_CAJA.obtenerSaldoActual: " + e.toString());
+      return 0;
+    }
+  },
+
+  /**
    * Exports cash flow entries to CSV format within a date range.
    * @param {Date|string} fechaInicio - Start date (inclusive).
    * @param {Date|string} fechaFin - End date (inclusive).
