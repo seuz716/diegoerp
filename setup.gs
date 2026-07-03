@@ -3,6 +3,9 @@
  * Ejecutar: setupService.runSetup() o desde web app: ?ssid=<ID>
  */
 
+const SETUP_SCHEMA_VERSION = '2.5';
+const LEGACY_MIGRATED_FLAG = 'LEGACY_MIGRATED';
+
 const SETUP_SERVICE = {
   SHEETS_REQUIRED: [
     { name: 'Terceros', columns: ['ID','Nombre','Telefono','Tipo','Limite_Credito','Activo'] },
@@ -28,7 +31,15 @@ const SETUP_SERVICE = {
 
     try {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
+      
+      if (!ss) {
+        results.errors.push('No active spreadsheet found');
+        results.success = false;
+        return results;
+      }
+      
       const existingSheets = ss.getSheets().map(s => s.getName());
+      const sheetsCreated = [];
 
       for (const sheetConfig of this.SHEETS_REQUIRED) {
         if (!existingSheets.includes(sheetConfig.name)) {
@@ -36,24 +47,45 @@ const SETUP_SERVICE = {
             const sheet = ss.insertSheet(sheetConfig.name);
             this._createHeaders(sheet, sheetConfig.columns);
             results.sheetsCreated.push(sheetConfig.name);
+            sheetsCreated.push(sheetConfig.name);
           } catch (e) {
             results.errors.push(sheetConfig.name + ': ' + e.message);
           }
         } else {
-          // Verificar headers existentes
           const sheet = ss.getSheetByName(sheetConfig.name);
-          const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-          if (existingHeaders.length < sheetConfig.columns.length) {
-            // Actualizar headers si faltan columnas
-            this._createHeaders(sheet, sheetConfig.columns);
-            results.sheetsVerified.push(sheetConfig.name + ' (actualizado)');
+          if (sheet) {
+            const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+            const needsUpdate = existingHeaders.length < sheetConfig.columns.length;
+            
+            if (needsUpdate) {
+              const hasData = sheet.getLastRow() > 1;
+              if (hasData) {
+                results.errors.push(sheetConfig.name + ': Already has data, skipping header update');
+                continue;
+              }
+              this._createHeaders(sheet, sheetConfig.columns);
+              results.sheetsVerified.push(sheetConfig.name + ' (actualizado)');
+            } else {
+              results.sheetsVerified.push(sheetConfig.name);
+            }
           } else {
-            results.sheetsVerified.push(sheetConfig.name);
+            results.errors.push(sheetConfig.name + ': Sheet not found after existence check');
           }
         }
       }
 
-      // Configurar SPREADSHEET_ID automáticamente
+      if (results.errors.length > 0 && sheetsCreated.length > 0) {
+        for (const sheetName of sheetsCreated) {
+          try {
+            const sheet = ss.getSheetByName(sheetName);
+            if (sheet) ss.deleteSheet(sheet);
+          } catch (e) {
+            results.errors.push('Rollback failed for ' + sheetName + ': ' + e.message);
+          }
+        }
+        results.sheetsCreated = [];
+      }
+
       const props = PropertiesService.getScriptProperties();
       if (!props.getProperty('SPREADSHEET_ID')) {
         props.setProperty('SPREADSHEET_ID', ss.getId());
@@ -70,16 +102,25 @@ const SETUP_SERVICE = {
   },
 
   _createHeaders: function(sheet, columns) {
-    const range = sheet.getRange(1, 1, 1, columns.length);
-    range.setValues([columns]);
-    range.setFontWeight('bold');
+    if (!sheet || !columns) return;
+    
+    const headers = sheet.getRange(1, 1, 1, columns.length);
+    
+    if (sheet.getLastRow() > 1) {
+      const existingHeaders = headers.getValues()[0];
+      const same = existingHeaders.every((h, i) => String(h).trim() === String(columns[i]).trim());
+      if (same) return;
+    }
+    
+    headers.setValues([columns]);
+    headers.setFontWeight('bold');
   },
 
   verifyConfig: function() {
     const config = {
       spreadsheetId: PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'),
       timezone: Session.getScriptTimeZone(),
-      version: '2.5',
+      version: SETUP_SCHEMA_VERSION,
       checks: []
     };
 
@@ -93,19 +134,31 @@ const SETUP_SERVICE = {
       status: !!config.timezone
     });
 
-    // Verificar hojas críticas
-    for (const sheetConfig of this.SHEETS_REQUIRED) {
-      try {
-        const sheet = SpreadsheetApp.openById(config.spreadsheetId).getSheetByName(sheetConfig.name);
-        config.checks.push({
-          name: 'HOJA_' + sheetConfig.name,
-          status: !!sheet
-        });
-      } catch (e) {
-        config.checks.push({
-          name: 'HOJA_' + sheetConfig.name,
-          status: false
-        });
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      config.checks.push({ name: 'ACTIVE_SPREADSHEET', status: false, error: 'No active spreadsheet' });
+    } else {
+      config.checks.push({ name: 'ACTIVE_SPREADSHEET', status: true, id: ss.getId() });
+      
+      for (const sheetConfig of this.SHEETS_REQUIRED) {
+        const sheet = ss.getSheetByName(sheetConfig.name);
+        if (sheet) {
+          const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+          const expectedLen = sheetConfig.columns.length;
+          const actualLen = headers.length;
+          const headersMatch = actualLen >= expectedLen && sheetConfig.columns.every((col, i) => String(headers[i] || '').trim() === col);
+          config.checks.push({
+            name: 'HOJA_' + sheetConfig.name,
+            status: headersMatch,
+            expectedColumns: expectedLen,
+            actualColumns: actualLen
+          });
+        } else {
+          config.checks.push({
+            name: 'HOJA_' + sheetConfig.name,
+            status: false
+          });
+        }
       }
     }
 
@@ -114,42 +167,83 @@ const SETUP_SERVICE = {
   },
 
   migrateLegacy: function() {
-    const legacy = PropertiesService.getScriptProperties().getProperty('LEGACY_MIGRATED');
+    const legacy = PropertiesService.getScriptProperties().getProperty(LEGACY_MIGRATED_FLAG);
     if (legacy) return { status: 'already_migrated' };
 
-    const operations = [];
+    const results = {
+      status: 'migrated',
+      operations: [],
+      errors: []
+    };
     
-    operations.push({
-      name: 'migrateKardexFormat',
-      execute: function() {
-        const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
-        if (!sheet || sheet.getLastRow() < 2) return false;
-        
+    try {
+      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      if (!sheet || sheet.getLastRow() < 2) {
+        results.operations.push({ name: 'migrateKardexFormat', status: 'skipped', reason: 'Empty or missing sheet' });
+      } else {
         const data = sheet.getDataRange().getValues();
+        let modifiedRows = 0;
+        
+        const existingIds = new Set();
         for (let i = 1; i < data.length; i++) {
-          if (!data[i][0]) {
-            data[i][0] = 'KDX-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') + '-' + ('0000' + i).slice(-5);
+          if (data[i][0]) existingIds.add(String(data[i][0]).trim());
+        }
+        
+        for (let i = 1; i < data.length; i++) {
+          if (!data[i][0] || data[i][0].toString().trim() === '') {
+            let newId;
+            let attempts = 0;
+            do {
+              newId = 'KDX-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') + '-' + ('0000' + (i + modifiedRows)).slice(-5);
+              attempts++;
+            } while (existingIds.has(newId) && attempts < 100);
+            
+            if (attempts < 100) {
+              data[i][0] = newId;
+              existingIds.add(newId);
+              modifiedRows++;
+            } else {
+              results.errors.push('Could not generate unique ID for row ' + (i + 1));
+            }
           }
         }
-        sheet.getRange(2, 1, data.length - 1, data[0].length).setValues(data.slice(1));
-        return true;
+        
+        if (modifiedRows > 0) {
+          sheet.getRange(2, 1, data.length - 1, data[0].length).setValues(data.slice(1));
+        }
+        results.operations.push({ name: 'migrateKardexFormat', status: 'success', modifiedRows: modifiedRows });
       }
-    });
-
-    for (const op of operations) {
-      try { op.execute(); } catch (e) {}
+    } catch (e) {
+      results.status = 'failed';
+      results.errors.push(e.message);
+      LogService && LogService.logError && LogService.logError('migrateLegacy', e);
     }
 
-    PropertiesService.getScriptProperties().setProperty('LEGACY_MIGRATED', 'true');
-    return { status: 'migrated', operations: operations.length };
+    if (results.status !== 'failed') {
+      PropertiesService.getScriptProperties().setProperty(LEGACY_MIGRATED_FLAG, 'true');
+    }
+    return results;
   },
 
   setSpreadsheetIdFromSsid: function(ssid) {
-    if (ssid) {
+    if (!ssid || typeof ssid !== 'string') {
+      return { success: false, error: 'SSID must be a non-empty string' };
+    }
+    
+    if (ssid.length < 10 || ssid.length > 100) {
+      return { success: false, error: 'SSID has invalid length' };
+    }
+    
+    try {
+      const sheet = SpreadsheetApp.openById(ssid);
+      if (!sheet) {
+        return { success: false, error: 'Spreadsheet not found or not accessible' };
+      }
       PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', ssid);
       return { success: true, spreadsheetId: ssid };
+    } catch (e) {
+      return { success: false, error: 'Failed to access spreadsheet: ' + e.message };
     }
-    return { success: false, error: 'SSID required' };
   }
 };
 
