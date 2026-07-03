@@ -129,9 +129,13 @@ function cargarDashboard() {
   var alertsBody = document.getElementById('alerts-body');
   _showSkeleton(alertsBody, 'block');
   App._healthState.start();
-  App._healthState.subscribe(function(health) {
+  if (App._healthState._refreshCallback) {
+    App._healthState.unsubscribe(App._healthState._refreshCallback);
+  }
+  App._healthState._refreshCallback = function(health) {
     App._refreshBulkButtons();
-  });
+  };
+  App._healthState.subscribe(App._healthState._refreshCallback);
   var promise = App.data.dashboard ? Promise.resolve(App.data.dashboard) : App.api.getDashboard();
   return promise.then(function (data) {
     if (!App.data.dashboard) App.data.dashboard = data;
@@ -291,17 +295,22 @@ function renderizarAnalisis(analisis) {
     analisis.recomendaciones_accionables.forEach(function (r) {
       var item = document.createElement('div');
       item.className = 'ir-rec-item';
-            if (r.explicacion) {
-        var expDiv = document.createElement('small');
-        expDiv.className = 'ir-explanation';
-        expDiv.innerHTML = '<em>Por qué:</em> ' + r.explicacion;
-        item.appendChild(expDiv);
-      }
-      item.innerHTML = typeof r === 'string' ? r : '<strong>' + (r.titulo || r.mensaje || r.accion || r.descripcion || '') + '</strong>';
+      var tituloEl = document.createElement('strong');
+      tituloEl.textContent = typeof r === 'string' ? r : (r.titulo || r.mensaje || r.accion || r.descripcion || '');
+      item.appendChild(tituloEl);
       if (r.descripcion && !r.explicacion) {
         var descP = document.createElement('p');
         descP.textContent = r.descripcion;
         item.appendChild(descP);
+      }
+      if (r.explicacion) {
+        var expDiv = document.createElement('small');
+        expDiv.className = 'ir-explanation';
+        var emEl = document.createElement('em');
+        emEl.textContent = 'Por qué: ';
+        expDiv.appendChild(emEl);
+        expDiv.appendChild(document.createTextNode(r.explicacion));
+        item.appendChild(expDiv);
       }
       secRec.appendChild(item);
     });
@@ -1126,7 +1135,12 @@ function registrarVenta() {
     for (var iT = 0; iT < itemsT.length; iT++) {
       if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
     }
-    if (cliente && cliente.limite_credito > 0) {
+    if (cliente) {
+      if (cliente.limite_credito === 0 || cliente.limite_credito === null) {
+        errorEl.textContent = 'Este cliente no tiene lÃ­mite de crÃ©dito configurado. Configure un lÃ­mite o seleccione venta de contado.';
+        errorEl.classList.add('show');
+        return;
+      }
       var saldoActual = 0;
       var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
       for (var iCa = 0; iCa < carteraItems.length; iCa++) {
@@ -1137,7 +1151,7 @@ function registrarVenta() {
       }
       var creditoDisponible = cliente.limite_credito - saldoActual;
       if (totalVentaCentavos > creditoDisponible) {
-        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crÃ©dito disponible del cliente (' + App.formatearMoneda(creditoDisponible) + '). Saldo actual: ' + App.formatearMoneda(saldoActual) + ', LÃ­mite: ' + App.formatearMoneda(cliente.limite_credito) + '.';
+        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crÃ©dito disponible. Disponible: ' + App.formatearMoneda(creditoDisponible) + '.';
         errorEl.classList.add('show');
         return;
       }
@@ -1325,9 +1339,21 @@ function guardarProducto() {
   var nombre = document.getElementById('producto-nombre').value.trim();
   var categoria = document.getElementById('producto-categoria').value.trim();
   var stock = parseInt(document.getElementById('producto-stock').value, 10) || 0;
-  var precioCompra = parseInt(document.getElementById('producto-precio-compra').value, 10) || 0;
-  var precioVenta = parseInt(document.getElementById('producto-precio-venta').value, 10) || 0;
+  var precioCompraRaw = document.getElementById('producto-precio-compra').value;
+  var precioVentaRaw = document.getElementById('producto-precio-venta').value;
+  var precioCompra = parseInt(precioCompraRaw, 10) || 0;
+  var precioVenta = parseInt(precioVentaRaw, 10) || 0;
   if (!nombre) { errorEl.textContent = 'El nombre es obligatorio.'; errorEl.style.display = 'block'; return; }
+  if (precioCompraRaw && precioCompraRaw.indexOf('.') !== -1) {
+    errorEl.textContent = 'El precio de compra no debe contener decimales. Use valores enteros.';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (precioVentaRaw && precioVentaRaw.indexOf('.') !== -1) {
+    errorEl.textContent = 'El precio de venta no debe contener decimales. Use valores enteros.';
+    errorEl.style.display = 'block';
+    return;
+  }
   errorEl.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Guardando...';

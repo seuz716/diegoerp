@@ -6,10 +6,7 @@
 function doGet(e) {
   try {
     var params = e && e.parameter ? e.parameter : {};
-    
-    // ====================
-    // 1. SANITIZAR ssid
-    // ====================
+
     if (params.ssid) {
       try {
         var ssid = INPUT_VALIDATOR.validateId(params.ssid);
@@ -23,19 +20,12 @@ function doGet(e) {
         Logger.log("WARN: ssid inválido: " + err.message);
       }
     }
-    
-    // ====================
-    // 2. HEALTH CHECK (solo '1' es válido)
-    // ====================
+
     if (params.health === '1') {
       return handleHealthCheck();
     }
-    
-    // ====================
-    // 3. OBTENER SPREADSHEET_ID
-    // ====================
+
     const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
-    
     if (!ssId) {
       try {
         const activeSs = SpreadsheetApp.getActiveSpreadsheet();
@@ -47,11 +37,25 @@ function doGet(e) {
         Logger.log("WARN: No se pudo obtener spreadsheet activo: " + err.message);
       }
     }
-    
+
     validateAndMapSchemas();
+
+    const tpl = HtmlService.createTemplateFromFile('index_v3_SaaS');
+    tpl.pageTitle = 'MicroERP · Cartera Pro';
+    tpl.ogTitle = 'MicroERP · Cartera Pro';
+    tpl.ogDescription = 'Sistema profesional de gestión de cartera con libro diario contable exportable, contabilidad, inventario y alertas automáticas de vencimientos.';
+    tpl.ogImage = 'https://placehold.co/1200x630/1A1814/D4A82A/png?text=MicroERP+Cartera';
+    tpl.ogUrl = ScriptApp.getService().getUrl();
+
+    return tpl.evaluate()
+      .setTitle('MicroERP · Cartera Pro')
+      .setFaviconUrl('https://placehold.co/64x64/1A1814/D4A82A/png?text=%CE%BC')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY)
+      .setSandboxMode(HtmlService.SandboxMode.STRICT);
+
   } catch (err) {
     Logger.log("ERROR doGet: " + err.message);
-    const html = HtmlService.createHtmlOutput(
+    return HtmlService.createHtmlOutput(
       '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">' +
       '<title>Error - MicroERP</title><meta name="robots" content="noindex, nofollow">' +
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -61,20 +65,7 @@ function doGet(e) {
       '<code>https://script.google.com/macros/s/AKfycbzM7IMFbsWlzD3tmDgQtD6FytBpxEQupohTMylvH7I/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
       '</body></html>'
     );
-    return html;
   }
-  const tpl = HtmlService.createTemplateFromFile('index_v3_SaaS');
-  const defaultDesc = 'Sistema profesional de gestión de cartera con libro diario contable exportable, contabilidad, inventario y alertas automáticas de vencimientos.';
-  tpl.pageTitle = 'MicroERP · Cartera Pro';
-  tpl.ogTitle = 'MicroERP · Cartera Pro';
-  tpl.ogDescription = defaultDesc;
-  tpl.ogImage = 'https://placehold.co/1200x630/1A1814/D4A82A/png?text=MicroERP+Cartera';
-  tpl.ogUrl = ScriptApp.getService().getUrl();
-  return tpl.evaluate()
-    .setTitle('MicroERP · Cartera Pro')
-    .setFaviconUrl('data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 64 64\'><rect width=\'64\' height=\'64\' rx=\'12\' fill=\'%233A7B6D\'/><text x=\'32\' y=\'44\' text-anchor=\'middle\' font-size=\'36\' fill=\'white\' font-family=\'system-ui\'>μ</text></svg>')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY)
-    .setSandboxMode(HtmlService.SandboxMode.STRICT);
 }
 
 function handleHealthCheck() {

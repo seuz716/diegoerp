@@ -54,6 +54,8 @@ const DAO_COMPRAS = {
       referencia: String(row[C.referencia] || "").trim(),
       origen: String(row[C.origen] || "").trim(),
       usuario: String(row[C.usuario] || "").trim(),
+      costo_unitario: _parseMoneda(row[C.costo_unitario], 0),
+      precio_unitario: _parseMoneda(row[C.precio_unitario], 0),
     };
   },
 
@@ -70,6 +72,8 @@ const DAO_COMPRAS = {
    * @param {string} [movimiento.referencia] - Reference document.
    * @param {string} [movimiento.origen] - Origin module.
    * @param {string} [movimiento.usuario] - User who performed the movement.
+   * @param {number} [movimiento.costo_unitario] - Unit cost (purchase price for ENTRADA, cost basis for SALIDA).
+   * @param {number} [movimiento.precio_unitario] - Unit sale price (for SALIDA movements).
    */
   crearMovimientoKardex(movimiento) {
     const lock = LOCK_MANAGER.acquireGlobalLock(30000);
@@ -87,6 +91,8 @@ const DAO_COMPRAS = {
       row[C.referencia] = movimiento.referencia || "";
       row[C.origen] = movimiento.origen || "";
       row[C.usuario] = movimiento.usuario || "";
+      row[C.costo_unitario] = _parseMoneda(movimiento.costo_unitario, 0);
+      row[C.precio_unitario] = _parseMoneda(movimiento.precio_unitario, 0);
       for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
       sheet.appendRow(row);
     } finally {
@@ -117,6 +123,8 @@ const DAO_COMPRAS = {
         row[C.referencia] = mov.referencia || "";
         row[C.origen] = mov.origen || "";
         row[C.usuario] = mov.usuario || "";
+        row[C.costo_unitario] = _parseMoneda(mov.costo_unitario, 0);
+        row[C.precio_unitario] = _parseMoneda(mov.precio_unitario, 0);
         for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
         rows.push(row);
       }

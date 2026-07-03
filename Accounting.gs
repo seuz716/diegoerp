@@ -8,7 +8,16 @@ const LIBRO_DIARIO_TIPOS = {
   VENTA_CREDITO: "VENTA_CREDITO",
   VENTA_CONTADO: "VENTA_CONTADO",
   PAGO_PROVEEDOR: "PAGO_PROVEEDOR",
+  COSTO_VENTAS: "COSTO_VENTAS",
 };
+
+function _csvEscape(valor) {
+  var s = String(valor ?? "");
+  var necesitaComillas = /[",\n]/.test(s);
+  var protegido = /^[=+\-@]/.test(s) ? "'" + s : s;
+  var escapado = protegido.replace(/"/g, '""');
+  return necesitaComillas || /^[=+\-@]/.test(s) ? '"' + escapado + '"' : escapado;
+}
 
 function _generarCSV(sheetName, colMap, headerRow, fieldGetter, fechaInicio, fechaFin) {
   try {
@@ -106,9 +115,26 @@ const LIBRO_DIARIO = {
     return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.PAGO_PROVEEDOR, id, proveedor, monto, usuario, "Pago a proveedor");
   },
 
+  /**
+   * Registers cost of goods sold (COGS) in the libro diario.
+   * @param {Date|string} fecha - Transaction date.
+   * @param {string} id - Asiento/entry ID (usually the sale ID).
+   * @param {string} proveedorOrCliente - Related third party ID.
+   * @param {number} monto - COGS amount in centavos.
+   * @param {string} usuario - User who registered the entry.
+   * @returns {{success: boolean, id?: string, error?: string}}
+   */
+  registrarCostoVentas(fecha, id, proveedorOrCliente, monto, usuario) {
+    return this._registrarMovimiento(fecha, LIBRO_DIARIO_TIPOS.COSTO_VENTAS, id, proveedorOrCliente, monto, usuario, "Costo de ventas");
+  },
+
   _registrarMovimiento(fecha, tipo, id, tercero, monto, usuario, descripcion) {
     // === INICIO FIX RACE-CONDITION ===
     const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+    if (!lock) {
+      Logger.log("ERROR LIBRO_DIARIO: No se pudo adquirir lock global");
+      return { success: false, error: "No se pudo adquirir lock para escritura en libro diario" };
+    }
     try {
     // === FIN FIX RACE-CONDITION ===
       const sheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
@@ -159,14 +185,14 @@ const LIBRO_DIARIO = {
     return _generarCSV(CONFIG.SHEETS.LIBRO_DIARIO, COL,
       "ID,Fecha,Tipo,ID_Referencia,Tercero,Monto,Usuario,Descripcion",
       (r, c, tz) => [
-        r[c.id] || "",
+        _csvEscape(r[c.id]),
         Utilities.formatDate(_safeDate(r[c.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
-        r[c.tipo] || "",
-        r[c.id_referencia] || "",
-        r[c.tercero] || "",
-        r[c.monto] || 0,
-        r[c.usuario] || "",
-        r[c.descripcion] || ""
+        _csvEscape(r[c.tipo]),
+        _csvEscape(r[c.id_referencia]),
+        _csvEscape(r[c.tercero]),
+        _csvEscape(r[c.monto]),
+        _csvEscape(r[c.usuario]),
+        _csvEscape(r[c.descripcion])
       ].join(","),
       fechaInicio, fechaFin);
   }
@@ -189,7 +215,9 @@ const FLUJO_CAJA = {
     
     const KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
     const kardexSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
-    const kardexData = kardexSheet ? kardexSheet.getDataRange().getValues() : [];
+    const kardexRaw = kardexSheet ? kardexSheet.getDataRange().getValues() : [];
+    const MAX_ROWS = 10000;
+    const kardexData = kardexRaw.length > MAX_ROWS + 1 ? kardexRaw.slice(0, MAX_ROWS + 1) : kardexRaw;
     
     let cogsKardex = 0;
     for (let i = 1; i < kardexData.length; i++) {
@@ -204,7 +232,8 @@ const FLUJO_CAJA = {
     
     const LD_COL = CONFIG.COLUMNS.LIBRO_DIARIO;
     const ldSheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
-    const ldData = ldSheet ? ldSheet.getDataRange().getValues() : [];
+    const ldRaw = ldSheet ? ldSheet.getDataRange().getValues() : [];
+    const ldData = ldRaw.length > MAX_ROWS + 1 ? ldRaw.slice(0, MAX_ROWS + 1) : ldRaw;
     
     let cogsLibroDiario = 0;
     for (let i = 1; i < ldData.length; i++) {
@@ -234,6 +263,11 @@ const FLUJO_CAJA = {
    * @returns {{success: boolean, id?: string, error?: string}}
    */
   registrarMovimiento(fecha, tipo, concepto, monto, ref, usuario) {
+    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+    if (!lock) {
+      Logger.log("ERROR FLUJO_CAJA: No se pudo adquirir lock global");
+      return { success: false, error: "No se pudo adquirir lock para escritura en flujo de caja" };
+    }
     try {
       const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
       const COL = CONFIG.COLUMNS.FLUJO_CAJA;
@@ -265,6 +299,8 @@ const FLUJO_CAJA = {
     } catch (e) {
       Logger.log("ERROR FLUJO_CAJA.registrarMovimiento: " + e.toString());
       return { success: false, error: e.message };
+    } finally {
+      if (lock) lock.releaseLock();
     }
   },
 
@@ -320,13 +356,13 @@ const FLUJO_CAJA = {
     return _generarCSV(CONFIG.SHEETS.FLUJO_CAJA, COL,
       "ID,Fecha,Tipo,Concepto,Monto,Referencia,Usuario",
       (r, c, tz) => [
-        r[c.id] || "",
+        _csvEscape(r[c.id]),
         Utilities.formatDate(_safeDate(r[c.fecha]) || new Date(), tz, 'yyyy-MM-dd'),
-        r[c.tipo] || "",
-        r[c.concepto] || "",
-        r[c.monto] || 0,
-        r[c.referencia] || "",
-        r[c.usuario] || ""
+        _csvEscape(r[c.tipo]),
+        _csvEscape(r[c.concepto]),
+        _csvEscape(r[c.monto]),
+        _csvEscape(r[c.referencia]),
+        _csvEscape(r[c.usuario])
       ].join(","),
       fechaInicio, fechaFin);
   }

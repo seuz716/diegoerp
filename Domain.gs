@@ -535,8 +535,18 @@ if (resultado.isUpdate) {
 
         // === VALIDACIÓN DE CUPO CREDITICIO (TAREA 2.1) ===
         // Para CxC: verificar que el cliente no exceda su límite de crédito
+        // Si limite_credito es 0 o null, el cliente no tiene crédito autorizado
         // El límite es el crédito disponible: limite_credito - saldo_actual >= 0
-        if (tipoLimpio === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
+        if (tipoLimpio === CARTERA_CONFIG.TIPOS.CXC) {
+          if (!tercero.limite_credito || tercero.limite_credito === 0) {
+            const err = new Error("Cliente sin límite de crédito");
+            err.code = "CREDIT_LIMIT_UNSET";
+            LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio,
+              { saldo_actual: saldoActual, limite: tercero.limite_credito },
+              { error: "CREDIT_LIMIT_UNSET", monto_solicitado: valor },
+              "ERROR", { correlationId: correlationId || ('abono_' + Date.now()) });
+            return _error("Cliente sin límite de crédito configurado. Configure un límite o cancele la venta a crédito.");
+          }
           const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
           if (saldoActual > tercero.limite_credito) {
             const err = new Error("Cupo crediticio insuficiente");
@@ -723,7 +733,10 @@ if (resultado.isUpdate) {
         CACHE.recoverFromStale();
       }
 
-      if (tipo === CARTERA_CONFIG.TIPOS.CXC && tercero.limite_credito > 0) {
+      if (tipo === CARTERA_CONFIG.TIPOS.CXC) {
+        if (!tercero.limite_credito || tercero.limite_credito === 0) {
+          throw new Error("Cliente sin límite de crédito configurado. Configure un límite o use venta de contado.");
+        }
         const saldoActual = CACHE.getSaldoTercero(idTerceroLimpio);
         if ((saldoActual + totalLimpio) > tercero.limite_credito) {
           throw new Error(`Límite de crédito superado. Disponible: $${_formatMoneda(tercero.limite_credito - saldoActual)}`);
@@ -899,7 +912,8 @@ DAO.createCartera(record);
             stockUpdates[prodId] = { 
               stockAnterior, stockNuevo, rowIndex: idx + 2, prodIdx: idx,
               kardexId: "KDX" + Date.now() + "_" + prodId + "_" + j,
-              usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "system"
+              usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "system",
+              costoUnitario: pUnit,
             };
           } else {
             // New product - create inline
@@ -924,7 +938,8 @@ DAO.createCartera(record);
               
               stockUpdates[prodIdCreado] = { 
                 stockAnterior: 0, stockNuevo: cant, rowIndex: newRowIdx,
-                kardexId: "KDX" + Date.now() + "_" + prodIdCreado + "_" + j 
+                kardexId: "KDX" + Date.now() + "_" + prodIdCreado + "_" + j,
+                costoUnitario: pUnit,
               };
               
               LOG_ENGINE.logEvent("CREATE_PRODUCTO_INLINE", "PRODUCTOS", prodIdCreado,
@@ -968,7 +983,8 @@ DAO.createCartera(record);
             stock_nuevo: update.stockNuevo,
             referencia: idCompra,
             origen: "COMPRA",
-            usuario: update.usuario || "system"
+            usuario: update.usuario || "system",
+            costo_unitario: update.costoUnitario || 0,
           });
         }
         if (kardexEntries.length > 0) {
@@ -1396,6 +1412,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           // Registrar salida en kardex
             const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
             const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+            const costBase = _parseMoneda(prodData[p][C.precio_compra], 0);
           DAO_COMPRAS.crearMovimientoKardex({
             id: kardexId,
             fecha: new Date(),
@@ -1406,7 +1423,9 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             stock_nuevo: nuevoStock,
             referencia: corrId,
             origen: "VENTA",
-            usuario: email
+            usuario: email,
+            costo_unitario: costBase,
+            precio_unitario: pUnit
           });
         }
 
@@ -1485,15 +1504,46 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           usuario
         );
 
-        // Registrar salida de caja por venta
+        // Registrar costo de ventas en libro diario
+        const costoVentas = items.reduce(function(acc, item) {
+          var pid = item.id || item.productoId || item.id_producto || "";
+          var p = prodIndex[pid];
+          if (p === undefined) return acc;
+          var pc = _parseMoneda(prodData[p][C.precio_compra], 0);
+          var c = _parseMoneda(item.cantidad || item.cant || 0, 0);
+          return acc + pc * c;
+        }, 0);
+        if (costoVentas > 0) {
+          LIBRO_DIARIO.registrarCostoVentas(
+            new Date(),
+            idVenta,
+            idCliente,
+            costoVentas,
+            usuario
+          );
+        }
+
+        // Registrar entrada de caja por venta contado
         FLUJO_CAJA.registrarMovimiento(
           new Date(),
-          FLUJO_CAJA.TIPOS.SALIDA_VENTA,
+          FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
           "Venta a cliente: " + idCliente,
           totalLimpio,
           corrId,
           usuario
         );
+
+        // Registrar salida de caja por costo de ventas
+        if (costoVentas > 0) {
+          FLUJO_CAJA.registrarMovimiento(
+            new Date(),
+            FLUJO_CAJA.TIPOS.SALIDA_VENTA,
+            "Costo de venta: " + idCliente,
+            costoVentas,
+            corrId,
+            usuario
+          );
+        }
 
         LOG_ENGINE.logEvent("CREATE_VENTA", "VENTAS", idVenta,
           {}, { cliente: idCliente, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: corrId });
@@ -1574,12 +1624,11 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       }
       rotacion[m.id_producto].total = rotacion[m.id_producto].entradas - rotacion[m.id_producto].salidas;
     }
-    return rotacion;
-  },
-};
+return rotacion;
+    },
 
- /**
-   * Deletes a third party (proveedor/cliente) with critical safety validations.
+    /**
+    * Deletes a third party (proveedor/cliente) with critical safety validations.
    * 
    * CRITICAL VALIDATIONS:
    * 1. Verifies tercero exists
@@ -1592,13 +1641,14 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
    * @param {boolean} [forceDelete=false] - Skip confirmation (use with caution)
    * @returns {{success: boolean, message: string, hasActiveCxP: boolean, hasActiveCxC: boolean, hasRecentPayment: boolean}} Result
    */
-  deleteTercero(id, forceDelete = false) {
+  deleteTercero(id, forceDelete) {
+    forceDelete = forceDelete || false;
     let lockAcquired = null;
     const tx = _Transaction.create();
     
     try {
       const idLimpio = _sanitizeId(id);
-      if (!idLimpio) return _error("ID de tercero inv�lido.");
+      if (!idLimpio) return _error("ID de tercero inv�lido.");
 
       lockAcquired = LOCK_MANAGER.acquireResourceLock(idLimpio);
 
@@ -1712,3 +1762,5 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       if (lockAcquired) lockAcquired.releaseLock();
     }
   },
+
+};

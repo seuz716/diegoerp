@@ -109,17 +109,15 @@ const DAO_PRODUCTOS = {
    * @param {string} [datos.categoria] - Category.
    * @returns {{success: boolean, id?: string, nombre?: string, stock?: number, error?: string}} Result object.
    */
-  crear(datos) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+crear(datos) {
+    const id = datos.id ? _sanitizeId(datos.id) : ("P" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 4));
+    if (!id) return { success: false, error: "ID de producto invÃ¡lido." };
+    const lock = LOCK_MANAGER.acquireResourceLock(id);
     try {
       const nombreLimpio = String(datos.nombre || "").trim();
       if (nombreLimpio.length < 1) {
         return { success: false, error: "El nombre del producto es requerido" };
       }
-      const id = datos.id ? _sanitizeId(datos.id) : ("P" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 4));
-      if (!id) return { success: false, error: "ID de producto invÃ¡lido." };
-      
-      // Verificar si el ID ya existe
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const C = DAO_PRODUCTOS.COL;
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
@@ -169,11 +167,11 @@ const DAO_PRODUCTOS = {
    * @throws {Error} OPTIMISTIC_LOCK_FAILURE if version mismatch.
    * @throws {Error} If product not found.
    */
-  actualizar(id, cambios, expectedVersion) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+actualizar(id, cambios, expectedVersion) {
+    const idLimpio = _sanitizeId(id);
+    if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
+    const lock = LOCK_MANAGER.acquireResourceLock(idLimpio);
     try {
-      const idLimpio = _sanitizeId(id);
-      if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
       const lastRow = sheet.getLastRow();
       if (lastRow < 2) throw new Error("Producto no encontrado: " + idLimpio);
@@ -195,6 +193,17 @@ const DAO_PRODUCTOS = {
             err.actualVersion = currentVersion;
             err.retryable = true;
             throw err;
+          }
+          if (cambios.nombre !== undefined) {
+            const nuevoNombre = String(cambios.nombre).trim().toLowerCase();
+            for (let j = 0; j < data.length; j++) {
+              if (i !== j) {
+                const existingName = String(data[j][C.nombre] || "").trim().toLowerCase();
+                if (existingName === nuevoNombre) {
+                  throw new Error("Ya existe otro producto con ese nombre: " + cambios.nombre);
+                }
+              }
+            }
           }
           const rowRange = sheet.getRange(rowIdx, 1, 1, numCols);
           const rowValues = rowRange.getValues()[0];
@@ -263,17 +272,26 @@ const DAO_PRODUCTOS = {
    * @returns {{id: string, activo: string}} Updated product ID and new status.
    * @throws {Error} If product not found.
    */
-  toggleActivo(id) {
+toggleActivo(id) {
     const idLimpio = _sanitizeId(id);
     if (!idLimpio) throw new Error("ID de producto invÃ¡lido: " + id);
-    const producto = DAO_PRODUCTOS.obtener(idLimpio);
-    if (!producto) throw new Error("Producto no encontrado: " + idLimpio);
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const lock = LOCK_MANAGER.acquireResourceLock(idLimpio);
     try {
       const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) throw new Error("Producto no encontrado: " + idLimpio);
       const C = DAO_PRODUCTOS.COL;
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
-      const rowRange = sheet.getRange(producto.rowIndex, 1, 1, numCols);
+      const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+      let rowIdx = -1;
+      for (let i = 0; i < data.length; i++) {
+        if (String(data[i][C.id] || "").trim() === idLimpio) {
+          rowIdx = i + 2;
+          break;
+        }
+      }
+      if (rowIdx === -1) throw new Error("Producto no encontrado: " + idLimpio);
+      const rowRange = sheet.getRange(rowIdx, 1, 1, numCols);
       const rowValues = rowRange.getValues()[0];
       const nuevoEstado = rowValues[C.activo] === PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.ACTIVO
         ? PRODUCTOS_CONFIG.ESTADOS_PRODUCTO.INACTIVO

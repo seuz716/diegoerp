@@ -25,6 +25,7 @@ const PERMISSION_ROLES = {
   ejecutar_mantenimiento: ROLES.ADMIN,
   configurar_sistema: ROLES.ADMIN,
   administrar: ROLES.ADMIN,
+  actualizarVencimientos: ROLES.OPERATOR,
 };
 
 /**

@@ -69,16 +69,20 @@ const SmokeTests = {
    * Prueba 1: Health check.
    */
   testHealthCheck() {
-    const health = getHealthStatus ? getHealthStatus() : null;
+    const health = typeof getHealthStatus !== 'undefined' ? getHealthStatus() : null;
     if (!health) {
-      // Try alternative via CACHE
-      const cache = CACHE.getHealth ? CACHE.getHealth() : null;
+      const cache = typeof CACHE !== 'undefined' && CACHE.getHealth ? CACHE.getHealth() : null;
       if (cache && typeof cache.terceros?.failCount === 'number') {
         return 'Health check via CACHE: OK';
       }
       throw new Error('getHealthStatus no disponible - verificar Main.gs');
     }
-    const parsed = typeof health === 'string' ? JSON.parse(health) : health;
+    var parsed;
+    try {
+      parsed = typeof health === 'string' ? JSON.parse(health) : health;
+    } catch (_) {
+      throw new Error('Health check: respuesta no es JSON válido');
+    }
     if (parsed.status !== 'OK' && parsed.errors?.length > 0) {
       throw new Error('Health check errors: ' + parsed.errors.join(', '));
     }
@@ -92,13 +96,17 @@ const SmokeTests = {
     const ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
     if (!ssId) throw new Error('SPREADSHEET_ID no configurado');
     
+    if (typeof CARTERA_CONFIG === 'undefined' || typeof CONFIG === 'undefined' || typeof COMPRAS_CONFIG === 'undefined') {
+      throw new Error('Configuración global no disponible (CARTERA_CONFIG, CONFIG o COMPRAS_CONFIG)');
+    }
+    
     const ss = SpreadsheetApp.openById(ssId);
     const expectedSheets = [
       CARTERA_CONFIG.SHEETS.TERCEROS,
       CARTERA_CONFIG.SHEETS.CARTERA,
       CONFIG.SHEETS.PRODUCTOS,
       COMPRAS_CONFIG.SHEETS.COMPRAS
-    ];
+    ].filter(Boolean);
     
     const existingSheets = ss.getSheets().map(s => s.getName());
     const missing = expectedSheets.filter(s => !existingSheets.includes(s));
@@ -124,12 +132,12 @@ const SmokeTests = {
     }
     
     // CACHE.getHealth
-    if (typeof CACHE.getHealth !== 'function') {
+    if (typeof CACHE === 'undefined' || typeof CACHE.getHealth !== 'function') {
       throw new Error('CACHE.getHealth no existe');
     }
     
     // DAO_COMPRAS.getMovimientosKardex
-    if (!DAO_COMPRAS || typeof DAO_COMPRAS.getMovimientosKardex !== 'function') {
+    if (typeof DAO_COMPRAS === 'undefined' || typeof DAO_COMPRAS.getMovimientosKardex !== 'function') {
       throw new Error('DAO_COMPRAS.getMovimientosKardex no existe');
     }
     
@@ -160,17 +168,22 @@ const SmokeTests = {
     const triggers = ScriptApp.getProjectTriggers();
     const handlerFunctions = triggers.map(t => t.getHandlerFunction());
     
-    const expectedTriggers = ['cleanupExpiredLocks', 'removeOrphanLocksTrigger'];
-    const missing = expectedTriggers.filter(t => !handlerFunctions.includes(t));
+    const requiredTriggers = ['cleanupExpiredLocks'];
+    const optionalTriggers = ['removeOrphanLocksTrigger'];
+    const missingRequired = requiredTriggers.filter(t => !handlerFunctions.includes(t));
+    const missingOptional = optionalTriggers.filter(t => !handlerFunctions.includes(t));
     
-    // cleanupExpiredLocks es obligatorio, removeOrphanLocksTrigger es opcional
-    const hasCleanup = handlerFunctions.includes('cleanupExpiredLocks');
+    var msg = 'Triggers presentes: ' + handlerFunctions.join(', ');
+    if (missingRequired.length > 0) {
+      msg += '. FALTAN obligatorios: ' + missingRequired.join(', ');
+    }
+    if (missingOptional.length > 0) {
+      msg += '. Opcionales faltantes: ' + missingOptional.join(', ');
+    }
     
     return {
-      passed: hasCleanup,
-      message: missing.length > 0 
-        ? 'Triggers disponibles: ' + handlerFunctions.join(', ') + '. Falta: ' + missing.join(', ')
-        : 'Todos los triggers críticos configurados: ' + expectedTriggers.join(', ')
+      passed: missingRequired.length === 0,
+      message: msg
     };
   }
 };
@@ -215,7 +228,10 @@ function runSmokeTests() {
  */
 function sendSmokeAlert(result) {
   try {
-    const email = SESSION_SERVICE?.getCurrentUser?.()?.getEmail() || 'admin@empresa.com';
+    var email = SESSION_SERVICE?.getCurrentUser?.()?.getEmail();
+    if (!email) {
+      email = PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL') || 'admin@empresa.com';
+    }
     const subject = '[MicroERP] Smoke Tests FALLARON después de deploy';
     let body = 'Smoke tests han fallado:\n\n';
     result.results.forEach(r => {

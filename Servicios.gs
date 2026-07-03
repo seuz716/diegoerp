@@ -122,11 +122,12 @@ function procesarVentaV2(carrito, opciones) {
       CACHE.refresh();
       const tercero = CACHE.getTerceroRAW(idTercero);
       if (!tercero) throw new Error(`Tercero ${idTercero} no encontrado.`);
-      if (tercero.limite_credito > 0) {
-        const saldoActual = CACHE.getSaldoTercero(idTercero);
-        if ((saldoActual + totalVenta) > tercero.limite_credito) {
-          throw new Error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
-        }
+      if (!tercero.limite_credito || tercero.limite_credito === 0) {
+        throw new Error("Cliente sin límite de crédito configurado. Configure un límite o use venta de contado.");
+      }
+      const saldoActual = CACHE.getSaldoTercero(idTercero);
+      if ((saldoActual + totalVenta) > tercero.limite_credito) {
+        throw new Error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
       }
     }
 

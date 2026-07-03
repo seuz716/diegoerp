@@ -5,21 +5,7 @@
  * - #7: Tiempo de vida del caché sin mecanismo de refresh bajo demanda
  */
 
-// === LOAD ORDER GUARD ===
-// CacheService.gs depends on Config.gs - verify dependencies are loaded
-(function _verifyCacheServiceDependencies() {
-  if (typeof getSheet === 'undefined') {
-    throw new Error("LOAD ERROR: CacheService.gs requires Config.gs to be loaded first (getSheet not defined)");
-  }
-  if (typeof _parseMoneda === 'undefined') {
-    throw new Error("LOAD ERROR: CacheService.gs requires Config.gs to be loaded first (_parseMoneda not defined)");
-  }
-  if (typeof CARTERA_CONFIG === 'undefined') {
-    throw new Error("LOAD ERROR: CacheService.gs requires Config.gs to be loaded first (CARTERA_CONFIG not defined)");
-  }
-  Logger.log("[CACHE-SERVICE] Dependencies verified - Config.gs loaded correctly");
-})();
-
+// Dependencies verified lazily when CACHE.refresh() is called
 class CacheIntegrityError extends Error {
   /**
    * Creates a cache integrity error for checksum mismatch.

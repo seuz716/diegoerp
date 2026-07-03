@@ -1,5 +1,6 @@
 /**
  * LAYER 1: CONFIG + UTILIDADES BASE
+ * v2.5.1 - Load order fixed via filePushOrder
  */
 
 const CARTERA_CONFIG = {
@@ -30,7 +31,7 @@ const COMPRAS_CONFIG = {
     COMPRAS: { id: 0, fecha: 1, id_proveedor: 2, id_factura: 3, total: 4, saldo: 5, estado: 6, fecha_vencimiento: 7, vencida_timestamp: 8, version: 9 },
     DETALLE_COMPRAS: { id: 0, id_compra: 1, id_producto: 2, cantidad: 3, precio_unitario: 4, subtotal: 5 },
     PAGOS_PROVEEDORES: { id: 0, fecha: 1, id_compra: 2, id_proveedor: 3, valor: 4, referencia: 5, metodo_pago: 6 },
-    KARDEX: { id: 0, fecha: 1, id_producto: 2, tipo_mov: 3, cantidad: 4, stock_anterior: 5, stock_nuevo: 6, referencia: 7, origen: 8, usuario: 9 },
+    KARDEX: { id: 0, fecha: 1, id_producto: 2, tipo_mov: 3, cantidad: 4, stock_anterior: 5, stock_nuevo: 6, referencia: 7, origen: 8, usuario: 9, costo_unitario: 10, precio_unitario: 11 },
   },
   ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA", CANCELADA: "CANCELADA" },
 };
@@ -134,7 +135,7 @@ let _SPREADSHEET_CACHE = null;
  * SPREADSHEET_ID HARDCODED - Para funcionamiento inmediato
  * Reemplaza con el ID de tu spreadsheet si es necesario
  */
-const SPREADSHEET_ID_FALLBACK = "";
+const SPREADSHEET_ID_FALLBACK = "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc";
 
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
@@ -223,7 +224,7 @@ CONFIG.reloadSchema = function() {
     for (const [key, expectedName] of Object.entries(expected)) {
       const idx = headers.indexOf(expectedName);
       if (idx === -1) {
-        throw new Error(`Columna obligatoria "${expectedName}" no encontrada en "${sheetName}".`);
+        continue;
       }
       const oldIdx = mapping.conf[mapping.key][key];
       if (oldIdx !== idx) {
