@@ -46,6 +46,7 @@ const DAO = {
     } catch (e) {
       Logger.log(`[DAO.batchInsert] Error: Error en operación`);
       LogService.logError('Error en batchInsert', { functionName: 'batchInsert', error: e });
+      throw e;
     } finally {
       // === INICIO FIX RACE-CONDITION ===
       if (lock) lock.releaseLock();
@@ -377,7 +378,30 @@ const DAO = {
    * @throws {Error} OPTIMISTIC_LOCK_FAILURE si hay conflicto de versión optimista
    */
   updateCarteraBatch(cambios) {
-    return this._withRetry(() => this._updateCarteraBatch(cambios), 3, 200);
+    const self = this;
+    return this._withRetry(function (attempt) {
+      if (attempt > 0) self._refreshCambiosVersions(cambios);
+      return self._updateCarteraBatch(cambios);
+    }, 3, 200);
+  },
+
+  _refreshCambiosVersions(cambios) {
+    if (!cambios || cambios.length === 0) return;
+    try {
+      const fresh = CACHE.getCarteraBase();
+      if (!fresh || !fresh.length) return;
+      const index = {};
+      for (const item of fresh) {
+        if (item.rowIndex) index[item.rowIndex] = item.version;
+      }
+      for (const cambio of cambios) {
+        if (cambio.expectedVersion !== undefined && index[cambio.rowIndex] !== undefined) {
+          cambio.expectedVersion = index[cambio.rowIndex];
+        }
+      }
+    } catch (e) {
+      Logger.log("[DAO] WARN: _refreshCambiosVersions failed: " + e.message);
+    }
   },
 
   /**
@@ -560,7 +584,7 @@ const DAO = {
       return result;
     } catch (e) {
       Logger.log("[DAO.getLibroDiario] Error: " + e.message);
-      return [];
+      throw e;
     }
   },
 };
