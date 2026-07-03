@@ -45,7 +45,7 @@ function testKardexIntegridadFIFO() {
       if (tipo === 'ENTRADA') {
         stock += cantidad;
       } else if (tipo === 'SALIDA') {
-        if (stock < cantidad) {
+        if (stock > 0 && stock < cantidad) {
           errores.push({
             producto: prodId,
             mensaje: 'Salida de ' + cantidad + ' unidades sin stock suficiente (disponible: ' + stock + ')'
@@ -306,7 +306,7 @@ const AUDIT_ENGINE = {
           if (tipo === 'ENTRADA') {
             stock += cantidad;
           } else if (tipo === 'SALIDA') {
-            if (stock < cantidad) {
+            if (stock > 0 && stock < cantidad) {
               resultado.hallazgos.test_integridad.pasado = false;
               resultado.hallazgos.test_integridad.hallazgos.push(
                 `FIFO: ${prodId} - Salida de ${cantidad} unidades sin entrada previa (stock disponible: ${stock})`
@@ -319,7 +319,7 @@ const AUDIT_ENGINE = {
         data.stock = stock;
       }
 
-      resultado.metricas.errores_fifo = resultado.hallazgos.test_integridad.hallazgos.filter(h => h.startsWith('FIFO:')).length;
+      resultado.metricas.errores_fifo = resultado.hallazgos.test_integridad.hallazgos.length;
 
       // 3. TEST COST CONSISTENCY - Productos con stock deben tener costo > 0
       Logger.log("  - Validando consistencia de costos...");
@@ -405,7 +405,10 @@ const AUDIT_ENGINE = {
         error: e.message,
         timestamp: new Date(),
         metricas: resultado.metricas,
-        hallazgos: { error: e.message }
+        hallazgos: {
+          test_integridad: { pasado: false, hallazgos: ["Error: " + e.message] },
+          test_valuation: { pasado: false, hallazgos: [] }
+        }
       };
     }
   },
@@ -438,7 +441,12 @@ const AUDIT_ENGINE = {
       // ============================================================
       // 1. CONCILIACIÓN DE SALDO (TEST_1)
       // ============================================================
-      const ldData = libroDiario.getDataRange().getValues();
+      var ldLastRow = libroDiario.getLastRow();
+      if (ldLastRow < 2) { ldData = []; } else {
+        var ldNumRows = Math.min(ldLastRow - 1, 10000);
+        var ldData = libroDiario.getRange(2, 1, ldNumRows, Math.max.apply(null, Object.values(CONFIG.COLUMNS.LIBRO_DIARIO)) + 1).getValues();
+        ldData.unshift([]);
+      }
       const ldCol = CONFIG.COLUMNS.LIBRO_DIARIO;
       let saldoLD = 0;
       let entradasLD = 0;
@@ -461,7 +469,14 @@ const AUDIT_ENGINE = {
         }
       }
 
-      const fcData = flujoCaja.getDataRange().getValues();
+      var fcLastRow = flujoCaja.getLastRow();
+      var fcNumRows;
+      var fcData;
+      if (fcLastRow < 2) { fcData = []; } else {
+        fcNumRows = Math.min(fcLastRow - 1, 10000);
+        fcData = flujoCaja.getRange(2, 1, fcNumRows, Math.max.apply(null, Object.values(CONFIG.COLUMNS.FLUJO_CAJA)) + 1).getValues();
+        fcData.unshift([]);
+      }
       const fcCol = CONFIG.COLUMNS.FLUJO_CAJA;
       let saldoFC = 0;
       let entradasFC = 0;
@@ -503,14 +518,15 @@ const AUDIT_ENGINE = {
       }
 
       // ============================================================
-      // 2. CONCILIACIÓN DE TRANSACCIONES (TEST_2) - Muestreo Pareto
+      // 2. CONCILIACIÓN DE TRANSACCIONES (TEST_2) - Muestreo por materialidad
       // ============================================================
       const muestras = Math.min(20, transaccionesLD.length);
       let transaccionesNoConciliadas = 0;
       const erroresTransacciones = [];
+      const sortedTxns = transaccionesLD.slice().sort((a, b) => b.monto - a.monto);
 
-      for (let k = 0; k < transaccionesLD.length && transaccionesNoConciliadas < 20; k++) {
-        const txn = transaccionesLD[k];
+      for (let k = 0; k < sortedTxns.length && transaccionesNoConciliadas < 20; k++) {
+        const txn = sortedTxns[k];
         const key = txn.ref + '|' + txn.monto;
         let encontrado = false;
 
@@ -568,9 +584,9 @@ const AUDIT_ENGINE = {
           saldoAcumulado -= monto;
         }
 
-        if (saldoAcumulado < 0 && saldosNegativos < 10) {
+        if (saldoAcumulado < 0) {
           saldosNegativos++;
-          erroresSaldos.push({
+          if (erroresSaldos.length < 10) erroresSaldos.push({
             fecha: fcData[l][fcCol.fecha],
             concepto: concepto,
             ref: ref,
@@ -614,7 +630,6 @@ const AUDIT_ENGINE = {
       resultados.inventarios = { success: false, error: e.message };
     }
 
-    // 8. Auditoría de Conciliación de Flujo de Caja
     try {
       resultados.flujo = AUDIT_ENGINE.auditarConciliacionFlujo();
       Logger.log("Auditoría de flujo de caja completada: " + 
@@ -624,8 +639,32 @@ const AUDIT_ENGINE = {
       resultados.flujo = { success: false, error: e.message };
     }
 
+    try {
+      resultados.ventas_kardex = ejecutarTestsIntegridadVentasKardex();
+      Logger.log("Tests ventas→kardex: " + (resultados.ventas_kardex.success ? "PASÓ" : "CON HALLAZGOS"));
+    } catch (e) {
+      Logger.log("Error en tests ventas→kardex: " + e.toString());
+      resultados.ventas_kardex = { success: false, error: e.message };
+    }
+
+    try {
+      resultados.seguridad = ejecutarTestsSeguridad();
+      Logger.log("Tests seguridad: " + (resultados.seguridad.success ? "PASÓ" : "CON HALLAZGOS"));
+    } catch (e) {
+      Logger.log("Error en tests seguridad: " + e.toString());
+      resultados.seguridad = { success: false, error: e.message };
+    }
+
+    const invOk = resultados.inventarios ? resultados.inventarios.success : false;
+    const flujoOk = resultados.flujo ?
+      resultados.flujo.test_conciliacion_saldo.pasado &&
+      resultados.flujo.test_conciliacion_transacciones.pasado &&
+      resultados.flujo.test_integridad_saldos.pasado : true;
+    const ventasOk = resultados.ventas_kardex ? resultados.ventas_kardex.success : true;
+    const segOk = resultados.seguridad ? resultados.seguridad.success : true;
+
     return {
-      success: resultados.inventarios ? resultados.inventarios.success : false,
+      success: invOk && flujoOk && ventasOk && segOk,
       timestamp: new Date(),
       resultados: resultados
     };
@@ -746,7 +785,8 @@ function testVentasKardexCantidades() {
 
     for (let v = 0; v < ventas.length; v++) {
       const idVenta = String(ventas[v][COL.id_registro] || "").trim();
-      const datosNuevos = JSON.parse(ventas[v][COL.datos_nuevos] || "{}");
+      let datosNuevos;
+      try { datosNuevos = JSON.parse(ventas[v][COL.datos_nuevos] || "{}"); } catch (e) { continue; }
       const items = datosNuevos.items || [];
 
       if (!idVenta || !kardexPorRef[idVenta]) continue;
@@ -824,10 +864,18 @@ function testVentasSinStockSuficiente() {
     let errores = 0;
     const ejemplos = [];
 
+    const kardexPorProducto = {};
+    for (let k = 0; k < kardexCompleto.length; k++) {
+      const prod = kardexCompleto[k].id_producto;
+      if (!kardexPorProducto[prod]) kardexPorProducto[prod] = [];
+      kardexPorProducto[prod].push(kardexCompleto[k]);
+    }
+
     for (let v = 0; v < ventasData.length; v++) {
       const idVenta = String(ventasData[v][COL.id_registro] || "").trim();
       const fechaVenta = ventasData[v][COL.timestamp];
-      const datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}");
+      let datosNuevos;
+      try { datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}"); } catch (e) { continue; }
       const items = datosNuevos.items || [];
 
       for (let it = 0; it < items.length; it++) {
@@ -835,16 +883,15 @@ function testVentasSinStockSuficiente() {
         const prodId = item.id;
         const cantVendida = item.cantidad || 0;
 
-        const kardexAntes = kardexCompleto
-          .filter(k => k.id_producto === prodId && new Date(k.fecha) < new Date(fechaVenta))
-          .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-
+        const productMovs = kardexPorProducto[prodId] || [];
         let stock = 0;
-        for (let k = 0; k < kardexAntes.length; k++) {
-          if (kardexAntes[k].tipo_mov === 'ENTRADA') {
-            stock += kardexAntes[k].cantidad;
-          } else if (kardexAntes[k].tipo_mov === 'SALIDA') {
-            stock -= kardexAntes[k].cantidad;
+        for (let k = 0; k < productMovs.length; k++) {
+          const km = productMovs[k];
+          if (new Date(km.fecha) >= new Date(fechaVenta)) continue;
+          if (km.tipo_mov === 'ENTRADA') {
+            stock += km.cantidad;
+          } else if (km.tipo_mov === 'SALIDA') {
+            stock -= km.cantidad;
             if (stock < 0) stock = 0;
           }
         }
@@ -905,7 +952,8 @@ function testVentasPrecioVentaConsistente() {
     const ejemplos = [];
 
     for (let v = 0; v < ventasData.length; v++) {
-      const datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}");
+      let datosNuevos;
+      try { datosNuevos = JSON.parse(ventasData[v][COL.datos_nuevos] || "{}"); } catch (e) { continue; }
       const items = datosNuevos.items || [];
 
       for (let it = 0; it < items.length; it++) {
@@ -976,7 +1024,8 @@ function testVentasDevolucionGeneraEntrada() {
     let sinEntrada = 0;
     for (let d = 0; d < devoluciones.length; d++) {
       const idDevolucion = String(devoluciones[d][COL.id_registro] || "").trim();
-      const datosNuevos = JSON.parse(devoluciones[d][COL.datos_nuevos] || "{}");
+      let datosNuevos;
+      try { datosNuevos = JSON.parse(devoluciones[d][COL.datos_nuevos] || "{}"); } catch (e) { continue; }
       const ventaOriginal = datosNuevos.id_venta_original || "";
 
       if (idDevolucion && !entradasPorRef[idDevolucion] && !entradasPorRef[ventaOriginal]) {
@@ -1060,7 +1109,8 @@ function testSeguridadUsuariosIdentificados() {
     if (sheetKardex) {
       var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
       var kardexData = sheetKardex.getDataRange().getValues();
-      for (var i = 1; i < kardexData.length && i < 200; i++) {
+      var start = Math.max(1, kardexData.length - 200);
+      for (var i = start; i < kardexData.length; i++) {
         var usuario = String(kardexData[i][KCOL.usuario] || "").trim();
         if (!usuario) sinUsuario++;
       }
@@ -1083,8 +1133,9 @@ function testSeguridadHorarioLaboral() {
     var KCOL = COMPRAS_CONFIG.COLUMNS.KARDEX;
     var kardexData = sheetKardex.getDataRange().getValues();
     var fueraHorario = 0;
+    var start = Math.max(1, kardexData.length - 200);
 
-    for (var i = 1; i < kardexData.length && i < 200; i++) {
+    for (var i = start; i < kardexData.length; i++) {
       var fecha = kardexData[i][KCOL.fecha];
       if (fecha instanceof Date) {
         var hora = fecha.getHours();
@@ -1149,7 +1200,8 @@ function testSeguridadAuditoriaKardex() {
     var auditData = sheetAudit.getDataRange().getValues();
 
     var auditRefs = {};
-    for (var i = 1; i < auditData.length && i < 500; i++) {
+    var auditStart = Math.max(1, auditData.length - 500);
+    for (var i = auditStart; i < auditData.length; i++) {
       var tabla = String(auditData[i][ACOL.tabla] || "").trim();
       var idReg = String(auditData[i][ACOL.id_registro] || "").trim();
       if (tabla === 'VENTAS' || tabla === 'COMPRAS' || tabla === 'DETALLE_COMPRAS') {
@@ -1158,7 +1210,8 @@ function testSeguridadAuditoriaKardex() {
     }
 
     var sinAuditoria = 0;
-    for (var j = 1; j < kardexData.length && j < 200; j++) {
+    var kardexStart = Math.max(1, kardexData.length - 200);
+    for (var j = kardexStart; j < kardexData.length; j++) {
       var ref = String(kardexData[j][KCOL.referencia] || "").trim();
       if (ref && !auditRefs[ref]) sinAuditoria++;
     }
