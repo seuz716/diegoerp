@@ -54,8 +54,8 @@ const SCHEMA_VALIDATOR = {
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return { valid: false, error: 'Autorized users no es objeto' };
       for (const [email, role] of Object.entries(parsed)) {
-        if (!email || !email.includes('@')) return { valid: false, error: 'Email inválido' };
-        if (!Object.values(ROLES).includes(role)) return { valid: false, error: 'Rol inválido' };
+        if (!email || !email.includes('@')) return { valid: false, error: 'Email inválido: "' + email + '"' };
+        if (!Object.values(ROLES).includes(role)) return { valid: false, error: 'Rol inválido "' + role + '" para email "' + email + '"' };
       }
       return { valid: true, parsed };
     } catch (e) {
@@ -68,6 +68,7 @@ const SCHEMA_VALIDATOR = {
 // SECURE CRYPTO SERVICE - AES-256-CTR via HMAC-SHA256 KDF
 // =============================================================================
 const CRYPTO_SERVICE = {
+  _memoryCache: {},
   TAG: "v3", // New version with proper KDF
   
   _getMasterKey() {
@@ -123,7 +124,7 @@ const CRYPTO_SERVICE = {
     delete this._memoryCache["AES_MASTER_KEY"];
   },
   
-  _kdf(salt, info, iterations = 10000) {
+  _kdf(salt, info, iterations = 1000) {
     const prk = Utilities.computeHmacSha256Signature(salt, this._getMasterKey());
     // Key stretching: iterations contribute to HMAC chain for security
     let block = Utilities.computeHmacSha256Signature(info, prk);
@@ -134,10 +135,10 @@ const CRYPTO_SERVICE = {
   },
   
   _deriveKey(iv, salt) {
-    return this._deriveKeyWithIterations(iv, salt, 10000);
+    return this._deriveKeyWithIterations(iv, salt);
   },
   
-  _deriveKeyWithIterations(iv, salt, iterations = 10000) {
+  _deriveKeyWithIterations(iv, salt, iterations = 1000) {
     const saltBytes = Utilities.newBlob(salt).getBytes();
     const saltedIv = iv + String.fromCharCode(...saltBytes.slice(0, 16));
     return this._kdf(Utilities.newBlob(saltedIv).getBytes(), "DIECRP2026", iterations);
@@ -357,7 +358,7 @@ const secureValue = this._loadKey(keyName);
     if (!validation.valid) {
       Logger.log("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
       LogService.logError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
-      throw new Error("Configuración de usuarios corrupta: " + validation.error);
+      return null;
     }
     
 const normalized = email.toLowerCase().trim();
@@ -420,38 +421,46 @@ const PROXY_SECRET_SERVICE = {
   },
 
   _callSecretEndpoint(endpointUrl, secretName) {
-    try {
-      const payload = JSON.stringify({ secret: secretName });
-      const timestamp = String(Math.floor(Date.now() / 1000));
-      const headers = {
-        "Cache-Control": "no-cache",
-        "X-Request-ID": Utilities.getUuid(),
-        "X-HMAC-Timestamp": timestamp,
-      };
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 500;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const payload = JSON.stringify({ secret: secretName });
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        const headers = {
+          "Cache-Control": "no-cache",
+          "X-Request-ID": Utilities.getUuid(),
+          "X-HMAC-Timestamp": timestamp,
+        };
 
-      const hmacSecret = this._getHmacSecret();
-      if (!hmacSecret) {
-        throw new Error("HMAC secret no configurado. Ejecuta PROXY_SECRET_SERVICE.setHmacSecret() antes de usar el proxy.");
-      }
-      const signatureInput = timestamp + "." + payload;
-      const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
-      const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-      headers["Authorization"] = "HMAC " + hmacHex;
+        const hmacSecret = this._getHmacSecret();
+        if (!hmacSecret) {
+          Logger.log("PROXY: HMAC secret no configurado.");
+          return null;
+        }
+        const signatureInput = timestamp + "." + payload;
+        const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
+        const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+        headers["Authorization"] = "HMAC " + hmacHex;
 
-      const response = UrlFetchApp.fetch(endpointUrl, {
-        method: "post",
-        contentType: "application/json",
-        payload: payload,
-        muteHttpExceptions: true,
-        timeout: 10000,
-        headers: headers,
-      });
-      if (response.getResponseCode() === 200) {
-        const data = JSON.parse(response.getContentText());
-        return data.value || null;
+        const response = UrlFetchApp.fetch(endpointUrl, {
+          method: "post",
+          contentType: "application/json",
+          payload: payload,
+          muteHttpExceptions: true,
+          timeout: 10000,
+          headers: headers,
+        });
+        if (response.getResponseCode() === 200) {
+          const data = JSON.parse(response.getContentText());
+          return data.value || null;
+        }
+      } catch (e) {
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = BASE_DELAY * Math.pow(2, attempt) + Math.random() * 100;
+          Utilities.sleep(delay);
+        }
       }
-    } catch (e) {
-      // Error silencioso
     }
     return null;
   },

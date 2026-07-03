@@ -887,11 +887,14 @@ function registrarVentaAtomic(clienteId, items, total, correlationId) {
  * API Pública: Obtener kardex de un producto
  */
 function getKardexProducto(idProducto, limit) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
-    return DOMAIN.getKardexProducto(idProducto, limit || 100);
+    const idValidado = INPUT_VALIDATOR.validateId(idProducto);
+    return DOMAIN.getKardexProducto(idValidado, limit || 100);
   } catch (e) {
-    return _safeError("getKardexProducto", e, null);
+    return _safeError("getKardexProducto", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -899,11 +902,13 @@ function getKardexProducto(idProducto, limit) {
  * API Pública: Obtener kardex general (últimos 30 días)
  */
 function getKardex(limit) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("revisar_inventario");
     return DOMAIN.getKardex(limit || 500);
   } catch (e) {
-    return _safeError("getKardex", e, null);
+    return _safeError("getKardex", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -911,10 +916,12 @@ function getKardex(limit) {
  * API Pública: Diagnóstico avanzado de cartera
  */
 function getCarteraDebug(filtroTipo, filtroEstado) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     return Main_getCarteraDebug(filtroTipo || null, filtroEstado || null);
   } catch (e) {
-    return { success: false, error: e.message };
+    return _safeError("getCarteraDebug", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -932,6 +939,7 @@ function getCarteraDebug(filtroTipo, filtroEstado) {
  * @returns {{success: boolean, id?: string, total?: number, correlationId?: string, error?: string}}
  */
 function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("registrarCompra");
@@ -941,9 +949,9 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
     const totalValidado = INPUT_VALIDATOR.parseMoneda(total, 0);
     const facturaValidada = INPUT_VALIDATOR.sanitizeString(factura, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
     const result = DOMAIN.registrarCompraAtomic(proveedorId, items, totalValidado, fechaVencimiento, facturaValidada, correlationId);
-    return { ...result, correlationId };
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("registrarCompra", e, correlationId);
+    return _safeError("registrarCompra", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -956,6 +964,7 @@ function registrarCompra(proveedorId, items, total, fechaVencimiento, factura) {
  * @returns {{success: boolean, items: Array, total: number, page: number, pageSize: number, correlationId: string}}
  */
 function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
@@ -976,9 +985,9 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
     });
     const start = page * pageSize;
     const paginated = compras.slice(start, start + pageSize);
-    return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize, correlationId };
+    return { success: true, items: paginated, total: compras.length, page: page, pageSize: pageSize, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getCompras", e, correlationId);
+    return _safeError("getCompras", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -988,15 +997,16 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
  * @returns {{success: boolean, detalles: Array, pagos: Array, correlationId: string}}
  */
 function getDetalleCompra(idCompra) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_compras");
     const idValidado = INPUT_VALIDATOR.validateId(idCompra);
     const detalles = DAO_COMPRAS.getDetallesByCompra(idValidado);
     const pagos = DAO_COMPRAS.getPagosByCompra(idValidado);
-    return { success: true, detalles: detalles, pagos: pagos, correlationId };
+    return { success: true, detalles: detalles, pagos: pagos, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getDetalleCompra", e, correlationId);
+    return _safeError("getDetalleCompra", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1008,6 +1018,7 @@ function getDetalleCompra(idCompra) {
  * @returns {{success: boolean, correlationId?: string, error?: string}}
  */
 function registrarPagoProveedor(idCompra, monto, referencia) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("registrarPagoProveedor");
@@ -1016,9 +1027,9 @@ function registrarPagoProveedor(idCompra, monto, referencia) {
     const montoValidado = INPUT_VALIDATOR.parseMoneda(monto, 0);
     const referenciaValidada = INPUT_VALIDATOR.sanitizeString(referencia, INPUT_VALIDATOR.MAX_REFERENCIA_LENGTH);
     const result = DOMAIN.procesarPagoProveedorAtomic(idCompraValidado, montoValidado, referenciaValidada, correlationId);
-    return { ...result, correlationId };
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("registrarPagoProveedor", e, correlationId);
+    return _safeError("registrarPagoProveedor", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1032,6 +1043,8 @@ function registrarPagoProveedor(idCompra, monto, referencia) {
  * @returns {{success: boolean, items: Array, total: number, dias: number}}
  */
 function getProximosVencimientos(dias) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_vencimientos");
     if (dias === null || dias === undefined) dias = 30;
@@ -1039,9 +1052,9 @@ function getProximosVencimientos(dias) {
     const result = DOMAIN.getVencimientosProximos(dias);
     let suma = 0;
     for (let i = 0; i < result.length; i++) { suma += result[i].saldo; }
-    return { success: true, items: result, total: suma, dias: dias };
+    return { success: true, items: result, total: suma, dias: dias, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getProximosVencimientos", e);
+    return _safeError("getProximosVencimientos", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1051,13 +1064,15 @@ function getProximosVencimientos(dias) {
  * @returns {{success: boolean, items: Array}}
  */
 function getRankingDeudores(topN) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_dashboard");
     if (topN === null || topN === undefined) topN = 10;
     const result = DOMAIN.getRankingDeudores(topN);
-    return { success: true, items: result };
+    return { success: true, items: result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getRankingDeudores", e);
+    return _safeError("getRankingDeudores", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1066,12 +1081,14 @@ function getRankingDeudores(topN) {
  * @returns {{success: boolean, totalCompras: number, conteo: Object, proveedores: Array}}
  */
 function getConcentracionProveedores() {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_dashboard");
     const result = DOMAIN.getConcentracionProveedores();
-    return { success: true, totalCompras: result.totalCompras, conteo: result.conteo, proveedores: result.proveedores };
+    return { success: true, totalCompras: result.totalCompras, conteo: result.conteo, proveedores: result.proveedores, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("getConcentracionProveedores", e);
+    return _safeError("getConcentracionProveedores", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1086,6 +1103,8 @@ function getConcentracionProveedores() {
  * @returns {{success: boolean, csv?: string, error?: string}}
  */
 function exportarLibroDiario(fechaInicio, fechaFin) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_auditoria");
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
@@ -1099,9 +1118,9 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
         Logger.log("Failed to save libro diario to Drive: " + driveErr.message);
       }
     }
-    return { success: true, csv: csv };
+    return { success: true, csv: csv, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("exportarLibroDiario", e);
+    return _safeError("exportarLibroDiario", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1111,14 +1130,15 @@ function exportarLibroDiario(fechaInicio, fechaFin) {
  * @returns {{success: boolean, id: string, activo: string, correlationId: string}}
  */
 function toggleActivoProducto(id) {
+  const startTime = Date.now();
   const correlationId = generateCorrelationId();
   try {
     RATE_LIMITER.check("actualizarProducto");
 AuthService.checkPermission("revisar_inventario");
      const result = DAO_PRODUCTOS.toggleActivo(id);
-    return { success: true, id: result.id, activo: result.activo, correlationId: correlationId };
+    return { success: true, id: result.id, activo: result.activo, correlationId: correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("toggleActivoProducto", e, correlationId);
+    return _safeError("toggleActivoProducto", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1132,6 +1152,8 @@ AuthService.checkPermission("revisar_inventario");
  * @returns {{success: boolean, entradas: number, salidas: number, neto: number, saldo_actual: number}}
  */
 function getFlujoCajaResumen(dias) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_dashboard");
     const resumen = FLUJO_CAJA.getResumenDiario(dias || 30);
@@ -1140,10 +1162,12 @@ function getFlujoCajaResumen(dias) {
       entradas: resumen.entradas,
       salidas: resumen.salidas,
       neto: resumen.neto,
-      saldo_actual: FLUJO_CAJA.obtenerSaldoActual()
+      saldo_actual: FLUJO_CAJA.obtenerSaldoActual(),
+      correlationId,
+      executionTimeMs: Date.now() - startTime
     };
   } catch (e) {
-    return _safeError("getFlujoCajaResumen", e);
+    return _safeError("getFlujoCajaResumen", e, correlationId, Date.now() - startTime);
   }
 }
 
@@ -1154,6 +1178,8 @@ function getFlujoCajaResumen(dias) {
  * @returns {{success: boolean, csv?: string, error?: string}}
  */
 function exportarFlujoCaja(fechaInicio, fechaFin) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
   try {
     AuthService.checkPermission("ver_auditoria");
     if (fechaInicio) INPUT_VALIDATOR.validateDate(fechaInicio, 'Fecha inicio');
@@ -1167,8 +1193,8 @@ function exportarFlujoCaja(fechaInicio, fechaFin) {
         Logger.log("Failed to save flujo caja to Drive: " + driveErr.message);
       }
     }
-    return { success: true, csv: csv };
+    return { success: true, csv: csv, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
-    return _safeError("exportarFlujoCaja", e);
+    return _safeError("exportarFlujoCaja", e, correlationId, Date.now() - startTime);
   }
 }

@@ -102,11 +102,13 @@ _persistMetric(name) {
   },
 
 _incrementMetric(name) {
-     if (!this._metricsLoaded) this._loadMetrics();
-     if (this[name] >= 999999) this[name] = 999998; // Cap before increment to prevent overflow
-     this[name]++;
-     this._persistMetric(name);
-   },
+      if (!this._metricsLoaded) this._loadMetrics();
+      if (this[name] >= 999999) this[name] = 999998;
+      this[name]++;
+      // Batch: only persist every 10 increments or if critical
+      if (this[name] % 10 !== 0 && name !== 'circuitOpens' && name !== 'circuitCloses') return;
+      this._persistMetric(name);
+    },
   // === FIN FIX CACHE-METRICS ===
 
   /**

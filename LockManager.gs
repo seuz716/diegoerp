@@ -215,9 +215,10 @@ const LOCK_MANAGER = {
     try {
       const ss = getActiveSpreadsheet();
       const COL_TER = CARTERA_CONFIG.COLUMNS.TERCEROS;
-      const COL_CAR = CARTERA_CONFIG.COLUMNS.CARTERA;
+      const COL_PROD = CONFIG.COLUMNS.PRODUCTOS;
+      const COL_COM = COMPRAS_CONFIG.COLUMNS.COMPRAS;
       
-      // Only read ID columns (much faster than entire sheets)
+      // Terceros
       const tercerosSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.TERCEROS);
       if (tercerosSheet) {
         const lastRow = tercerosSheet.getLastRow();
@@ -230,11 +231,38 @@ const LOCK_MANAGER = {
         }
       }
       
+      // Cartera (id_tercero)
       const carteraSheet = ss.getSheetByName(CARTERA_CONFIG.SHEETS.CARTERA);
       if (carteraSheet) {
         const lastRow = carteraSheet.getLastRow();
         if (lastRow > 1) {
-          const ids = carteraSheet.getRange(2, COL_CAR.id_tercero, lastRow - 1, 1).getValues();
+          const ids = carteraSheet.getRange(2, COL_TER.id_tercero, lastRow - 1, 1).getValues();
+          ids.forEach(row => {
+            const id = String(row[0] || "").trim();
+            if (id) index.add(id);
+          });
+        }
+      }
+      
+      // Productos
+      const productosSheet = ss.getSheetByName(CONFIG.SHEETS.PRODUCTOS);
+      if (productosSheet) {
+        const lastRow = productosSheet.getLastRow();
+        if (lastRow > 1) {
+          const ids = productosSheet.getRange(2, COL_PROD.id, lastRow - 1, 1).getValues();
+          ids.forEach(row => {
+            const id = String(row[0] || "").trim();
+            if (id) index.add(id);
+          });
+        }
+      }
+      
+      // Compras (id)
+      const comprasSheet = ss.getSheetByName(COMPRAS_CONFIG.SHEETS.COMPRAS);
+      if (comprasSheet) {
+        const lastRow = comprasSheet.getLastRow();
+        if (lastRow > 1) {
+          const ids = comprasSheet.getRange(2, COL_COM.id, lastRow - 1, 1).getValues();
           ids.forEach(row => {
             const id = String(row[0] || "").trim();
             if (id) index.add(id);
@@ -350,7 +378,8 @@ const LOCK_MANAGER = {
 
   /**
    * Acquires a global script lock with retry and exponential backoff.
-   * Returns a dummy lock if already reentrant (lockDepth > 0).
+   * Supports reentrant calls - if lock already acquired by same execution,
+   * returns a dummy lock that won't actually release the underlying lock.
    * @param {number} [timeout=this.GLOBAL_TIMEOUT] - Timeout in ms for lock attempt.
    * @returns {{releaseLock: Function}} Lock handle with releaseLock method.
    * @throws {Error} If lock cannot be acquired after MAX_RETRIES.
