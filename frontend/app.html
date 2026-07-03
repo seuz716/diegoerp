@@ -367,16 +367,26 @@ App.formatearMoneda = function (centavos) {
 App.toCents = function (amount) {
   var num = Number(amount);
   if (isNaN(num) || num < 0) return 0;
-  if (num % 1 !== 0) {
-    console.warn('toCents: valor con decimales convertido: ' + amount + ' -> ' + Math.round(num * 100) + ' centavos. Evite usar decimales.');
-  }
-  if (num > 9007199254740991) { return 0; }
-  return Math.round(num * 100);
+  // Fix: Add EPSILON to avoid floating point precision issues (e.g., 1.005 * 100 = 100.4999...)
+  return Math.round(num * 100 + Number.EPSILON);
 };
 App.formatearFecha = function (dateObj) {
-  if (!dateObj) return '\u2014';
-  var d = dateObj instanceof Date ? dateObj : new Date(dateObj);
-  if (isNaN(d.getTime())) return '\u2014';
+  if (!dateObj) return '—';
+  var d;
+  if (dateObj instanceof Date) {
+    d = dateObj;
+  } else if (typeof dateObj === 'string') {
+    // Parse YYYY-MM-DD string as local date to avoid timezone shift
+    var parts = dateObj.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (parts) {
+      d = new Date(parts[1], parseInt(parts[2], 10) - 1, parseInt(parts[3], 10));
+    } else {
+      d = new Date(dateObj);
+    }
+  } else {
+    d = new Date(dateObj);
+  }
+  if (isNaN(d.getTime())) return '—';
   var meses = ['ene.', 'feb.', 'mar.', 'abr.', 'may.', 'jun.', 'jul.', 'ago.', 'sep.', 'oct.', 'nov.', 'dic.'];
   return d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
 };
@@ -497,7 +507,7 @@ function escapeAttr(str) {
 }
 function safeInnerHTML(el, html) {
   if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-    el.innerHTML = DOMPurify.sanitize(html, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo', 'data-saldo', 'id']} );
+    el.innerHTML = DOMPurify.sanitize(html, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo', 'data-saldo', 'id', /^data-.*/]} );
   } else {
     console.error('[SECURITY] DOMPurify no disponible - se omite innerHTML para prevenir XSS');
   }
@@ -514,7 +524,13 @@ function showError(msg, type) {
     server: 'Contacte soporte si persiste (Ref: ' + Date.now() + ')'
   };
   if (banner) {
-    banner.innerHTML = '<span class="error-icon">' + icons[type] + '</span>' + msg + '<small>' + actions[type] + '</small>';
+    banner.innerHTML = '<span class="error-icon">' + icons[type] + '</span>';
+    var msgSpan = document.createElement('span');
+    msgSpan.textContent = msg;
+    banner.appendChild(msgSpan);
+    var smallEl = document.createElement('small');
+    smallEl.textContent = actions[type];
+    banner.appendChild(smallEl);
     banner.classList.add('show', 'type-' + type);
   } else {
     showToast(msg, type);
@@ -531,10 +547,17 @@ function showToast(msg, type, duration) {
   var container = document.getElementById('toast-container');
   var el = document.createElement('div');
   el.className = 'toast ' + (type || 'server');
-  el.innerHTML = '<span>' + msg + '</span><button class="toast-close" aria-label="Cerrar">×</button>';
+  var span = document.createElement('span');
+  span.textContent = msg;
+  el.appendChild(span);
+  var btn = document.createElement('button');
+  btn.className = 'toast-close';
+  btn.setAttribute('aria-label', 'Cerrar');
+  btn.textContent = '×';
+  el.appendChild(btn);
   if (type === 'error' || type === 'server') el.setAttribute('role', 'alert');
   container.appendChild(el);
-  el.querySelector('.toast-close').addEventListener('click', function() {
+  btn.addEventListener('click', function() {
     el.style.animation = 'toast-out .3s ease forwards';
     setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
   });
@@ -550,20 +573,16 @@ function showErrorCode(code, customMsg) {
   var action = mapped.action || '';
   showToast(icon + ' ' + msg + (action ? '<br><small>' + action + '</small>' : ''), mapped.cssClass || 'server', 8000);
 }
-// Soft refresh: re-fetches a single record after optimistic lock conflict
+// Soft refresh: invalidates cache after optimistic lock conflict
 App._softRefresh = function (recordId, conflictKey) {
   if (!recordId) return;
-  var userData = App._conflictBuffer.get(conflictKey);
-  App.api.getCartera(null, null, 1, 0).then(function (res) {
-    if (res && res.items) {
-      for (var i = 0; i < res.items.length; i++) {
-        if (res.items[i].id === recordId || res.items[i].rowIndex === recordId) {
-          App.data.invalidate('cartera');
-          break;
-        }
-      }
-    }
-  }).catch(function () {});
+  // Invalidate entire cartera cache - requires re-render of current view
+  // The record may be on any page, so we can't reliably fetch just one page
+  App.data.invalidate('cartera');
+  // Trigger re-render of current view if needed
+  if (typeof window._rerenderCurrentView === 'function') {
+    window._rerenderCurrentView();
+  }
 };
 App.logError = function (message, context) {
   var tag = '[' + (context || 'App') + '] ' + (message || 'Error desconocido');
@@ -719,14 +738,23 @@ function showToastWithRetry(msg, type, retryFn, duration) {
   var container = document.getElementById('toast-container');
   var el = document.createElement('div');
   el.className = 'toast ' + (type || 'server');
-  el.innerHTML = '<span>' + msg + '</span><button class="toast-close" aria-label="Cerrar">×</button><button class="toast-retry" aria-label="Reintentar">↻</button>';
+  var span = document.createElement('span');
+  span.textContent = msg;
+  el.appendChild(span);
+  var retryBtn = document.createElement('button');
+  retryBtn.className = 'toast-retry';
+  retryBtn.setAttribute('aria-label', 'Reintentar');
+  retryBtn.textContent = '↻';
+  el.appendChild(retryBtn);
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'toast-close';
+  closeBtn.setAttribute('aria-label', 'Cerrar');
+  closeBtn.textContent = '×';
+  el.appendChild(closeBtn);
   if (type === 'error' || type === 'server') el.setAttribute('role', 'alert');
   container.appendChild(el);
   
   var retryClicked = false;
-  var retryBtn = el.querySelector('.toast-retry');
-  var closeBtn = el.querySelector('.toast-close');
-  
   retryBtn.addEventListener('click', function() {
     if (retryClicked) return;
     retryClicked = true;
