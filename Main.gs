@@ -57,8 +57,10 @@ function doGet(e) {
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
       '</head><body><h2>Error de configuración</h2>' +
       '<p>' + err.message + '</p>' +
-      '<p><strong>Solución:</strong> Visita esta URL con el parámetro ssid:</p>' +
-      '<code>https://script.google.com/macros/s/AKfycbzM7IMFbsWlzD3tmDgQtD6FytBpxEQupohTMylvH7I/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
+      '<p><strong>Solución 1:</strong> Visita esta URL con el parámetro ssid:</p>' +
+      '<code>https://script.google.com/macros/s/AKfycbxSRHmRySgqTSV27ByOeLabKHQm_urxGauFiLu8m0UU2NFZaQunaxJ6rKdvWjC22GM8/exec?ssid=1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc</code>' +
+      '<p><strong>Solución 2:</strong> Comparte el spreadsheet con el script:</p>' +
+      '<code>AKfycbxSRHmRySgqTSV27ByOeLabKHQm_urxGauFiLu8m0UU2NFZaQunaxJ6rKdvWjC22GM8@developer.gserviceaccount.com</code>' +
       '</body></html>'
     );
     return html;
