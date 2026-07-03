@@ -836,6 +836,18 @@ DAO.createCartera(record);
       try {
         lockAcquired = LOCK_MANAGER.acquireResourceLock(idProv);
 
+        // Acquire locks per product (Bug #5 fix)
+        const productLocks = [];
+        const compraProdIds = [];
+        for (let j = 0; j < items.length; j++) {
+          const pid = _sanitizeId(items[j].id || items[j].productoId || items[j].id_producto || "");
+          if (pid && compraProdIds.indexOf(pid) === -1) compraProdIds.push(pid);
+        }
+        compraProdIds.sort();
+        for (let j = 0; j < compraProdIds.length; j++) {
+          productLocks.push(LOCK_MANAGER.acquireResourceLock(compraProdIds[j]));
+        }
+
         const tercero = DAO.getTerceroById(idProv);
         if (!tercero) { LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: "PROVEEDOR_NO_EXISTE" }, "ERROR"); return _error("Proveedor " + idProv + " no existe."); }
         const tipoTercero = (tercero.tipo || "").toUpperCase();
@@ -934,10 +946,15 @@ DAO.createCartera(record);
               // Inline productos are created with stock 0, so we set to cant
               // Get the new row (last row)
               const newRowIdx = getSheet(CONFIG.SHEETS.PRODUCTOS).getLastRow();
-              prodIndex[prodIdCreado] = newRowIdx - 2;
+              const newProdIdx = newRowIdx - 2;
+              prodIndex[prodIdCreado] = newProdIdx;
+              prodData[newProdIdx] = prodData[newProdIdx] || [];
+              prodData[newProdIdx][C.stock] = cant;
+              prodData[newProdIdx][C.version] = 1;
               
               stockUpdates[prodIdCreado] = { 
                 stockAnterior: 0, stockNuevo: cant, rowIndex: newRowIdx,
+                prodIdx: newProdIdx,
                 kardexId: "KDX" + Date.now() + "_" + prodIdCreado + "_" + j,
                 costoUnitario: pUnit,
               };
@@ -949,24 +966,17 @@ DAO.createCartera(record);
           }
         }
 
-        // Write stock and version columns
+        // Write stock and version columns (row-by-row, no consecutive-range assumption)
         const rowNums = Object.values(stockUpdates).map(u => u.rowIndex).sort((a, b) => a - b);
         if (rowNums.length > 0) {
-          const batchData = [];
+          tx.snapshotProductoRows(rowNums);
           for (const r of rowNums) {
             const update = Object.values(stockUpdates).find(u => u.rowIndex === r);
             const prodIdx = update.prodIdx;
-            if (prodIdx !== undefined) {
-              batchData.push([prodData[prodIdx][C.stock], prodData[prodIdx][C.version]]);
-            }
+            if (prodIdx === undefined) continue;
+            prodSheet.getRange(r, C.stock + 1, 1, 1).setValue(prodData[prodIdx][C.stock]);
+            prodSheet.getRange(r, C.version + 1, 1, 1).setValue(prodData[prodIdx][C.version]);
           }
-          
-          prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(
-            batchData.map(row => [row[0]])
-          );
-          prodSheet.getRange(rowNums[0], C.version + 1, batchData.length, 1).setValues(
-            batchData.map(row => [row[1]])
-          );
         }
 
         // Batch write kardex entries
@@ -1007,6 +1017,9 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
         throw e;
       } finally {
         if (lockAcquired) lockAcquired.releaseLock();
+        for (let j = (productLocks || []).length - 1; j >= 0; j--) {
+          if (productLocks[j]) productLocks[j].releaseLock();
+        }
       }
     };
 
@@ -1384,6 +1397,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         // Verificar stock disponible y reducir (in-memory)
         let subtotalAcumulado = 0;
         const changedRows = {};
+        const kardexEntries = [];
 
         for (let j = 0; j < items.length; j++) {
             const item = items[j];
@@ -1409,11 +1423,11 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             prodData[p][C.version] = currentVersion + 1; // Optimistic locking version increment
            changedRows[p + 2] = true;
 
-          // Registrar salida en kardex
+          // Defer kardex until after optimistic lock validation (Bug #2 fix)
             const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
             const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
             const costBase = _parseMoneda(prodData[p][C.precio_compra], 0);
-          DAO_COMPRAS.crearMovimientoKardex({
+          kardexEntries.push({
             id: kardexId,
             fecha: new Date(),
             id_producto: prodId,
@@ -1455,23 +1469,24 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           }
         }
 
-        // Batch write all stock changes at once with version (optimistic locking)
+        // Begin transaction covering stock, kardex, and cartera (Bug #3 fix)
+        tx.begin();
+
+        // Write stock and version row-by-row (Bug #1 fix: non-contiguous rows)
          const rowNums = Object.keys(changedRows).map(Number).sort((a, b) => a - b);
          if (rowNums.length > 0) {
-           const batchData = [];
+           tx.snapshotProductoRows(rowNums);
            for (const r of rowNums) {
-             const idx = r - 2; // Convert row index to prodData index
-             // Write both stock and version columns
-             batchData.push([prodData[idx][C.stock], prodData[idx][C.version]]);
+             const idx = r - 2;
+             prodSheet.getRange(r, C.stock + 1, 1, 1).setValue(prodData[idx][C.stock]);
+             prodSheet.getRange(r, C.version + 1, 1, 1).setValue(prodData[idx][C.version]);
            }
-           // Write to columns stock (2) and version (8) - need separate ranges for non-contiguous
-           prodSheet.getRange(rowNums[0], C.stock + 1, batchData.length, 1).setValues(
-             batchData.map(row => [row[0]])
-           );
-           prodSheet.getRange(rowNums[0], C.version + 1, batchData.length, 1).setValues(
-             batchData.map(row => [row[1]])
-           );
          }
+
+        // Write deferred kardex entries (Bug #2 fix: after opt-lock validation)
+        if (kardexEntries.length > 0) {
+          DAO_COMPRAS.crearMovimientosKardexBatch(kardexEntries);
+        }
 
         // Crear registro de venta en cartera
         const idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
@@ -1488,9 +1503,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           vencida_timestamp: ""
         };
 
-        tx.begin();
         DAO.saveCartera(carteraRecord);
-        tx.commit();
 
         CACHE.invalidateCartera();
 
@@ -1544,6 +1557,8 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             usuario
           );
         }
+
+        tx.commit();
 
         LOG_ENGINE.logEvent("CREATE_VENTA", "VENTAS", idVenta,
           {}, { cliente: idCliente, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: corrId });

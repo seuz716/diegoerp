@@ -129,28 +129,25 @@ const LIBRO_DIARIO = {
   },
 
   _registrarMovimiento(fecha, tipo, id, tercero, monto, usuario, descripcion) {
-    // === INICIO FIX RACE-CONDITION ===
-    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+    const lock = LOCK_MANAGER.acquireResourceLock(id || tipo);
     if (!lock) {
-      Logger.log("ERROR LIBRO_DIARIO: No se pudo adquirir lock global");
+      Logger.log("ERROR LIBRO_DIARIO: No se pudo adquirir lock");
       return { success: false, error: "No se pudo adquirir lock para escritura en libro diario" };
     }
     try {
-    // === FIN FIX RACE-CONDITION ===
       const sheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
-      const COL = CONFIG.COLUMNS.LIBRO_DIARIO;
       const montoLimpio = _parseMoneda(monto, 0);
       const fechaLimpia = _safeDate(fecha) || _today();
-      const idLimpio = String(id || "").trim().slice(0, 50);
+      const idGenerado = String(id || "").trim().slice(0, 50) || ("ASIENTO_" + Date.now());
       const terceroLimpio = String(tercero || "").trim().toUpperCase();
       const usuarioLimpio = String(usuario || "SYSTEM").trim().slice(0, 100);
       const descripcionLimpia = String(descripcion || "").trim().slice(0, 200);
 
       const rowData = [
-        _sanitizeCell(idLimpio || ("ASIENTO_" + Date.now())),
+        _sanitizeCell(idGenerado),
         fechaLimpia,
         _sanitizeCell(tipo),
-        _sanitizeCell(idLimpio),
+        _sanitizeCell(idGenerado),
         _sanitizeCell(terceroLimpio),
         montoLimpio,
         _sanitizeCell(usuarioLimpio),
@@ -163,14 +160,12 @@ const LIBRO_DIARIO = {
       }
       sheet.getRange(sheet.getLastRow() + 1, 1, 1, rowData.length).setValues([rowData]);
 
-      return { success: true, id: idLimpio };
+      return { success: true, id: idGenerado };
     } catch (e) {
-      Logger.log("ERROR LIBRO_DIARIO: Error en operación");
+      Logger.log("ERROR LIBRO_DIARIO: " + e.toString());
       return { success: false, error: e.message };
     } finally {
-      // === INICIO FIX RACE-CONDITION ===
       if (lock) lock.releaseLock();
-      // === FIN RACE-CONDITION ===
     }
   },
 
@@ -262,10 +257,11 @@ const FLUJO_CAJA = {
    * @param {string} usuario - User who registered the movement.
    * @returns {{success: boolean, id?: string, error?: string}}
    */
-  registrarMovimiento(fecha, tipo, concepto, monto, ref, usuario) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+registrarMovimiento(fecha, tipo, concepto, monto, ref, usuario) {
+    const idMov = "CAJA_" + Date.now() + "_" + Utilities.getUuid().replace(/-/g, "").slice(0, 6);
+    const lock = LOCK_MANAGER.acquireResourceLock(idMov);
     if (!lock) {
-      Logger.log("ERROR FLUJO_CAJA: No se pudo adquirir lock global");
+      Logger.log("ERROR FLUJO_CAJA: No se pudo adquirir lock");
       return { success: false, error: "No se pudo adquirir lock para escritura en flujo de caja" };
     }
     try {
@@ -277,7 +273,6 @@ const FLUJO_CAJA = {
       const conceptoLimpio = String(concepto || "").trim().slice(0, 200);
       const refLimpia = String(ref || "").trim().slice(0, 100);
       const usuarioLimpio = String(usuario || "SYSTEM").trim().slice(0, 100);
-      const idMov = "CAJA_" + Date.now() + "_" + Utilities.getUuid().replace(/-/g, "").slice(0, 6);
 
       const rowData = [
         _sanitizeCell(idMov),
@@ -312,9 +307,14 @@ const FLUJO_CAJA = {
   getResumenDiario(dias) {
     try {
       const sheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
-      const data = sheet.getDataRange().getValues();
+      if (!sheet) return { entradas: 0, salidas: 0, neto: 0, saldo_actual: 0 };
+      
       const COL = CONFIG.COLUMNS.FLUJO_CAJA;
-
+      const lastRow = Math.max(sheet.getLastRow(), 1);
+      const MAX_ROWS = 10000;
+      const rowsToRead = Math.min(lastRow, MAX_ROWS);
+      const data = rowsToRead > 1 ? sheet.getRange(2, 1, rowsToRead - 1, Object.keys(COL).length).getValues() : [];
+      
       const hoy = _today();
       const limite = new Date(hoy.getTime() - (dias || 1) * 86400000);
 
