@@ -322,15 +322,17 @@ const secureValue = this._loadKey(keyName);
   },
 
   /**
-   * Checks whether an API key exists in ScriptProperties.
+   * Checks whether an API key exists and has a non-empty value.
+   * Checks both PROXY_SECRET_SERVICE and encrypted storage.
    * @param {string} keyName - Name/identifier for the key.
-   * @returns {boolean} true if the key exists.
+   * @returns {boolean} true if the key exists with a non-empty value.
    */
   hasApiKey(keyName) {
-    return !!(
-      PropertiesService.getScriptProperties().getProperty(this.STORE_PREFIX + keyName) ||
-      PropertiesService.getScriptProperties().getProperty("API_KEY_" + keyName)
-    );
+    const props = PropertiesService.getScriptProperties();
+    const stored = props.getProperty(this.STORE_PREFIX + keyName);
+    const legacy = props.getProperty("API_KEY_" + keyName);
+    const hasValue = (stored && stored.trim().length > 0) || (legacy && legacy.trim().length > 0);
+    return !!hasValue;
   },
 
   _getCurrentUser() {
