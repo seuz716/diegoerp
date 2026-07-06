@@ -120,7 +120,7 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-Test Suite (runAllRegressionTests): 122 tests
+Test Suite (runAllRegressionTests): 125 tests
     - AuthService: 3 tests (auth, whitelist, unknown action)
     - LockManager: 2 tests (cleanup, index)
     - CacheService: 6 tests (circuit, health, consistency, reset)
@@ -134,6 +134,7 @@ Test Suite (runAllRegressionTests): 122 tests
     - Inventory: 8 tests (KARDEX integrity, trazabilidad, stock consistency)
     - Purchases: 5 tests (COMP-01 to COMP-05)
     - Sales -> Kardex REAL VALIDATION: 5 tests (VTA-01 a VTA-05 con ejecución real)
+    - Tercero Tipo Validation: 3 tests (TERC-01 a TERC-03) - compra no-proveedor rechazada, vinculación exitosa, preferido único
 
 ### 🔒 Seguridad - Logging Sanitizado
 - ✅ AuthService logging: removed keyName/secretName from console.log output
@@ -182,6 +183,14 @@ Test Suite (runAllRegressionTests): 122 tests
 | toggleActivo() | App.api.toggleActivoProducto() | DAO_PRODUCTOS.toggleActivo() | ✅ | Cambia estado ACTIVO/INACTIVO |
 | (No UI directa) | getKardexProducto(id, limit) | DOMAIN.getKardexProducto(id, limit) | ✅ CORRECTO | Historial movimientos inventario por producto específico |
 | (No UI directa) | getKardex(limit) | DOMAIN.getKardex(limit) | ✅ CORRECTO | Kardex global: movimientos todos productos últimos 30 día |
+
+## MATRIZ DE CORRELACIÓN - PROVEEDORES (Sección 7b)
+
+| Función Frontend | Backend Call | Función Backend | Estado | Observaciones |
+|-----------------|--------------|-----------------|--------|---------------|
+| (pendiente wrapper) | App.api.getTercerosPorTipo(tipo) | DAO.getTercerosPorTipo(tipo) | ✅ | Filtra CLIENTE/PROVEEDOR/AMBOS |
+| (pendiente wrapper) | App.api.vincularProductoProveedor(idProducto, idProveedor, precio, esPreferido) | DOMAIN.vincularProductoProveedor() | ✅ | Vincula producto a proveedor con lock |
+| (pendiente wrapper) | App.api.getProveedoresDeProducto(idProducto) | DAO.getProveedoresDeProducto() | ✅ | Obtiene proveedores de un producto |
 
 ## MATRIZ DE CORRELACIÓN - DASHBOARD (Sección 8)
 

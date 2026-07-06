@@ -2308,6 +2308,115 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     }
   });
 
+  // ===== TERCERO-TIPO VALIDATION TESTS =====
+
+  _test('TERC-01: Compra a tercero no-proveedor rechazada', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var prodId = 'TEST-TERC-01-' + sufijo;
+      var cliId = 'CLI-TERC-01-' + sufijo;
+
+      // Crear producto
+      var prodRes = DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Test TERC-01', stock: 10, precio_compra: 1000, precio_venta: 2000 });
+      if (!prodRes || prodRes.success !== true) return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'nulo');
+
+      // Crear cliente puro (solo CLIENTE)
+      var cliRes = saveTercero({ id: cliId, nombre: 'Cliente Puro TERC-01', tipo: 'CLIENTE', limite_credito: 100000 });
+      if (!cliRes || cliRes.success !== true) return 'Crear cliente falló: ' + (cliRes ? cliRes.error : 'nulo');
+
+      // Intentar registrar compra con cliente (debe rechazar)
+      var compraRes = registrarCompra(cliId, [{ id: prodId, cantidad: 1, precio_unitario: 1000 }], 1000, null, 'test-compra-cli-puro-' + ts);
+
+      if (compraRes.success) return 'Compra a cliente puro no fue rechazada';
+
+      if (!compraRes.error) return 'Error sin mensaje: ' + JSON.stringify(compraRes);
+      if (compraRes.error.indexOf('no es un proveedor') === -1) {
+        return 'Error no menciona tipo de tercero: ' + compraRes.error;
+      }
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('TERC-02: Vinculación producto-proveedor exitosa', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var prodId = 'TEST-VIN-01-' + sufijo;
+      var provId = 'PROV-VIN-01-' + sufijo;
+
+      // Crear producto
+      var prodRes = DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Test VIN-01', stock: 10, precio_compra: 1000, precio_venta: 2000 });
+      if (!prodRes || prodRes.success !== true) return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'nulo');
+
+      // Crear proveedor
+      var provRes = saveTercero({ id: provId, nombre: 'Proveedor VIN-01', tipo: 'PROVEEDOR', limite_credito: 0 });
+      if (!provRes || provRes.success !== true) return 'Crear proveedor falló: ' + (provRes ? provRes.error : 'nulo');
+
+      // Vincular producto a proveedor
+      var vinRes = DOMAIN.vincularProductoProveedor(prodId, provId, 1500, false, 'corr_vin_01_' + ts);
+
+      if (!vinRes.success) return 'Vinculación falló: ' + vinRes.message;
+
+      // Verificar que se guardó en la tabla PRODUCTO_PROVEEDOR
+      if (!vinRes.id || vinRes.id !== prodId) return 'No retornó ID del producto vinculado';
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('TERC-03: Doble vinculación preferida desmarca la anterior', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var prodId = 'TEST-VIN-02-' + sufijo;
+      var prov1Id = 'PROV-VIN-02-A-' + sufijo;
+      var prov2Id = 'PROV-VIN-02-B-' + sufijo;
+
+      // Crear producto
+      var prodRes = DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Test VIN-02', stock: 10, precio_compra: 1000, precio_venta: 2000 });
+      if (!prodRes || prodRes.success !== true) return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'nulo');
+
+      // Crear dos proveedores
+      var prov1Res = saveTercero({ id: prov1Id, nombre: 'Proveedor VIN-02-A', tipo: 'PROVEEDOR', limite_credito: 0 });
+      if (!prov1Res || prov1Res.success !== true) return 'Crear proveedor 1 falló: ' + (prov1Res ? prov1Res.error : 'nulo');
+
+      var prov2Res = saveTercero({ id: prov2Id, nombre: 'Proveedor VIN-02-B', tipo: 'PROVEEDOR', limite_credito: 0 });
+      if (!prov2Res || prov2Res.success !== true) return 'Crear proveedor 2 falló: ' + (prov2Res ? prov2Res.error : 'nulo');
+
+      // Primera vinculación como preferida
+      var vin1 = DOMAIN.vincularProductoProveedor(prodId, prov1Id, 1000, true, 'corr_vin_02a_' + ts);
+      if (!vin1.success) return 'Primera vinculación falló: ' + vin1.message;
+
+      // Segunda vinculación como preferida (debe desmarcar la primera)
+      var vin2 = DOMAIN.vincularProductoProveedor(prodId, prov2Id, 2000, true, 'corr_vin_02b_' + ts);
+      if (!vin2.success) return 'Segunda vinculación falló: ' + vin2.message;
+
+      // Verificar que solo hay un preferido
+      var productosPorProv1 = DAO.getProductosPorProveedor(prov1Id);
+      var productosPorProv2 = DAO.getProductosPorProveedor(prov2Id);
+
+      // El proveedor 1 debe tener el producto pero con preferido=FALSE
+      var prodProv1 = productosPorProv1.find(function(p) { return p.id_producto === prodId; });
+      if (prodProv1 && prodProv1.es_preferido === true) {
+        return 'Proveedor 1 no fue desmarcado como preferido';
+      }
+
+      // El proveedor 2 debe tener el producto con preferido=TRUE
+      var prodProv2 = productosPorProv2.find(function(p) { return p.id_producto === prodId; });
+      if (!prodProv2) return 'Proveedor 2 no tiene el producto vinculado';
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

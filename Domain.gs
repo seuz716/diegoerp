@@ -551,8 +551,8 @@ if (resultado.isUpdate) {
 
     const MAX_RETRIES = 3;
 
-    const _executeAbonoTx = () => {
-      let lockAcquired = null;
+const _executeAbonoTx = () => {
+       let lockAcquired = null;
       const tx = _Transaction.create();
 
       try {
@@ -562,6 +562,14 @@ if (resultado.isUpdate) {
         if (!tercero) {
           LOG_ENGINE.logEvent("ERROR_ABONO", "CARTERA", idTerceroLimpio, {}, { error: "TERCERO_NO_EXISTE" }, "ERROR");
           return _error(`Tercero ${idTerceroLimpio} no existe en la base de datos.`);
+        }
+
+        // Validación de tipo de tercero para CxP
+        if (tipoLimpio === CARTERA_CONFIG.TIPOS.CXP) {
+          const tipoTercero = (tercero.tipo || "").toUpperCase();
+          if (tipoTercero === "CLIENTE") {
+            return _error("Este tercero no está clasificado como proveedor.");
+          }
         }
 
         // NOTA: La validación de límite de crédito NO se hace aquí porque un abono
@@ -965,7 +973,130 @@ DAO.createCartera(record);
                 prodIdx: newProdIdx,
                 kardexId: "KDX" + Date.now() + "_" + prodIdCreado + "_" + j,
                 costoUnitario: pUnit,
-              };
+/**
+   * Links a product to a supplier with pricing and preferred status.
+   * Uses TransactionManager for atomicity. If esPreferido=true, demarks any
+   * previous preferred supplier for the same product.
+   * @param {string} idProducto - Product ID.
+   * @param {string} idProveedor - Supplier ID.
+   * @param {number} precio - Last purchase price.
+   * @param {boolean} esPreferido - Whether this is the preferred supplier.
+   * @param {string} [correlationId] - Optional idempotency key.
+   * @returns {{success: boolean, id: string, message?: string}} Result.
+   */
+  vincularProductoProveedor(idProducto, idProveedor, precio, esPreferido, correlationId) {
+    const corrId = correlationId || ('vinc_' + Date.now());
+    const idProdLimpio = _sanitizeId(idProducto);
+    const idProvLimpio = _sanitizeId(idProveedor);
+    if (!idProdLimpio) return _error("ID de producto inválido.");
+    if (!idProveedor || !idProveedor) return _error("ID de proveedor inválido.");
+    if (isNaN(precio) || precio < 0) return _error("Precio inválido.");
+
+    let lockAcquired = null;
+    const tx = _Transaction.create();
+
+    try {
+      // Validate product exists
+      const producto = DAO_PRODUCTOS.obtener(idProdLimpio);
+      if (!producto) return _error("Producto no encontrado: " + idProdLimpio);
+
+      // Validate supplier exists and is PROVEEDOR or AMBOS
+      const proveedor = DAO.getTerceroById(idProvLimpio);
+      if (!proveedor) return _error("Proveedor no encontrado: " + idProvLimpio);
+      const tipoTercero = (proveedor.tipo || "").toUpperCase();
+      if (tipoTercero !== "PROVEEDOR" && tipoTercero !== "AMBOS") {
+        return _error("El tercero " + idProvLimpio + " no está clasificado como proveedor.");
+      }
+
+      lockAcquired = LOCK_MANAGER.acquireResourceLock(idProdLimpio + "_supplier");
+
+      tx.begin();
+
+      // If setting as preferred, unmark any existing preferred supplier
+      if (esPreferido === true) {
+        const sheet = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+        const lastRow = sheet.getLastRow();
+        if (lastRow >= 2) {
+          const COL = PRODUCTO_PROVEEDOR_CONFIG.COLUMNS;
+          const data = sheet.getRange(2, 1, lastRow - 1, Math.max(...Object.values(COL)) + 1).getValues();
+          const toUpdate = [];
+          for (let i = 0; i < data.length; i++) {
+            if (String(data[i][COL.idProducto] || "").trim() === idProdLimpio &&
+                String(data[i][COL.esPreferido] || "").toUpperCase() === "TRUE") {
+              toUpdate.push(i + 2);
+            }
+          }
+          for (let i = 0; i < toUpdate.length; i++) {
+            sheet.getRange(toUpdate[i], COL.esPreferido + 1, 1, 1).setValue("FALSE");
+          }
+        }
+      }
+
+      // Insert new linkage record
+      const sheet = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+      const COL = PRODUCTO_PROVEEDOR_CONFIG.COLUMNS;
+      const rowData = [
+        _sanitizeCell(idProdLimpio),
+        _sanitizeCell(idProvLimpio),
+        _parseMoneda(precio, 0),
+        esPreferido === true ? "TRUE" : "FALSE",
+        new Date()
+      ];
+      sheet.appendRow(rowData);
+
+      tx.commit();
+
+      LOG_ENGINE.logEvent("LINK_PRODUCTO_PROVEEDOR", "PRODUCTO_PROVEEDOR", idProdLimpio,
+        {}, { proveedor: idProvLimpio, precio: precio, preferido: esPreferido }, "SUCCESS",
+        { correlationId: TransactionManager.getCorrelationId() || corrId });
+
+      return { success: true, id: idProdLimpio, message: "Producto vinculado correctamente." };
+
+    } catch (e) {
+      try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en vincularProductoProveedor: " + rbErr.message); }
+      return _error(e.message || "Error al vincular producto-proveedor.");
+    } finally {
+      if (lockAcquired) lockAcquired.releaseLock();
+    }
+  },
+
+  /**
+   * Validates that a tercero can receive a CxP payment.
+   * @param {string} idTercero - Tercero ID.
+   * @returns {boolean} True if tercero is PROVEEDOR or AMBOS.
+   * @throws {Error} If tercero is CLIENTE only.
+   */
+  validarTerceroParaCxP(idTercero) {
+    const idLimpio = _sanitizeId(idTercero);
+    if (!idLimpio) return false;
+    const tercero = DAO.getTerceroById(idLimpio);
+    if (!tercero) return false;
+    const tipoTercero = (tercero.tipo || "").toUpperCase();
+    if (tipoTercero === "CLIENTE") {
+      throw new Error("Este tercero no está clasificado como proveedor.");
+    }
+    return tipoTercero === "PROVEEDOR" || tipoTercero === "AMBOS";
+  },
+
+  /**
+   * Validates that a tercero can receive a CxC sale.
+   * @param {string} idTercero - Tercero ID.
+   * @returns {boolean} True if tercero is CLIENTE or AMBOS.
+   * @throws {Error} If tercero is PROVEEDOR only.
+   */
+  validarTerceroParaCxC(idTercero) {
+    const idLimpio = _sanitizeId(idTercero);
+    if (!idLimpio) return false;
+    const tercero = DAO.getTerceroById(idLimpio);
+    if (!tercero) return false;
+    const tipoTercero = (tercero.tipo || "").toUpperCase();
+    if (tipoTercero === "PROVEEDOR") {
+      throw new Error("Este tercero no está clasificado como cliente.");
+    }
+    return tipoTercero === "CLIENTE" || tipoTercero === "AMBOS";
+  },
+
+};
               
               LOG_ENGINE.logEvent("CREATE_PRODUCTO_INLINE", "PRODUCTOS", prodIdCreado,
                 {}, { nombre: _nombreItem, precio_compra: pCompra, origen: "COMPRA", id_compra: idCompra }, "SUCCESS",

@@ -1214,3 +1214,58 @@ function exportarFlujoCaja(fechaInicio, fechaFin) {
     return _safeError("exportarFlujoCaja", e, correlationId, Date.now() - startTime);
   }
 }
+
+/**
+ * API Pública: Obtener terceros filtrados por tipo
+ */
+function getTercerosPorTipo(tipo) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("getTercerosPorTipo");
+    AuthService.checkPermission("ver_terceros");
+    const tipoValidado = INPUT_VALIDATOR.validateTipo(tipo, ['CLIENTE', 'PROVEEDOR', 'AMBOS']);
+    if (!tipoValidado) return { success: true, items: [], correlationId, executionTimeMs: Date.now() - startTime };
+    const items = DAO.getTercerosPorTipo(tipoValidado);
+    return { success: true, items: items, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("getTercerosPorTipo", e, correlationId, Date.now() - startTime);
+  }
+}
+
+/**
+ * API Pública: Vincular producto a proveedor
+ */
+function vincularProductoProveedor(idProducto, idProveedor, precio, esPreferido) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("vincularProductoProveedor");
+    AuthService.checkPermission("revisar_inventario");
+    const idProdValidado = INPUT_VALIDATOR.validateId(idProducto);
+    const idProvValidado = INPUT_VALIDATOR.validateId(idProveedor);
+    const precioValidado = INPUT_VALIDATOR.parseMoneda(precio, 0);
+    const preferidoValidado = esPreferido === true || String(esPreferido).toUpperCase() === "TRUE";
+    const result = DOMAIN.vincularProductoProveedor(idProdValidado, idProvValidado, precioValidado, preferidoValidado, correlationId);
+    return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("vincularProductoProveedor", e, correlationId, Date.now() - startTime);
+  }
+}
+
+/**
+ * API Pública: Obtener proveedores de un producto
+ */
+function getProveedoresDeProducto(idProducto) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    AuthService.checkPermission("revisar_inventario");
+    const idValidado = INPUT_VALIDATOR.validateId(idProducto);
+    const proveedor = DAO.getProveedorPorProducto(idValidado);
+    const items = proveedor ? [proveedor] : [];
+    return { success: true, items: items, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("getProveedoresDeProducto", e, correlationId, Date.now() - startTime);
+  }
+}

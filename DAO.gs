@@ -592,5 +592,102 @@ const DAO = {
       throw e;
     }
   },
+
+  /**
+   * Retrieves terceros filtered by type (CLIENTE, PROVEEDOR, AMBOS).
+   * @param {string} tipo - Type to filter: CLIENTE, PROVEEDOR, or AMBOS.
+   * @returns {Array<Object>} Filtered list of terceros.
+   */
+  getTercerosPorTipo(tipo) {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const tipoUpper = String(tipo || "").toUpperCase();
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      const tipoTercero = String(data[i][COL.tipoTercero || COL.tipo] || "").toUpperCase();
+      if (tipoUpper === "AMBOS") {
+        if (tipoTercero === "PROVEEDOR" || tipoTercero === "CLIENTE") {
+          result.push({
+            id: String(data[i][COL.id] || "").trim(),
+            nombre: String(data[i][COL.nombre] || "").trim(),
+            telefono: String(data[i][COL.telefono] || "").trim(),
+            tipo: tipoTercero,
+            limite_credito: _parseMoneda(data[i][COL.limite_credito], 0),
+            activo: String(data[i][COL.activo] || "ACTIVO").trim()
+          });
+        }
+      } else if (tipoTercero === tipoUpper) {
+        result.push({
+          id: String(data[i][COL.id] || "").trim(),
+          nombre: String(data[i][COL.nombre] || "").trim(),
+          telefono: String(data[i][COL.telefono] || "").trim(),
+          tipo: tipoTercero,
+          limite_credito: _parseMoneda(data[i][COL.limite_credito], 0),
+          activo: String(data[i][COL.activo] || "ACTIVO").trim()
+        });
+      }
+    }
+    return result;
+  },
+
+  /**
+   * Retrieves preferred supplier for a product from PRODUCTO_PROVEEDOR sheet.
+   * @param {string} idProducto - Product ID.
+   * @returns {Object|null} Supplier object with id, nombre, precioUltimaCompra, esPreferido.
+   */
+  getProveedorPorProducto(idProducto) {
+    const idLimpio = _sanitizeId(idProducto);
+    if (!idLimpio) return null;
+    const sheet = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return null;
+    const COL = PRODUCTO_PROVEEDOR_CONFIG.COLUMNS;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][COL.idProducto] || "").trim() === idLimpio) {
+        return {
+          id: String(data[i][COL.idProveedor] || "").trim(),
+          id_producto: idLimpio,
+          precio_ultima_compra: _parseMoneda(data[i][COL.precioUltimaCompra], 0),
+          es_preferido: String(data[i][COL.esPreferido] || "").toUpperCase() === "TRUE"
+        };
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Retrieves all products for a supplier from PRODUCTO_PROVEEDOR sheet.
+   * @param {string} idProveedor - Supplier ID.
+   * @returns {Array<Object>} List of products with supplier pricing info.
+   */
+  getProductosPorProveedor(idProveedor) {
+    const idLimpio = _sanitizeId(idProveedor);
+    if (!idLimpio) return [];
+    const sheet = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const COL = PRODUCTO_PROVEEDOR_CONFIG.COLUMNS;
+    const numCols = Math.max(...Object.values(COL)) + 1;
+    const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][COL.idProveedor] || "").trim() === idLimpio) {
+        result.push({
+          id_producto: String(data[i][COL.idProducto] || "").trim(),
+          id_proveedor: idLimpio,
+          precio_ultima_compra: _parseMoneda(data[i][COL.precioUltimaCompra], 0),
+          es_preferido: String(data[i][COL.esPreferido] || "").toUpperCase() === "TRUE",
+          fecha_ultima_compra: data[i][COL.fechaUltimaCompra] || null
+        });
+      }
+    }
+    return result;
+  },
 };
 
