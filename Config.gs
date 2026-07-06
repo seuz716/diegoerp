@@ -11,13 +11,31 @@ const CARTERA_CONFIG = {
     AUDIT_LOG: "AUDIT_LOG",
   },
   COLUMNS: {
-    TERCEROS:    { id: 0, nombre: 1, telefono: 2, tipo: 3, limite_credito: 4, activo: 5 },
+    TERCEROS:    { id: 0, nombre: 1, telefono: 2, tipo: 3, tipoTercero: 3, limite_credito: 4, activo: 5 },
     CARTERA:     { id: 0, fecha: 1, id_tercero: 2, origen_id: 3, total: 4, saldo: 5, tipo: 6, estado: 7, fecha_vencimiento: 8, vencida_timestamp: 9, version: 10 },
     MOV_CARTERA: { id: 0, fecha: 1, id_cartera: 2, id_tercero: 3, valor: 4, tipo_mov: 5, referencia: 6 },
     AUDIT_LOG:   { id: 0, timestamp: 1, operacion: 2, tabla: 3, id_registro: 4, usuario: 5, datos_previos: 6, datos_nuevos: 7, estado: 8 },
   },
   ESTADOS: { ABIERTA: "ABIERTA", PARCIAL: "PARCIAL", CANCELADA: "CANCELADA", VENCIDA: "VENCIDA" },
   TIPOS:   { CXC: "CxC", CXP: "CxP" },
+};
+
+const TIPO_TERCERO = {
+  CLIENTE: "CLIENTE",
+  PROVEEDOR: "PROVEEDOR",
+  AMBOS: "AMBOS",
+  VALIDOS: ["CLIENTE", "PROVEEDOR", "AMBOS"],
+};
+
+const PRODUCTO_PROVEEDOR_CONFIG = {
+  SHEET: "Producto_Proveedor",
+  COLUMNS: {
+    idProducto: 0,
+    idProveedor: 1,
+    precioUltimaCompra: 2,
+    esPreferido: 3,
+    fechaUltimaCompra: 4,
+  },
 };
 
 const COMPRAS_CONFIG = {
@@ -66,7 +84,7 @@ const CONFIG = {
   STOCK_MINIMO: 5,
   MATERIALITY_THRESHOLD: 100000, // 1,000 COP en centavos
   SCHEMA_definitions: {
-    TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
+    TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", tipoTercero: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
     CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
     AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
@@ -77,6 +95,7 @@ const CONFIG = {
     KARDEX: { id: "ID", fecha: "Fecha", id_producto: "ID_Producto", tipo_mov: "Tipo_Mov", cantidad: "Cantidad", stock_anterior: "Stock_Anterior", stock_nuevo: "Stock_Nuevo", referencia: "Referencia", origen: "Origen", usuario: "Usuario" },
     LIBRO_DIARIO: { id: "ID", fecha: "Fecha", tipo: "Tipo", id_referencia: "ID_Referencia", tercero: "Tercero", monto: "Monto", usuario: "Usuario", descripcion: "Descripcion" },
     FLUJO_CAJA: { id: "ID", fecha: "Fecha", tipo: "Tipo", concepto: "Concepto", monto: "Monto", referencia: "Referencia", usuario: "Usuario" },
+    PRODUCTO_PROVEEDOR: { idProducto: "ID_Producto", idProveedor: "ID_Proveedor", precioUltimaCompra: "Precio_Ultima_Compra", esPreferido: "Es_Preferido", fechaUltimaCompra: "Fecha_Ultima_Compra" },
   },
 };
 
@@ -171,7 +190,7 @@ function getSheet(name) {
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
-   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja'];
+   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'];
    const sheets = {
      [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
      [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
@@ -184,6 +203,7 @@ CONFIG.reloadSchema = function() {
      [COMPRAS_CONFIG.SHEETS.KARDEX]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'KARDEX' },
      [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
      [CONFIG.SHEETS.FLUJO_CAJA]: { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
+     [PRODUCTO_PROVEEDOR_CONFIG.SHEET]: { conf: { PRODUCTO_PROVEEDOR: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS }, key: 'PRODUCTO_PROVEEDOR' },
    };
 
   const spreadsheet = getActiveSpreadsheet();
@@ -242,7 +262,7 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
-  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores'];
+  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Producto_Proveedor'];
   const allSheets = getActiveSpreadsheet().getSheets();
   const sheetMap = {};
   for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
@@ -278,6 +298,7 @@ const sheets = {
      'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
      'Libro_Diario': { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
      'Flujo_Caja': { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
+     'Producto_Proveedor': { conf: { PRODUCTO_PROVEEDOR: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS }, key: 'PRODUCTO_PROVEEDOR' },
    };
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {
@@ -308,7 +329,7 @@ const sheets = {
 };
 
 CONFIG.checkHeaderChanges = function() {
-   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja'];
+   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'];
    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   let changed = false;
 
@@ -527,7 +548,7 @@ var BACKUP_CONFIG = {
   FOLDER_NAME: "MicroERP_Backups",
   EXPORT_FOLDER_NAME: "MicroERP_Exportaciones",
   MAX_BACKUPS: 7,
-  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG"],
+  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG", "Producto_Proveedor"],
 };
 
 // ─ SESSION SERVICE (singleton) ─
@@ -623,4 +644,15 @@ function setupSistema() {
     sheets: requiredSheets.map(n => ({ name: n, exists: !!ss.getSheetByName(n) })),
     message: "Sistema configurado correctamente"
   };
+}
+
+/**
+ * Valida que un valor sea un tipo de tercero permitido (CLIENTE, PROVEEDOR, AMBOS).
+ * @param {string} value - Valor a validar
+ * @returns {string|null} - Valor normalizado en uppercase o null si es inválido
+ */
+function _validateTipoTercero(value) {
+  if (!value) return null;
+  const upper = String(value).toUpperCase().trim();
+  return TIPO_TERCERO.VALIDOS.indexOf(upper) !== -1 ? upper : null;
 }

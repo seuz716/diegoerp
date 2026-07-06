@@ -129,5 +129,31 @@ function testLoadOrder() {
 
 ---
 
+## Schema: Tablas y Campos (v2.6)
+
+### TERCEROS — campo tipoTercero
+| Campo | Columna sheet | Valores | Descripción |
+|-------|---------------|---------|-------------|
+| `tipo` / `tipoTercero` | `Tipo` (col 3) | `CLIENTE`, `PROVEEDOR`, `AMBOS` | Clasificación del tercero. Misma columna física, dos alias. |
+
+- Constante: `TIPO_TERCERO.CLIENTE`, `TIPO_TERCERO.PROVEEDOR`, `TIPO_TERCERO.AMBOS`, `TIPO_TERCERO.VALIDOS`
+- Validación: `SCHEMA_VALIDATOR.validateTipoTercero(value)` en `AuthService.gs`
+- Migración: `migrarClasificacionTerceros()` backfillea registros existentes infiriendo por historial de compras/cartera
+
+### PRODUCTO_PROVEEDOR — nueva tabla relacional
+| Columna | Header sheet | Tipo | Descripción |
+|---------|-------------|------|-------------|
+| `idProducto` | `ID_Producto` | string | FK → Productos.id |
+| `idProveedor` | `ID_Proveedor` | string | FK → Terceros.id (debe ser PROVEEDOR o AMBOS) |
+| `precioUltimaCompra` | `Precio_Ultima_Compra` | number (centavos) | Precio de la última compra |
+| `esPreferido` | `Es_Preferido` | boolean | TRUE si es proveedor preferido |
+| `fechaUltimaCompra` | `Fecha_Ultima_Compra` | Date | Fecha de la última compra |
+
+- Constante: `PRODUCTO_PROVEEDOR_CONFIG.SHEET`, `PRODUCTO_PROVEEDOR_CONFIG.COLUMNS`
+- La migración `migrarClasificacionTerceros()` crea la hoja si no existe
+- No modifica la estructura de PRODUCTOS ni COMPRAS
+
+---
+
 *Generated: 2026-06-28*
 *Part of: Coordinación de IAs - Contrato de archivos*

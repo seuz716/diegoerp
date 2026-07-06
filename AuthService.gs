@@ -61,6 +61,22 @@ const SCHEMA_VALIDATOR = {
     } catch (e) {
       return { valid: false, error: 'JSON parse error' };
     }
+  },
+
+  /**
+   * Valida que un valor sea un tipo de tercero permitido.
+   * @param {string} value - Valor del campo tipoTercero
+   * @returns {{valid: boolean, value?: string, error?: string}}
+   */
+  validateTipoTercero(value) {
+    if (!value || String(value).trim() === '') {
+      return { valid: false, error: 'Tipo de tercero es requerido' };
+    }
+    const normalized = String(value).toUpperCase().trim();
+    if (['CLIENTE', 'PROVEEDOR', 'AMBOS'].indexOf(normalized) === -1) {
+      return { valid: false, error: 'Tipo de tercero inválido: "' + value + '". Permitidos: CLIENTE, PROVEEDOR, AMBOS' };
+    }
+    return { valid: true, value: normalized };
   }
 };
 
