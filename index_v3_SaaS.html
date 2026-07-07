@@ -268,26 +268,32 @@
     </div>
   </section>
 
-  <!-- TERCEROS -->
-  <section id="view-terceros" class="view" aria-label="Terceros" aria-hidden="true">
-    <div class="page-header">
-      <h2 class="page-title">Terceros</h2>
-      <div style="display:flex;gap:var(--space-2)">
-        <input type="text" id="busqueda-terceros" class="form-field" placeholder="Buscar tercero..." style="width:200px;max-width:50vw;font-size:var(--text-sm);" aria-label="Buscar terceros por nombre o ID">
-        <button class="btn btn-accent btn-sm" id="btn-nuevo-tercero">+ Nuevo</button>
-      </div>
-    </div>
-    <div class="table-section">
-      <table class="data-table">
-        <thead>
-          <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite crédito</th><th></th></tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+<!-- TERCEROS -->
+   <section id="view-terceros" class="view" aria-label="Terceros" aria-hidden="true">
+     <div class="page-header">
+       <h2 class="page-title">Terceros</h2>
+       <div style="display:flex;gap:var(--space-2)">
+         <select id="filtro-tipo-tercero" class="form-field" style="width:auto;" aria-label="Filtrar por tipo de tercero">
+           <option value="">Todos los tipos</option>
+           <option value="CLIENTE">Cliente</option>
+           <option value="PROVEEDOR">Proveedor</option>
+           <option value="AMBOS">Ambos</option>
+         </select>
+         <input type="text" id="busqueda-terceros" class="form-field" placeholder="Buscar tercero..." style="width:200px;max-width:50vw;font-size:var(--text-sm);" aria-label="Buscar terceros por nombre o ID">
+         <button class="btn btn-accent btn-sm" id="btn-nuevo-tercero">+ Nuevo</button>
+       </div>
+     </div>
+     <div class="table-section">
+       <table class="data-table">
+         <thead>
+           <tr><th>ID</th><th>Nombre</th><th>Tipo</th><th>Límite crédito</th><th></th></tr>
+         </thead>
+         <tbody>
+           <tr><td colspan="5" style="text-align:center;padding:var(--space-8) var(--space-4);color:var(--muted);font-size:var(--text-sm);">Cargando terceros...</td></tr>
+         </tbody>
+       </table>
+     </div>
+   </section>
 
   <!-- VENTAS -->
   <section id="view-ventas" class="view" aria-label="Registro de ventas" aria-hidden="true">

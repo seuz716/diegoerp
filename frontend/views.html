@@ -722,67 +722,72 @@ function cargarTerceros() {
   var tbody = document.querySelector('#view-terceros .data-table tbody');
   var busquedaInput = document.getElementById('busqueda-terceros');
   var filtroBusqueda = busquedaInput ? busquedaInput.value.toLowerCase().trim() : '';
+  var filtroTipoEl = document.getElementById('filtro-tipo-tercero');
+  var filtroTipo = filtroTipoEl ? filtroTipoEl.value : '';
   _showSkeleton(tbody, 'table');
-  return App.api.getTerceros(null)
-    .then(function (data) {
-      tbody.innerHTML = '';
-      var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
-      if (!items || items.length === 0) {
-        var td = document.createElement('td');
-        td.colSpan = 5;
-        mostrarVacio(td, 'No se encontraron terceros');
-        var tr = document.createElement('tr');
-        tr.appendChild(td);
-        tbody.appendChild(tr);
+  var requestTipo = filtroTipo || null;
+  var promise = requestTipo 
+    ? App.api.getTercerosPorTipo(requestTipo) 
+    : App.api.getTerceros(null);
+  return promise.then(function (data) {
+    tbody.innerHTML = '';
+    var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
+    if (!items || items.length === 0) {
+      var td = document.createElement('td');
+      td.colSpan = 5;
+      mostrarVacio(td, 'No se encontraron terceros');
+      var tr = document.createElement('tr');
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      var datosFiltrados = filtroBusqueda ? items.filter(function(t) {
+        return (t.id && t.id.toLowerCase().includes(filtroBusqueda)) ||
+               (t.nombre && t.nombre.toLowerCase().includes(filtroBusqueda));
+      }) : items;
+      if (datosFiltrados.length === 0 && filtroBusqueda) {
+        var td2 = document.createElement('td');
+        td2.colSpan = 5;
+        mostrarVacio(td2, 'Sin coincidencias para "' + busquedaInput.value + '"');
+        var tr2 = document.createElement('tr');
+        tr2.appendChild(td2);
+        tbody.appendChild(tr2);
       } else {
-        var datosFiltrados = filtroBusqueda ? items.filter(function(t) {
-          return (t.id && t.id.toLowerCase().includes(filtroBusqueda)) ||
-                 (t.nombre && t.nombre.toLowerCase().includes(filtroBusqueda));
-        }) : items;
-        if (datosFiltrados.length === 0 && filtroBusqueda) {
-          var td2 = document.createElement('td');
-          td2.colSpan = 5;
-          mostrarVacio(td2, 'Sin coincidencias para "' + busquedaInput.value + '"');
-          var tr2 = document.createElement('tr');
-          tr2.appendChild(td2);
-          tbody.appendChild(tr2);
-        } else {
-          datosFiltrados.forEach(function (item) {
-            var tipoInfo = App.mapearTipoTercero(item.tipo);
-            var tr = document.createElement('tr');
-            var tdId = document.createElement('td');
-            tdId.className = 'td-mono td-muted';
-            tdId.textContent = item.id || '\u2014';
-            tr.appendChild(tdId);
-            var tdNombre = document.createElement('td');
-            tdNombre.style.fontWeight = '500';
-            tdNombre.textContent = item.nombre || '\u2014';
-            tr.appendChild(tdNombre);
-            var tdTipo = document.createElement('td');
-            var tipoSpan = document.createElement('span');
-            tipoSpan.className = 'badge ' + tipoInfo.cls;
-            tipoSpan.textContent = tipoInfo.label;
-            tdTipo.appendChild(tipoSpan);
-            tr.appendChild(tdTipo);
-            var tdLimite = document.createElement('td');
-            tdLimite.className = 'td-mono';
-            tdLimite.textContent = App.formatearMoneda(item.limite_credito);
-            tr.appendChild(tdLimite);
-            var tdAcciones = document.createElement('td');
-            tdAcciones.style.display = 'none';
-            tr.appendChild(tdAcciones);
-            tbody.appendChild(tr);
-          });
-        }
+        datosFiltrados.forEach(function (item) {
+          var tipoInfo = App.mapearTipoTercero(item.tipo);
+          var tr = document.createElement('tr');
+          var tdId = document.createElement('td');
+          tdId.className = 'td-mono td-muted';
+          tdId.textContent = item.id || '\u2014';
+          tr.appendChild(tdId);
+          var tdNombre = document.createElement('td');
+          tdNombre.style.fontWeight = '500';
+          tdNombre.textContent = item.nombre || '\u2014';
+          tr.appendChild(tdNombre);
+          var tdTipo = document.createElement('td');
+          var tipoSpan = document.createElement('span');
+          tipoSpan.className = 'badge ' + tipoInfo.cls;
+          tipoSpan.textContent = tipoInfo.label;
+          tdTipo.appendChild(tipoSpan);
+          tr.appendChild(tdTipo);
+          var tdLimite = document.createElement('td');
+          tdLimite.className = 'td-mono';
+          tdLimite.textContent = App.formatearMoneda(item.limite_credito);
+          tr.appendChild(tdLimite);
+          var tdAcciones = document.createElement('td');
+          tdAcciones.style.display = 'none';
+          tr.appendChild(tdAcciones);
+          tbody.appendChild(tr);
+        });
       }
-    })
-    .catch(function (err) {
-      mostrarError(tbody, err.message || err);
-      _showRetry(tbody, cargarTerceros);
-    })
-    .then(function () {
-      _cleanupView(view);
-    });
+    }
+  })
+  .catch(function (err) {
+    mostrarError(tbody, err.message || err);
+    _showRetry(tbody, cargarTerceros);
+  })
+  .then(function () {
+    _cleanupView(view);
+  });
 }
 function _announce(msg) {
   var el = document.getElementById('view-announcements');
@@ -1030,11 +1035,14 @@ function cargarVentasTerceros() {
   select.innerHTML = '<option value="">Seleccione un cliente...</option>';
   App.api.getTerceros(null).then(function (data) {
     var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
-    if (items.length) {
-      items.forEach(function (t) {
+    var clientes = items.filter(function(t) {
+      return t.tipo === 'CLIENTE' || t.tipo === 'AMBOS';
+    });
+    if (clientes.length) {
+      clientes.forEach(function (t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.nombre + ' (' + (t.tipo || 'â€”') + ')';
+        opt.textContent = t.nombre + ' (' + t.tipo + ')';
         select.appendChild(opt);
       });
     }
@@ -1467,12 +1475,15 @@ function abrirModalNuevaCompra() {
   delete totalField.dataset.userEdited;
   var sel = document.getElementById('compra-proveedor');
   sel.innerHTML = '<option value="">Seleccionar...</option>';
-  App.api.getTerceros('PROVEEDOR,AMBOS').then(function (res) {
+  App.api.getTerceros(null).then(function (res) {
     if (res && res.items) {
-      res.items.forEach(function (t) {
+      var proveedores = res.items.filter(function(t) {
+        return t.tipo === 'PROVEEDOR' || t.tipo === 'AMBOS';
+      });
+      proveedores.forEach(function (t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.id + ' â€” ' + (t.nombre || 'â€”');
+        opt.textContent = t.id + ' — ' + (t.nombre || '—');
         sel.appendChild(opt);
       });
     }

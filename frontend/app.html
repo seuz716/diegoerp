@@ -229,9 +229,14 @@ App.api = {
   getCacheHealth: function () { return callServer('getCacheHealth'); },
   getCacheMetrics: function () { return callServer('getCacheMetrics'); },
   verificarConfiguracionIA: function () { return callServer('verificarConfiguracionIA'); },
-  getVentasDelDia: function () { return callServer('getVentasDelDia'); },
-  getKardexProducto: function (idProducto, limit) { return callServer('getKardexProducto', idProducto, limit); },
-  getKardex: function (limit) { return callServer('getKardex', limit); },
+getVentasDelDia: function () { return callServer('getVentasDelDia'); },
+   getKardexProducto: function (idProducto, limit) { return callServer('getKardexProducto', idProducto, limit); },
+   getKardex: function (limit) { return callServer('getKardex', limit); },
+  getTercerosPorTipo: function (tipo) { return callServer('getTercerosPorTipo', tipo); },
+  vincularProductoProveedor: function (idProducto, idProveedor, precio, esPreferido) { return callServer('vincularProductoProveedor', idProducto, idProveedor, precio, esPreferido); },
+  getProveedoresDeProducto: function (idProducto) { return callServer('getProveedoresDeProducto', idProducto); },
+   getAnalisisProveedor: function (idProveedor) { return callServer('getAnalisisProveedor', idProveedor); },
+   getProductosMasCompradosPorProveedor: function (idProveedor, top) { return callServer('getProductosMasCompradosPorProveedor', idProveedor, top); },
 };
 App.adapters = {
   dashboard: function (raw) {

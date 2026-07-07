@@ -1269,3 +1269,40 @@ function getProveedoresDeProducto(idProducto) {
     return _safeError("getProveedoresDeProducto", e, correlationId, Date.now() - startTime);
   }
 }
+
+/**
+ * API Pública: Obtener análisis de proveedor (saldo, últimas compras, top productos)
+ */
+function getAnalisisProveedor(idProveedor) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("getAnalisisProveedor");
+    AuthService.checkPermission("ver_cartera");
+    const idValidado = INPUT_VALIDATOR.validateId(idProveedor);
+    const result = DOMAIN.getAnalisisProveedor(idValidado);
+    // Result tiene: { proveedor, saldo, movimientosRecientes, productosMasComprados }
+    return { success: true, ...result, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("getAnalisisProveedor", e, correlationId, Date.now() - startTime);
+  }
+}
+
+/**
+ * API Pública: Obtener productos más comprados por proveedor
+ */
+function getProductosMasCompradosPorProveedor(idProveedor, top) {
+  const startTime = Date.now();
+  const correlationId = generateCorrelationId();
+  try {
+    RATE_LIMITER.check("getProductosMasCompradosPorProveedor");
+    AuthService.checkPermission("ver_cartera");
+    const idValidado = INPUT_VALIDATOR.validateId(idProveedor);
+    const limitValidado = Math.max(1, Math.min(parseInt(top) || 5, 50));
+    // Retorna array directamente
+    const items = DOMAIN.getProductosMasCompradosPorProveedor(idValidado, limitValidado);
+    return { success: true, items: items, correlationId, executionTimeMs: Date.now() - startTime };
+  } catch (e) {
+    return _safeError("getProductosMasCompradosPorProveedor", e, correlationId, Date.now() - startTime);
+  }
+}

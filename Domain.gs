@@ -1032,17 +1032,33 @@ DAO.createCartera(record);
         }
       }
 
-      // Insert new linkage record
+      // Upsert: update existing linkage or insert new
       const sheet = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
       const COL = PRODUCTO_PROVEEDOR_CONFIG.COLUMNS;
-      const rowData = [
-        _sanitizeCell(idProdLimpio),
-        _sanitizeCell(idProvLimpio),
-        _parseMoneda(precio, 0),
-        esPreferido === true ? "TRUE" : "FALSE",
-        new Date()
-      ];
-      sheet.appendRow(rowData);
+      const lastRow = sheet.getLastRow();
+      let existingRow = null;
+      if (lastRow >= 2) {
+        const data = sheet.getRange(2, 1, lastRow - 1, Math.max(...Object.values(COL)) + 1).getValues();
+        for (let i = 0; i < data.length; i++) {
+          if (String(data[i][COL.idProducto] || "").trim() === idProdLimpio &&
+              String(data[i][COL.idProveedor] || "").trim() === idProvLimpio) {
+            existingRow = i + 2;
+            break;
+          }
+        }
+      }
+      if (existingRow) {
+        sheet.getRange(existingRow, COL.precioUltimaCompra + 1, 1, 3).setValues([[_parseMoneda(precio, 0), esPreferido === true ? "TRUE" : "FALSE", new Date()]]);
+      } else {
+        const rowData = [
+          _sanitizeCell(idProdLimpio),
+          _sanitizeCell(idProvLimpio),
+          _parseMoneda(precio, 0),
+          esPreferido === true ? "TRUE" : "FALSE",
+          new Date()
+        ];
+        sheet.appendRow(rowData);
+      }
 
       tx.commit();
 
@@ -1061,6 +1077,9 @@ DAO.createCartera(record);
   },
 
   /**
+
+    /**
+     * Validates that a tercero can receive a CxP payment.
    * Validates that a tercero can receive a CxP payment.
    * @param {string} idTercero - Tercero ID.
    * @returns {boolean} True if tercero is PROVEEDOR or AMBOS.
@@ -1893,6 +1912,104 @@ return rotacion;
     } finally {
       if (lockAcquired) lockAcquired.releaseLock();
     }
+  },
+
+  // =========================================================================
+  // AUD-PROV-002: Ranking de productos más comprados por proveedor
+  // =========================================================================
+
+  /**
+   * Retorna el top N de productos más comprados a un proveedor.
+   * @param {string} idProveedor - ID del proveedor.
+   * @param {number} [top=5] - Cantidad máxima de productos a retornar.
+   * @returns {Array<{idProducto: string, nombreProducto: string, cantidadTotal: number, ultimoPrecio: number}>}
+   */
+  getProductosMasCompradosPorProveedor(idProveedor, top) {
+    if (top === undefined || top === null) top = 5;
+    if (top <= 0) return [];
+    const idLimpio = _sanitizeId(idProveedor);
+    if (!idLimpio) return [];
+
+    const compras = DAO_COMPRAS.getComprasByProveedor(idLimpio);
+    if (compras.length === 0) return [];
+
+    const cantidades = {};
+    const ultimosPrecios = {};
+
+    for (var ci = 0; ci < compras.length; ci++) {
+      var detalles = DAO_COMPRAS.getDetallesByCompra(compras[ci].id);
+      for (var di = 0; di < detalles.length; di++) {
+        var prodId = detalles[di].id_producto;
+        if (!prodId) continue;
+        if (!cantidades[prodId]) {
+          cantidades[prodId] = 0;
+          ultimosPrecios[prodId] = detalles[di].precio_unitario;
+        }
+        cantidades[prodId] += detalles[di].cantidad;
+        ultimosPrecios[prodId] = detalles[di].precio_unitario;
+      }
+    }
+
+    var sorted = Object.keys(cantidades).sort(function(a, b) {
+      return cantidades[b] - cantidades[a];
+    });
+
+    if (sorted.length > top) sorted.length = top;
+
+    var result = [];
+    for (var ri = 0; ri < sorted.length; ri++) {
+      var pid = sorted[ri];
+      var prod = DAO_PRODUCTOS.obtener(pid);
+      result.push({
+        idProducto: pid,
+        nombreProducto: prod ? prod.nombre : "(producto eliminado)",
+        cantidadTotal: cantidades[pid],
+        ultimoPrecio: ultimosPrecios[pid]
+      });
+    }
+
+    return result;
+  },
+
+  // =========================================================================
+  // AUD-PROV-001: Análisis consolidado de proveedor
+  // =========================================================================
+
+  /**
+   * Retorna un análisis consolidado de un proveedor: datos generales, saldo,
+   * movimientos recientes y ranking de productos.
+   * @param {string} idProveedor - ID del proveedor.
+   * @returns {{proveedor: Object, saldo: number, movimientosRecientes: Array, productosMasComprados: Array}}
+   * @throws {Error} Si el proveedor no existe o no es PROVEEDOR/AMBOS.
+   */
+  getAnalisisProveedor(idProveedor) {
+    const idLimpio = _sanitizeId(idProveedor);
+    if (!idLimpio) throw new Error("ID de proveedor inválido.");
+
+    const proveedor = DAO.getTerceroById(idLimpio);
+    if (!proveedor) throw new Error("Proveedor no encontrado: " + idLimpio);
+
+    const tipo = (proveedor.tipo || "").toUpperCase();
+    if (tipo !== "PROVEEDOR" && tipo !== "AMBOS") {
+      throw new Error("El tercero " + idLimpio + " no está clasificado como proveedor (tipo: " + proveedor.tipo + ").");
+    }
+
+    var saldo = 0;
+    var compras = DAO_COMPRAS.getComprasByProveedor(idLimpio);
+    for (var ci = 0; ci < compras.length; ci++) {
+      saldo += compras[ci].saldo || 0;
+    }
+
+    var movimientos = compras.slice(-10).reverse();
+
+    var productosMasComprados = this.getProductosMasCompradosPorProveedor(idLimpio, 5);
+
+    return {
+      proveedor: proveedor,
+      saldo: saldo,
+      movimientosRecientes: movimientos,
+      productosMasComprados: productosMasComprados
+    };
   },
 
 };

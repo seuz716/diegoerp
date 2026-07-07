@@ -188,9 +188,13 @@ Test Suite (runAllRegressionTests): 125 tests
 
 | Función Frontend | Backend Call | Función Backend | Estado | Observaciones |
 |-----------------|--------------|-----------------|--------|---------------|
-| (pendiente wrapper) | App.api.getTercerosPorTipo(tipo) | DAO.getTercerosPorTipo(tipo) | ✅ | Filtra CLIENTE/PROVEEDOR/AMBOS |
-| (pendiente wrapper) | App.api.vincularProductoProveedor(idProducto, idProveedor, precio, esPreferido) | DOMAIN.vincularProductoProveedor() | ✅ | Vincula producto a proveedor con lock |
-| (pendiente wrapper) | App.api.getProveedoresDeProducto(idProducto) | DAO.getProveedoresDeProducto() | ✅ | Obtiene proveedores de un producto |
+| cargarTerceros() con filtro | App.api.getTercerosPorTipo(tipo) | DAO.getTercerosPorTipo(tipo) | ✅ Mapeada | Filtra CLIENTE/PROVEEDOR/AMBOS en UI con dropdown |
+| cargarVentasTerceros() | App.api.getTerceros(null) filtrado CLIENTE/AMBOS | getTerceros() | ✅ Mapeada | Selector de cliente filtra solo CLIENTE/AMBOS |
+| abrirModalNuevaCompra() | App.api.getTerceros(null) filtrado PROVEEDOR/AMBOS | getTerceros() | ✅ Verificado | Selector de proveedor filtra solo PROVEEDOR/AMBOS |
+| getProveedorPorProducto() | App.api.getProveedoresDeProducto(id) | DAO.getProveedorPorProducto() | ✅ Mapeada | Retorna array con proveedor(es) del producto |
+| getAnalisisProveedor() | App.api.getAnalisisProveedor(idProveedor) | DOMAIN.getAnalisisProveedor() | ✅ Mapeada | Saldo, últimas compras, top 5 productos |
+| getProductosMasCompradosPorProveedor() | App.api.getProductosMasCompradosPorProveedor(id, top) | DOMAIN.getProductosMasCompradosPorProveedor() | ✅ Mapeada | Ranking productos comprados a proveedor |
+| vincularProductoProveedor() | App.api.vincularProductoProveedor() | DOMAIN.vincularProductoProveedor() | ⚠️ Pendiente | No valida duplicados antes de appendRow |
 
 ## MATRIZ DE CORRELACIÓN - DASHBOARD (Sección 8)
 
@@ -346,3 +350,25 @@ Todas las dependencias existen en el proyecto:
 - ✅ **2.3**: _generarCSV refactorizado con lectura por bloques (_readSheetInBlocks, límite 50,000 filas)
 - ✅ **2.4**: Refrescos condicionales de caché en API (getDashboardCartera, getCacheMetrics, getCompras)
 - ✅ **2.5**: Lectura limitada de AUDIT_LOG en getVentasDelDia (máximo 5,000 filas)
+
+## Agente 3/4 - Auditoría final de proveedores
+
+| Hallazgo | Estado | Observaciones |
+|----------|--------|---------------|
+| AUD-PROV-001: getAnalisisProveedor | **CERRADO** | Domain.gs:1985 retorna {proveedor, saldo, movimientosRecientes, productosMasComprados} |
+| AUD-PROV-002: getProductosMasCompradosPorProveedor | **CERRADO** | Domain.gs:1927 retorna Array con productos por cantidad |
+| AUD-PROV-003: Wrappers faltantes | **CERRADO** | Todos los wrappers existen en app.html:235-239 |
+| AUD-PROV-004: getProveedorPorProducto retorna array | **CERRADO** | No retorna array — es diseño correcto, API.gs:1266 envuelve en array si hay resultado |
+| AUD-PROV-005: vincularProductoProveedor valida duplicados | **ABIERTO** | No valida duplicados (Domain.gs:1036-1045). Podría crear filas repetidas idProducto+idProveedor |
+
+## AGENTE 4 - FRONTEND WRAPPERS (completado)
+- ✅ App.api.getTercerosPorTipo(tipo) wrapper agregado
+- ✅ App.api.vincularProductoProveedor() wrapper agregado  
+- ✅ App.api.getProveedoresDeProducto() wrapper agregado
+- ✅ App.api.getAnalisisProveedor() wrapper agregado
+- ✅ App.api.getProductosMasCompradosPorProveedor() wrapper agregado
+- ✅ cargarTerceros() actualizado para usar getTercerosPorTipo con filtro tipo
+- ✅ cargarVentasTerceros() filtra CLIENTE/AMBOS para selector de clientes
+- ✅ abrirModalNuevaCompra() filtra PROVEEDOR/AMBOS para selector de proveedores
+- ✅ filtro-tipo-tercero dropdown agregado en UI
+- ✅ Event listener para filtro tipo en init.html

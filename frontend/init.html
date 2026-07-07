@@ -146,6 +146,10 @@ document.addEventListener('DOMContentLoaded', function () {
       busquedaTerceros._timer = setTimeout(cargarTerceros, getDebounceDelay());
     });
   }
+  var filtroTipoTercero = document.getElementById('filtro-tipo-tercero');
+  if (filtroTipoTercero) {
+    filtroTipoTercero.addEventListener('change', cargarTerceros);
+  }
   document.getElementById('btn-nueva-compra').addEventListener('click', abrirModalNuevaCompra);
   document.getElementById('btn-compra-cancelar').addEventListener('click', cerrarModalNuevaCompra);
   document.getElementById('btn-compra-guardar').addEventListener('click', guardarCompra);
