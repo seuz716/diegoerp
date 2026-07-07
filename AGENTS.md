@@ -382,7 +382,16 @@ Todas las dependencias existen en el proyecto:
 | Línea 250: _sanitizeCell objects | **CERRADO** | Config.gs:378-388 - agregado manejo de objetos |
 | Línea 276: LogService undefined | **CERRADO** | Config.gs:412 - reemplazado por Logger.log |
 | Línea 403: Hoisting BACKUP_CONFIG | **CERRADO** | Config.gs:10-15 - movido al inicio |
-| Línea 308: mapping Producto_Proveedor | **CERRADO** | Config.gs:308 - estructura corregida |
+| Línea 308: mapping Producto_Proveedor | **CERRADO** | Config.gs:308 - estructura corregida (dos fixes) |
 | Índices hardcodeados COLUMN | **ABIERTO** | Requiere arquitectura de schema dinámico |
 | Regex fecha insegura "99/99/9999" | **ABIERTO** | Validación permite fechas inválidas |
 | TransactionManager snapshot | **ABIERTO** | Lectura por filas individuales (performance) |
+
+| CFG-001 | CRÍTICA | 150 | SPREADSHEET_ID_FALLBACK hardcodeado | **ABIERTO** | Security warning agregado - requiere refactor a PropertiesService exclusivamente |
+| CFG-002 | CRÍTICA | 308 | Mapping Producto_Proveedor estructura anidada | **CERRADO** | Config.gs:211,308 - estructura corregida |
+| CFG-003 | MAYOR | 113-114, 143 | Variables globales mutables sin persistencia | **ABIERTO** | _SHEETS_CACHE no persiste entre ejecuciones |
+| CFG-004 | MAYOR | 245 | Mutación de const objects | **CERRADO** | Config.gs:243-245 - Object.assign crea nuevo objeto |
+| CFG-005 | MAYOR | 479 | AuthService no definido | **CERRADO** | Config.gs:480 - guard de existencia agregado |
+| CFG-006 | MAYOR | 537 | getDataRange() ineficiente | **ABIERTO** | Requiere lectura selectiva con offset |
+| CFG-007 | MENOR | 14-17, 29-32, 47-49 | Índices hardcodeados contradicen reloadSchema | **ABIERTO** | Column indexes fijos existen antes del sistema dinámico |
+| CFG-008 | MENOR | 232 | JSON.stringify frágil | **ABIERTO** | Comparación sin normalización de espacios |

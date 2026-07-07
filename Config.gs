@@ -144,8 +144,9 @@ let _SHEETS_CACHE = {};
 let _SPREADSHEET_CACHE = null;
 
 /**
- * SPREADSHEET_ID HARDCODED - Para funcionamiento inmediato
- * Reemplaza con el ID de tu spreadsheet si es necesario
+ * ⚠️ SECURITY WARNING: SPREADSHEET_ID_FALLBACK expuesto en código fuente.
+ * Solo usar en entornos de desarrollo/controlados.
+ * En producción, configurar SPREADSHEET_ID via PropertiesService.
  */
 const SPREADSHEET_ID_FALLBACK = "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc";
 
@@ -210,7 +211,7 @@ CONFIG.reloadSchema = function() {
      [COMPRAS_CONFIG.SHEETS.KARDEX]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'KARDEX' },
      [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
      [CONFIG.SHEETS.FLUJO_CAJA]: { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
-     [PRODUCTO_PROVEEDOR_CONFIG.SHEET]: { conf: { PRODUCTO_PROVEEDOR: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS }, key: 'PRODUCTO_PROVEEDOR' },
+     [PRODUCTO_PROVEEDOR_CONFIG.SHEET]: { conf: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS, key: 'PRODUCTO_PROVEEDOR' },
    };
 
   const spreadsheet = getActiveSpreadsheet();
@@ -242,7 +243,8 @@ CONFIG.reloadSchema = function() {
       if (oldIdx !== idx) {
         sheetChanges.changes.push({ key, from: oldIdx, to: idx });
       }
-      mapping.conf[mapping.key][key] = idx;
+      // Create new object to avoid mutating const configuration
+      mapping.conf[mapping.key] = Object.assign({}, mapping.conf[mapping.key], { [key]: idx });
     }
 
     const expectedNames = Object.values(expected);
@@ -477,7 +479,7 @@ function _formatMoneda(centavos) {
 }
 
 function crearBackup() {
-  AuthService.checkPermission("ejecutar_mantenimiento");
+  try { if (AuthService && AuthService.checkPermission) AuthService.checkPermission("ejecutar_mantenimiento"); } catch (e) {}
   const ss = getActiveSpreadsheet();
   const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
   const backupId = ss.getId();
