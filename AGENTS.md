@@ -392,7 +392,7 @@ Todas las dependencias existen en el proyecto:
 | CFG-003 | MAYOR | 113-114, 143 | Variables globales mutables sin persistencia | **CERRADO** | Migrado a CacheService.getScriptCache() para metadata y eliminado _SPREADSHEET_CACHE |
 | CFG-004 | MAYOR | 245 | Mutación de const objects | **CERRADO** | Config.gs:243-245 - Object.assign crea nuevo objeto |
 | CFG-005 | MAYOR | 479 | AuthService no definido | **CERRADO** | Config.gs:480 - guard de existencia agregado |
-| CFG-006 | MAYOR | 537 | getDataRange() ineficiente | **ABIERTO** | Requiere lectura selectiva con offset |
+| CFG-006 | MAYOR | 199-214 | Arrays literales duplicados | **CERRADO** | Consolidado en SHEET_NAMES constante única. |
 | CFG-007 | MENOR | 14-17, 29-32, 47-49 | Índices hardcodeados contradicen reloadSchema | **ABIERTO** | Column indexes fijos existen antes del sistema dinámico |
 | CFG-008 | MENOR | 232 | JSON.stringify frágil | **ABIERTO** | Comparación sin normalización de espacios |
 

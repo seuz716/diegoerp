@@ -141,6 +141,18 @@ _schemaVersion = _loadSchemaVersion();
 const SHEET_CACHE_TTL = 300;
 
 /**
+ * Nombres de hojas del spreadsheet - constante única de referencia.
+ * Evita duplicación y discrepancias entre funciones.
+ */
+const SHEET_NAMES = {
+  REQUIRED: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'],
+  OPTIONAL: ['Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
+  CRITICAL: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
+  ALL: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
+  get ALL_NAMES() { return this.ALL; }
+};
+
+/**
  * Obtiene el spreadsheet activo.
  * Usa PropertiesService para ID configurado, fallback a hoja vinculada.
  * Nota: No cacheamos el objeto SpreadsheetApp (evita stale references en GAS).
@@ -180,7 +192,6 @@ function getSheet(name) {
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
-   const optionalSheets = ['Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'];
    const sheets = {
      [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
      [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
@@ -202,7 +213,7 @@ CONFIG.reloadSchema = function() {
   for (const [sheetName, mapping] of Object.entries(sheets)) {
     const sheet = spreadsheet.getSheetByName(sheetName);
     if (!sheet) {
-      if (optionalSheets.includes(sheetName)) continue;
+      if (SHEET_NAMES.OPTIONAL.includes(sheetName)) continue;
       throw new Error(`Hoja obligatoria "${sheetName}" no encontrada.`);
     }
 
@@ -254,13 +265,12 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
-  const cache = CacheService.getScriptCache();
-  const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Producto_Proveedor'];
-  const allSheets = getActiveSpreadsheet().getSheets();
-  const sheetMap = {};
-  for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
+const cache = CacheService.getScriptCache();
+   const allSheets = getActiveSpreadsheet().getSheets();
+   const sheetMap = {};
+   for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
 
-  for (const name of criticalSheets) {
+   for (const name of SHEET_NAMES.CRITICAL) {
     const sheet = sheetMap[name];
     if (!sheet) continue;
     const metaRaw = cache.get(name + '_meta');
@@ -324,12 +334,11 @@ const sheets = {
 };
 
 CONFIG.checkHeaderChanges = function() {
-   const cache = CacheService.getScriptCache();
-   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'];
-   const spreadsheet = getActiveSpreadsheet();
-   let changed = false;
+    const cache = CacheService.getScriptCache();
+    const spreadsheet = getActiveSpreadsheet();
+    let changed = false;
 
-   for (const name of criticalSheets) {
+   for (const name of SHEET_NAMES.CRITICAL) {
      const sheet = spreadsheet.getSheetByName(name);
      if (!sheet) continue;
      const lastCol = sheet.getLastColumn();

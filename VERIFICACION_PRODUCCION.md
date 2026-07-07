@@ -173,7 +173,7 @@ Los 7 hallazgos críticos han sido corregidos o mitigados aceptablemente. El có
 | CFG-003 | CRÍTICA | ✅ REAL | Líneas 613-631: lógica de Productos embebida en setupSistema | La función `setupSistema()` tiene lógica específica para agregar columnas faltantes en Productos, mezclando setup con migración. |
 | CFG-004 | MAYOR | ✅ CORREGIDO | Líneas 113-114, 143-144: `let` para variables globales | `_SHEETS_CACHE` y `_SPREADSHEET_CACHE` eliminados. Schema metadata ahora usa CacheService.getScriptCache() con TTL. |
 | CFG-005 | FALSO POSITIVO | FALSO POSITIVO | Línea 6: `BACKUP_CONFIG` declarado con `const` (NO `var`) | El hallazgo es FALSO - está declarado correctamente con `const`. |
-| CFG-006 | MAYOR | ✅ REAL | Líneas 199-214, 297-309, 339-355: Arrays literales duplicados | Los nombres de hojas se repiten en 3+ lugares con valores ligeramente diferentes. Es un problema de mantenibilidad real. |
+| CFG-006 | MAYOR | ✅ CORREGIDO | Arrays duplicados en líneas 199-214, 297-309, 339-355 | Consolidado en SHEET_NAMES constante única (REQUIRED, OPTIONAL, CRITICAL, ALL). |
 | CFG-007 | MAYOR | ✅ REAL | Líneas 229, 319, 348: getRange() sin validar lastCol > 0 antes | La validación existe en líneas 227 (`if (lastCol === 0) continue;`), pero el patrón es repetitivo y podría optimizarse. |
 | CFG-008 | MAYOR | ✅ REAL | Línea 537: `getDataRange().getValues()` para snapshot | `TransactionManager._takeSnapshot()` lee TODO el rango. Para hojas grandes excederá límites de Apps Script (500k celdas, 6 min ejecución). |
 | CFG-009 | MAYOR | ✅ CORREGIDO | Líneas 173-195: getSheet() cachea sin invalidación | getSheet() ya no cachea objetos Sheet. Cache de metadata en CacheService con TTL=300s. |
@@ -190,7 +190,7 @@ Los 7 hallazgos críticos han sido corregidos o mitigados aceptablemente. El có
 | CFG-020 | MENOR | ✅ REAL | Líneas 459-465: `_safeDate` rechaza fechas < 2000 o > +5 años | La restricción es hardcodeada. Rompería datos históricos legítimos (ej: datos de 1999). |
 | CFG-021 | MENOR | ✅ REAL | Línea 476: `_formatMoneda` hardcodea "es-CO" | El locale está hardcodeado a Colombia. No es configurable para otros países. |
 | CFG-022 | MENOR | ✅ REAL | Líneas 116-128: `_loadSchemaVersion` y `_saveSchemaVersion` solo loggean errores | Los errores de persistencia no propagan fallos. El llamador no sabe si hubo error. |
-| CFG-023 | MENOR | ✅ REAL | Líneas 200, 272, 339: arrays `optionalSheets`/`criticalSheets` con valores diferentes | Los nombres de hojas no son consistentes entre las 3 funciones. Requiere actualización en múltiples lugares. |
+| CFG-023 | MENOR | ✅ CORREGIDO | Arrays `optionalSheets`/`criticalSheets` inconsistentes | Consolidado en SHEET_NAMES.REQUIRED, OPTIONAL, CRITICAL, ALL. |
 | CFG-024 | MENOR | ✅ REAL | Líneas 518-524: closures en begin() | Los métodos `commit` y `rollback` son inline functions que crean closures. Podrían ser métodos del prototipo. |
 | CFG-025 | MENOR | ✅ REAL | Línea 534: `_takeSnapshot` llama getSheet() sin validar existencia | Dentro de TransactionManager, getSheet() puede lanzar error si no existe la hoja. |
 | CFG-026 | MENOR | ✅ REAL | Líneas 613-631: setupSistema mezcla setup con migración | Lógica específica para Productos debería estar separada. |
