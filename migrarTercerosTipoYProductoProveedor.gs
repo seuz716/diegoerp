@@ -3,19 +3,59 @@
  * Idempotente — verifica flag MIGRACION_TERCEROS_V1_3_DONE en ScriptProperties.
  * Crea la hoja Producto_Proveedor y backfillea tipoTercero en registros existentes.
  */
+
+/**
+ * Función principal de migración - alias para compatibilidad con SchemaManager.
+ * Migración V1.3: Clasificación automática de terceros por historial.
+ */
+function migrarTercerosTipoYProductoProveedor() {
+  return migrarClasificacionTerceros();
+}
+
+/**
+ * Revierte la migración usando el snapshot guardado.
+ * @param {string} snapshotKey - Nombre de la hoja snapshot (default: SNAPSHOT_TERCEROS_V1)
+ */
+function revertirMigracionTerceros(snapshotKey) {
+  const MIGRATION_FLAG = 'MIGRACION_TERCEROS_V1_3_DONE';
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(MIGRATION_FLAG) !== 'true') {
+    // Try legacy flag for backwards compatibility
+    if (props.getProperty('MIGRACION_TERCEROS_V1_DONE') !== 'true') {
+      return { success: false, message: 'No hay migración para revertir.' };
+    }
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = snapshotKey || 'SNAPSHOT_TERCEROS_V1';
+  const snapshotSheet = ss.getSheetByName(sheetName);
+  if (!snapshotSheet || snapshotSheet.getLastRow() < 2) {
+    return { success: false, message: 'No se encontró snapshot ' + sheetName + '.' };
+  }
+
+  const tercerosSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+  const snapLastRow = snapshotSheet.getLastRow();
+  const snapLastCol = snapshotSheet.getLastColumn();
+  const snapData = snapshotSheet.getRange(1, 1, snapLastRow, snapLastCol).getValues();
+
+  tercerosSheet.clear();
+  const restoreRange = tercerosSheet.getRange(1, 1, snapData.length, snapData[0].length);
+  restoreRange.setValues(snapData);
+  restoreRange.setFontWeight('bold').setFontWeight(null);
+  tercerosSheet.getRange(1, 1, 1, snapLastCol).setFontWeight('bold');
+
+  props.deleteProperty(MIGRATION_FLAG);
+  props.deleteProperty('MIGRACION_TERCEROS_V1_DONE');
+  Logger.log('[MIGRACION] Reversión completada — datos de Terceros restaurados desde ' + sheetName);
+  return { success: true, message: 'Terceros restaurados desde snapshot. Flag de migración eliminado.' };
+}
+
 function migrarClasificacionTerceros() {
   const MIGRATION_FLAG = 'MIGRACION_TERCEROS_V1_3_DONE';
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty(MIGRATION_FLAG) === 'true') {
     Logger.log('[MIGRACION] Flag ya presente — migración omitida.');
     return { success: true, skipped: true, message: 'Migración ya ejecutada previamente.' };
-  }
-
-  // Compatibilidad: también verificar flag legacy
-  if (props.getProperty('MIGRACION_TERCEROS_V1_DONE') === 'true') {
-    props.setProperty(MIGRATION_FLAG, 'true');
-    Logger.log('[MIGRACION] Flag actualizado a V1.3');
-    return { success: true, skipped: true, message: 'Migración V1 ya ejecutada, flag actualizado.' };
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -154,6 +194,8 @@ function migrarClasificacionTerceros() {
 
 /**
  * Carga un Set con IDs de proveedores que aparecen en compras.
+ * @param {Spreadsheet} ss - Spreadsheet instance.
+ * @returns {Set<string>} Set of provider IDs.
  */
 function _loadProveedoresSet(ss) {
   const comprasSheet = ss.getSheetByName(COMPRAS_CONFIG.SHEETS.COMPRAS);
@@ -204,50 +246,4 @@ function _loadCarteraCxpSet(ss) {
     }
   }
   return set;
-}
-
-/**
- * Revierte la migración usando el snapshot guardado.
- * @param {string} snapshotKey - Nombre de la hoja snapshot (default: SNAPSHOT_TERCEROS_V1)
- */
-function revertirMigracionTerceros(snapshotKey) {
-  return revertirMigracionTercerosV1(snapshotKey);
-}
-
-/**
- * Revierte la migración V1 usando el snapshot guardado.
- * @param {string} snapshotKey - Nombre de la hoja snapshot (default: SNAPSHOT_TERCEROS_V1)
- */
-function revertirMigracionTercerosV1(snapshotKey) {
-  const MIGRATION_FLAG = 'MIGRACION_TERCEROS_V1_3_DONE';
-  const props = PropertiesService.getScriptProperties();
-  const hasNewFlag = props.getProperty(MIGRATION_FLAG) === 'true';
-  const hasLegacyFlag = props.getProperty('MIGRACION_TERCEROS_V1_DONE') === 'true';
-  
-  if (!hasNewFlag && !hasLegacyFlag) {
-    return { success: false, message: 'No hay migración para revertir.' };
-  }
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = snapshotKey || 'SNAPSHOT_TERCEROS_V1';
-  const snapshotSheet = ss.getSheetByName(sheetName);
-  if (!snapshotSheet || snapshotSheet.getLastRow() < 2) {
-    return { success: false, message: 'No se encontró snapshot ' + sheetName + '.' };
-  }
-
-  const tercerosSheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-  const snapLastRow = snapshotSheet.getLastRow();
-  const snapLastCol = snapshotSheet.getLastColumn();
-  const snapData = snapshotSheet.getRange(1, 1, snapLastRow, snapLastCol).getValues();
-
-  tercerosSheet.clear();
-  const restoreRange = tercerosSheet.getRange(1, 1, snapData.length, snapData[0].length);
-  restoreRange.setValues(snapData);
-  restoreRange.setFontWeight('bold').setFontWeight(null);
-  tercerosSheet.getRange(1, 1, 1, snapLastCol).setFontWeight('bold');
-
-  props.deleteProperty(MIGRATION_FLAG);
-  props.deleteProperty('MIGRACION_TERCEROS_V1_DONE');
-  Logger.log('[MIGRACION] Reversión completada — datos de Terceros restaurados desde ' + sheetName);
-  return { success: true, message: 'Terceros restaurados desde snapshot. Flag de migración eliminado.' };
 }

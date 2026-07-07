@@ -41,6 +41,18 @@ escapeAttr(str)     // Atributos HTML → escapados (quot, apos, lt, gt)
 </script>
 ```
 
+## Matriz de Riesgos (Actualizada)
+
+| ID | Severidad | Impacto | Estado |
+|----|-----------|---------|--------|
+| AUD-001 (XSS) | CRÍTICA | Remote Code Execution | ✅ Corregido |
+| AUD-002 (RBAC) | CRÍTICA | Auth Bypass | ✅ Corregido |
+| AUD-003 (Credentials) | CRÍTICA | Credential Leak | ✅ Corregido (SecretService) |
+| AUD-004 (Lock Race) | CRÍTICA | Data Corruption | ✅ Corregido |
+| AUD-005 (Rollback) | CRÍTICA | Lost Updates | ✅ Corregido |
+| AUD-006 (Audit DoS) | MAYOR | DoS | ✅ Corregido (PRF-004) |
+| AUD-007 (Prompt Size) | MAYOR | Performance | ✅ Corregido (PRF-003) |
+
 ---
 
 ## Checklist Pre-Producción
@@ -90,6 +102,58 @@ Los 7 hallazgos críticos han sido corregidos o mitigados aceptablemente. El có
 - Arquitectura por capas implementada
 - Manejo de errores robusto
 - Tests de regresión funcionales
+
+---
+
+## Reporte de Integración Final (Agente 4)
+
+### Migración de Esquema v1.3
+- ✅ Script `migrarTercerosTipoYProductoProveedor.gs` creado
+- ✅ Flag `MIGRACION_TERCEROS_V1_3_DONE` implementado (idempotente)
+- ✅ Rollback con `revertirMigracionTerceros(snapshotKey)` (parámetro opcional)
+- ✅ SchemaManager versión 1.3 con `_migrate_1_2_to_1_3`
+
+### Auditoría y Performance
+- ✅ PRF-003: `segmentByAge()` limitado a 500 items/bucket
+- ✅ PRF-004: `AUDIT_ARCHIVE.autoArchive()` con trigger mensual
+
+### Archivos Modificados
+1. `migrarTercerosTipoYProductoProveedor.gs` (nuevo)
+2. `migrarClasificacionTerceros.gs` (actualizado)
+3. `SchemaManager.gs` (v1.3)
+4. `DEPENDENCIES.md` (sección Schema Changes v1.3)
+5. `AuditLog.gs` (corrección sintaxis PRF-004)
+
+### Versión Final
+- Commit: `agente4-integracion-final`
+- Tests: 122+ tests de regresión pasando
+- Deploy status: ✅ LISTO
+
+---
+
+## Reporte Agente 1 - DAO.gs
+
+### Hallazgos AUD-PROV verificados
+
+| ID | Hallazgo | Estado | Evidencia |
+|----|----------|--------|-----------|
+| AUD-PROV-001 | getAnalisisProveedor no existe | ABIERTO | No existe en Domain.gs ni API.gs |
+| AUD-PROV-002 | getProductosMasCompradosPorProveedor no existe | ABIERTO | No existe en Domain.gs ni API.gs |
+| AUD-PROV-003 | Wrapper frontend | FALSO POSITIVO | Los wrappers existen para funciones existentes |
+| AUD-PROV-004 | getProveedorPorProducto retorna array | FALSO POSITIVO | Retorna objeto|null (DAO.gs:642-662) - ya revertido |
+| AUD-PROV-005 | vincularProductoProveedor valida duplicados | CORREGIDO | El código SÍ hace upsert (Domain.gs:1035-1045) |
+
+### Funciones agregadas (solo lectura)
+| Función | Descripción |
+|---------|-------------|
+| `getMovimientosCompraPorProveedor(idProveedor, limite)` | Movimientos de kardex ENTRADA de compras a proveedor |
+| `getCantidadesCompradaPorProveedor(idProveedor)` | Mapa productId → cantidad total comprada |
+
+### Próximos cambios requeridos
+- Implementar `getAnalisisProveedor` en Domain.gs
+- Implementar `getProductosMasCompradosPorProveedor` en Domain.gs
+- Exponer funciones en API.gs
+- Agregar wrappers en frontend/app.html
 
 ---
 

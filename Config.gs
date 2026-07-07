@@ -305,7 +305,7 @@ const sheets = {
      'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
      'Libro_Diario': { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
      'Flujo_Caja': { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
-     'Producto_Proveedor': { conf: { PRODUCTO_PROVEEDOR: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS }, key: 'PRODUCTO_PROVEEDOR' },
+     'Producto_Proveedor': { conf: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS, key: 'PRODUCTO_PROVEEDOR' },
    };
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {

@@ -689,5 +689,100 @@ const DAO = {
     }
     return result;
   },
+
+  /**
+   * Retrieves kardex movements for purchases from a specific provider.
+   * Solo lectura: devuelve datos crudos sin lógica de negocio.
+   * @param {string} idProveedor - Provider ID.
+   * @param {number} [limite=20] - Max results to return.
+   * @returns {Array<Object>} Kardex movements from purchases to this provider.
+   */
+  getMovimientosCompraPorProveedor(idProveedor, limite = 20) {
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const sheetCompras = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+    const lastRow = sheetKardex.getLastRow();
+    if (lastRow < 2) return [];
+
+    const KC = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const CC = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+    const numCols = Math.max(...Object.values(KC)) + 1;
+
+    // Build map of compras by id for efficient lookup
+    const comprasData = sheetCompras.getLastRow() > 1 
+      ? sheetCompras.getRange(2, 1, sheetCompras.getLastRow() - 1, Math.max(...Object.values(CC)) + 1).getValues()
+      : [];
+    const compraIndex = {};
+    for (let i = 0; i < comprasData.length; i++) {
+      compraIndex[String(comprasData[i][CC.id] || "").trim()] = String(comprasData[i][CC.id_proveedor] || "").trim();
+    }
+
+    const data = sheetKardex.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const resultados = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const idCompra = String(data[i][KC.referencia] || "").trim();
+      // Check if this kardex movement is linked to a compra from the provider
+      if (compraIndex[idCompra] === idProveedor && data[i][KC.tipo_mov] === "ENTRADA") {
+        resultados.push({
+          id: String(data[i][KC.id] || "").trim(),
+          fecha: data[i][KC.fecha],
+          id_producto: String(data[i][KC.id_producto] || "").trim(),
+          tipo_mov: String(data[i][KC.tipo_mov] || "").trim(),
+          cantidad: _parseMoneda(data[i][KC.cantidad], 0),
+          stock_anterior: _parseMoneda(data[i][KC.stock_anterior], 0),
+          stock_nuevo: _parseMoneda(data[i][KC.stock_nuevo], 0),
+          referencia: idCompra,
+          origen: String(data[i][KC.origen] || "").trim(),
+          usuario: String(data[i][KC.usuario] || "").trim(),
+          costo_unitario: _parseMoneda(data[i][KC.costo_unitario], 0),
+          precio_unitario: _parseMoneda(data[i][KC.precio_unitario], 0)
+        });
+      }
+      if (resultados.length >= limite) break;
+    }
+    return resultados;
+  },
+
+  /**
+   * Retrieves total quantities purchased by product for a specific provider.
+   * Solo lectura: suma cantidades sin lógica de negocio.
+   * @param {string} idProveedor - Provider ID.
+   * @returns {Object} Map of productId -> total cantidad comprada.
+   */
+  getCantidadesCompradaPorProveedor(idProveedor) {
+    const sheetKardex = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+    const sheetCompras = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+    const lastRow = sheetKardex.getLastRow();
+    if (lastRow < 2) return {};
+
+    const KC = COMPRAS_CONFIG.COLUMNS.KARDEX;
+    const CC = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+    const numCols = Math.max(...Object.values(KC)) + 1;
+
+    // Build map of compras by id for efficient lookup
+    const comprasData = sheetCompras.getLastRow() > 1 
+      ? sheetCompras.getRange(2, 1, sheetCompras.getLastRow() - 1, Math.max(...Object.values(CC)) + 1).getValues()
+      : [];
+    const compraIndex = {};
+    for (let i = 0; i < comprasData.length; i++) {
+      compraIndex[String(comprasData[i][CC.id] || "").trim()] = String(comprasData[i][CC.id_proveedor] || "").trim();
+    }
+
+    const data = sheetKardex.getRange(2, 1, lastRow - 1, numCols).getValues();
+    const cantidades = {};
+
+    for (let i = 0; i < data.length; i++) {
+      const idCompra = String(data[i][KC.referencia] || "").trim();
+      // Only count ENTRADA movements from compras of this provider
+      if (compraIndex[idCompra] === idProveedor && String(data[i][KC.tipo_mov] || "").trim() === "ENTRADA") {
+        const idProducto = String(data[i][KC.id_producto] || "").trim();
+        const cantidad = _parseMoneda(data[i][KC.cantidad], 0);
+        if (idProducto) {
+          cantidades[idProducto] = (cantidades[idProducto] || 0) + cantidad;
+        }
+      }
+    }
+    return cantidades;
+  }
 };
 

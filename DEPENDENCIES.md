@@ -129,6 +129,37 @@ function testLoadOrder() {
 
 ---
 
+## Schema Changes (v1.3)
+
+### Campo tipoTercero en TERCEROS
+Se agrega el campo `tipoTercero` (alias de `tipo`) para clasificar terceros según su actividad:
+- **CLIENTE**: Tercedores con cartera CxC (ventas) o sin historial (asignado por defecto)
+- **PROVEEDOR**: Terceros con compras o cartera CxP (pagos a proveedores)
+- **AMBOS**: Terceros que son cliente y proveedor simultáneamente
+
+### Tabla PRODUCTO_PROVEEDOR (nueva)
+Tabla relacional que vincula productos con sus proveedores preferidos:
+| Columna | Header sheet | Tipo | Descripción |
+|---------|-------------|------|-------------|
+| `idProducto` | `ID_Producto` | string | FK → Productos.id |
+| `idProveedor` | `ID_Proveedor` | string | FK → Terceros.id |
+| `precioUltimaCompra` | `Precio_Ultima_Compra` | number (centavos) | Precio de última compra |
+| `esPreferido` | `Es_Preferido` | boolean | TRUE si es proveedor preferido |
+| `fechaUltimaCompra` | `Fecha_Ultima_Compra` | Date | Fecha de última compra |
+
+### Script de migración: migrarTercerosTipoYProductoProveedor()
+Características:
+- **Idempotente**: Usa flag `MIGRACION_TERCEROS_V1_3_DONE` en PropertiesService
+- **Reversible**: Guarda snapshot en hoja `SNAPSHOT_TERCEROS_V1` antes de escribir; función `revertirMigracionTerceros(snapshotKey)` para rollback
+- **Clasificación automática**: Infiere tipo de tercero basado en:
+  - Con compras → PROVEEDOR
+  - Con cartera CxC → CLIENTE
+  - Con cartera CxP o ambas → AMBOS
+  - Sin actividad → CLIENTE (reportado en log para revisión manual)
+- **Auditoría**: Cada clasificación genera evento vía `LOG_ENGINE.logEvent()` con correlationId
+
+---
+
 ## Schema: Tablas y Campos (v2.6)
 
 ### TERCEROS — campo tipoTercero

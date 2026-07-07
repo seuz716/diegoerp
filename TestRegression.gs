@@ -2417,6 +2417,110 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     }
   });
 
+  // ===== AUD-PROV TESTS: Análisis y ranking de proveedor =====
+
+  _test('PROV-ANA-01: getAnalisisProveedor retorna datos consolidados', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var provId = 'TEST-PROV-ANA-' + sufijo;
+      var prodId = 'TEST-PROD-ANA-' + sufijo;
+
+      var provRes = saveTercero({ id: provId, nombre: 'Proveedor ANA-01', tipo: 'PROVEEDOR', limite_credito: 0 });
+      if (!provRes || provRes.success !== true) return 'Crear proveedor falló: ' + (provRes ? provRes.error : 'nulo');
+
+      var prodRes = DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Test PROD ANA-01', stock: 100, precio_compra: 500, precio_venta: 1000 });
+      if (!prodRes || prodRes.success !== true) return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'nulo');
+
+      var analisis = DOMAIN.getAnalisisProveedor(provId);
+
+      if (!analisis) return 'getAnalisisProveedor retornó nulo';
+      if (!analisis.proveedor) return 'Falta campo proveedor';
+      if (typeof analisis.saldo !== 'number') return 'Falta campo saldo numérico';
+      if (!Array.isArray(analisis.movimientosRecientes)) return 'Falta campo movimientosRecientes (array)';
+      if (!Array.isArray(analisis.productosMasComprados)) return 'Falta campo productosMasComprados (array)';
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('PROV-ANA-02: getAnalisisProveedor rechaza tercero no-proveedor', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var cliId = 'CLI-PROV-ANA-' + sufijo;
+
+      var cliRes = saveTercero({ id: cliId, nombre: 'Cliente ANA-02', tipo: 'CLIENTE', limite_credito: 100000 });
+      if (!cliRes || cliRes.success !== true) return 'Crear cliente falló: ' + (cliRes ? cliRes.error : 'nulo');
+
+      var threw = false;
+      try {
+        DOMAIN.getAnalisisProveedor(cliId);
+      } catch (e) {
+        if (e.message.indexOf('clasificado como proveedor') !== -1) threw = true;
+      }
+
+      if (!threw) return 'No lanzó error para tercero CLIENTE';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('PROV-ANA-03: getProductosMasCompradosPorProveedor ranking correcto', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var provId = 'TEST-PROV-RNK-' + sufijo;
+      var prodA = 'TEST-PROD-RNK-A-' + sufijo;
+      var prodB = 'TEST-PROD-RNK-B-' + sufijo;
+
+      var provRes = saveTercero({ id: provId, nombre: 'Proveedor RNK-01', tipo: 'PROVEEDOR', limite_credito: 0 });
+      if (!provRes || provRes.success !== true) return 'Crear proveedor falló: ' + (provRes ? provRes.error : 'nulo');
+
+      DAO_PRODUCTOS.crear({ id: prodA, nombre: 'Test RNK-A', stock: 100, precio_compra: 500, precio_venta: 1000 });
+      DAO_PRODUCTOS.crear({ id: prodB, nombre: 'Test RNK-B', stock: 100, precio_compra: 500, precio_venta: 1000 });
+
+      var ranking = DOMAIN.getProductosMasCompradosPorProveedor(provId, 5);
+      if (!Array.isArray(ranking)) return 'getProductosMasCompradosPorProveedor debe retornar array';
+      if (ranking.length !== 0) return 'Sin compras debe retornar array vacío, obtuvo ' + ranking.length + ' items';
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('PROV-ANA-04: Vinculación duplicada actualiza en vez de crear fila nueva', () => {
+    try {
+      var ts = String(Date.now());
+      var sufijo = ts.slice(-6);
+      var prodId = 'TEST-UPS-' + sufijo;
+      var provId = 'PROV-UPS-' + sufijo;
+
+      DAO_PRODUCTOS.crear({ id: prodId, nombre: 'Test UPS', stock: 10, precio_compra: 500, precio_venta: 1000 });
+      saveTercero({ id: provId, nombre: 'Proveedor UPS', tipo: 'PROVEEDOR', limite_credito: 0 });
+
+      var vin1 = DOMAIN.vincularProductoProveedor(prodId, provId, 1000, false, 'corr_ups_1_' + ts);
+      if (!vin1.success) return 'Primera vinculación falló: ' + vin1.message;
+
+      var vin2 = DOMAIN.vincularProductoProveedor(prodId, provId, 2000, true, 'corr_ups_2_' + ts);
+      if (!vin2.success) return 'Segunda vinculación falló: ' + vin2.message;
+
+      var provData = DAO.getProductosPorProveedor(provId);
+      var vinculos = provData.filter(function(p) { return p.id_producto === prodId; });
+      if (vinculos.length !== 1) return 'Se crearon ' + vinculos.length + ' filas para el mismo par (debe ser 1)';
+
+      if (vinculos[0].precio_ultima_compra !== 2000) return 'Precio no actualizado: ' + vinculos[0].precio_ultima_compra;
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,

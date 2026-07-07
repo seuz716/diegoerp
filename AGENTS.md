@@ -359,7 +359,7 @@ Todas las dependencias existen en el proyecto:
 | AUD-PROV-002: getProductosMasCompradosPorProveedor | **CERRADO** | Domain.gs:1927 retorna Array con productos por cantidad |
 | AUD-PROV-003: Wrappers faltantes | **CERRADO** | Todos los wrappers existen en app.html:235-239 |
 | AUD-PROV-004: getProveedorPorProducto retorna array | **CERRADO** | No retorna array — es diseño correcto, API.gs:1266 envuelve en array si hay resultado |
-| AUD-PROV-005: vincularProductoProveedor valida duplicados | **ABIERTO** | No valida duplicados (Domain.gs:1036-1045). Podría crear filas repetidas idProducto+idProveedor |
+| AUD-PROV-005: vincularProductoProveedor valida duplicados | **CERRADO** | Domain.gs:1036-1045 ahora hace upsert (busca existente y actualiza, no inserta duplicado)
 
 ## AGENTE 4 - FRONTEND WRAPPERS (completado)
 - ✅ App.api.getTercerosPorTipo(tipo) wrapper agregado
@@ -372,3 +372,17 @@ Todas las dependencias existen en el proyecto:
 - ✅ abrirModalNuevaCompra() filtra PROVEEDOR/AMBOS para selector de proveedores
 - ✅ filtro-tipo-tercero dropdown agregado en UI
 - ✅ Event listener para filtro tipo en init.html
+
+## Hallazgos Config.gs Verificados
+
+| Hallazgo | Estado | Evidencia |
+|----------|--------|-----------|
+| Línea 14: `tipoTercero: 3` duplicado | **CERRADO** | Config.gs:14 - eliminado |
+| Línea 232: JSON.stringify comparación headers | **ABIERTO** | Comparación frágil si orden/espacios varían |
+| Línea 250: _sanitizeCell objects | **CERRADO** | Config.gs:378-388 - agregado manejo de objetos |
+| Línea 276: LogService undefined | **CERRADO** | Config.gs:412 - reemplazado por Logger.log |
+| Línea 403: Hoisting BACKUP_CONFIG | **CERRADO** | Config.gs:10-15 - movido al inicio |
+| Línea 308: mapping Producto_Proveedor | **CERRADO** | Config.gs:308 - estructura corregida |
+| Índices hardcodeados COLUMN | **ABIERTO** | Requiere arquitectura de schema dinámico |
+| Regex fecha insegura "99/99/9999" | **ABIERTO** | Validación permite fechas inválidas |
+| TransactionManager snapshot | **ABIERTO** | Lectura por filas individuales (performance) |

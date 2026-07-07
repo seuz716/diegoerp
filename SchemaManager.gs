@@ -7,11 +7,11 @@ var SchemaManager = {
   /**
    * Versión actual del esquema (actualizar en cada cambio estructural).
    */
-  CURRENT_VERSION: '1.2',
+  CURRENT_VERSION: '1.3',
   
   /**
    * Obtener la versión actual del esquema desde Properties.
-   * @returns {string} Versión (ej: '1.2')
+   * @returns {string} Versión (ej: '1.3')
    */
   getCurrentSchemaVersion: function() {
     return PropertiesService.getScriptProperties().getProperty('SCHEMA_VERSION') || '1.0';
@@ -30,7 +30,8 @@ var SchemaManager = {
     // Ejecutar migraciones pendientes
     var migrations = [
       { from: '1.0', to: '1.1', fn: this._migrate_1_0_to_1_1 },
-      { from: '1.1', to: '1.2', fn: this._migrate_1_1_to_1_2 }
+      { from: '1.1', to: '1.2', fn: this._migrate_1_1_to_1_2 },
+      { from: '1.2', to: '1.3', fn: this._migrate_1_2_to_1_3 }
     ];
     
     var executed = [];
@@ -96,6 +97,30 @@ var SchemaManager = {
         sheet.getRange(2, sheet.getLastColumn(), lastRow - 1, 1).setValue(0);
       }
       Logger.log('✅ Columna "total_pagado" agregada a Compras');
+    }
+  },
+  
+  /**
+   * Migración: v1.2 → v1.3 (Clasificación de terceros + tabla Producto_Proveedor).
+   * Ejecuta migración automática basada en historial de compras/cartera.
+   */
+  _migrate_1_2_to_1_3: function() {
+    Logger.log('🔄 Migrando esquema de 1.2 a 1.3 - Clasificación de terceros');
+    
+    // Ejecutar migración de clasificación de terceros
+    if (typeof migrarClasificacionTerceros === 'function') {
+      migrarClasificacionTerceros();
+    } else {
+      Logger.log('⚠️ Función migrarClasificacionTerceros no encontrada, omitiendo migración de clasificación');
+    }
+    
+    // Asegurar que la hoja Producto_Proveedor existe
+    var ss = this._getSpreadsheet();
+    var ppSheet = ss.getSheetByName(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+    if (!ppSheet) {
+      ppSheet = ss.insertSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+      ppSheet.appendRow(['ID_Producto', 'ID_Proveedor', 'Precio_Ultima_Compra', 'Es_Preferido', 'Fecha_Ultima_Compra']);
+      Logger.log('✅ Hoja "Producto_Proveedor" creada');
     }
   },
   
