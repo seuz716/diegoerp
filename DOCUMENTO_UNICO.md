@@ -11,7 +11,7 @@
 
 | File | LOC | Layer | Responsabilidad |
 |------|-----|-------|-----------------|
-| `Config.gs` | 394 | L1 | Constantes, SPREADSHEET_ID_FALLBACK, getActiveSpreadsheet(), getSheet(), CONFIG.reloadSchema(), COMPRAS_CONFIG, _sanitizeId(), _parseMoneda(), _safeDate(), SPREADSHEET_ID_FALLBACK |
+| `Config.gs` | 394 | L1 | Constantes, getActiveSpreadsheet(), getSheet(), CONFIG.reloadSchema(), COMPRAS_CONFIG, _sanitizeId(), _parseMoneda(), _safeDate() |
 | `LockManager.gs` | 431 | L2 | LOCK_MANAGER: acquireResourceLock(id, timeout, maxAttempts), releaseResourceLock(id), cleanupExpiredLocks(), removeOrphanLocksTrigger(), crearTriggerOrphanCleanup(), _jitter(). Usa ScriptLock + PropertiesService. |
 | `CacheService.gs` | 681 | L3 | CACHE: refresh(force), invalidate(), ensureIntegrity(), getTerceros(), getCartera(), getDashboardSummary(), recoverFromStale(). TTL 5min, circuit breaker (3 fails → stale 5 min), circuit separado por terceros/cartera, checksum SHA-256 |
 | `DAO.gs` | 417 | L4 | DAO: TERCEROS: findByIndex/find/normalize, getTerceroByIndex; CARTERA: getByEstado, updatePartial, createFromObj, getPendientesByTercero; MOV: appendRange; getLastRow; PROD: getAll. _sanitizeCell(). |
@@ -505,7 +505,6 @@ django-migration (diverged)
 
 | Constante | Valor | Archivo |
 |-----------|-------|---------|
-| SPREADSHEET_ID_FALLBACK | "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc" | Config.gs:94 |
 | APP_CRYPTO_SALT | "DIEGOERP_AES_V2_2026" | AuthService.gs:25 |
 | CACHE.CACHE_TTL | 300000 (5 min) | CacheService.gs:25 |
 | CACHE.MAX_CONSECUTIVE_FAILURES | 3 | CacheService.gs:27 |

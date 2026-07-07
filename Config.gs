@@ -144,28 +144,26 @@ let _SHEETS_CACHE = {};
 let _SPREADSHEET_CACHE = null;
 
 /**
- * ⚠️ SECURITY WARNING: SPREADSHEET_ID_FALLBACK expuesto en código fuente.
- * Solo usar en entornos de desarrollo/controlados.
- * En producción, configurar SPREADSHEET_ID via PropertiesService.
+ * Obtiene el spreadsheet activo.
+ * Prioriza SPREADSHEET_ID desde PropertiesService (producción).
+ * Fallback: getActiveSpreadsheet() para desarrollo local.
  */
-const SPREADSHEET_ID_FALLBACK = "1hPpL-9ay6DNRDTBKy84r_M3pCnEGU6hJRdCzUQyJFoc";
-
 function getActiveSpreadsheet() {
   if (!_SPREADSHEET_CACHE) {
     const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
     if (ssId) {
       _SPREADSHEET_CACHE = SpreadsheetApp.openById(ssId);
-    } else if (SPREADSHEET_ID_FALLBACK) {
-      // Fallback hardcoded
-      try {
-        _SPREADSHEET_CACHE = SpreadsheetApp.openById(SPREADSHEET_ID_FALLBACK);
-        Logger.log("[FALLBACK] Usando SPREADSHEET_ID hardcoded: " + SPREADSHEET_ID_FALLBACK);
-      } catch (fallbackErr) {
-        Logger.log("[FALLBACK ERROR] No se pudo abrir spreadsheet: " + fallbackErr.message);
-        throw new Error("Error al abrir spreadsheet con ID hardcoded. Comparte el spreadsheet con el script o configura SPREADSHEET_ID manualmente.");
-      }
     } else {
-      _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
+      // Fallback para desarrollo: usar hoja vinculada al script
+      try {
+        _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
+        if (!_SPREADSHEET_CACHE) {
+          throw new Error("No spreadsheet available");
+        }
+        Logger.log("[DEV MODE] Usando spreadsheet vinculado al script. Para producción, configurar SPREADSHEET_ID vía generateSetupToken().");
+      } catch (err) {
+        throw new Error("SPREADSHEET_ID no configurado. Ejecutar generateSetupToken() desde el editor o vincular hoja al script.");
+      }
     }
   }
   return _SPREADSHEET_CACHE;

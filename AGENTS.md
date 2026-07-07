@@ -387,7 +387,7 @@ Todas las dependencias existen en el proyecto:
 | Regex fecha insegura "99/99/9999" | **ABIERTO** | Validación permite fechas inválidas |
 | TransactionManager snapshot | **ABIERTO** | Lectura por filas individuales (performance) |
 
-| CFG-001 | CRÍTICA | 150 | SPREADSHEET_ID_FALLBACK hardcodeado | **ABIERTO** | Security warning agregado - requiere refactor a PropertiesService exclusivamente |
+| CFG-001 | CRÍTICA | 150 | SPREADSHEET_ID_FALLBACK hardcodeado | **CERRADO** | Eliminado hardcoded. getActiveSpreadsheet() usa PropertiesService o fallback a hoja vinculada |
 | CFG-002 | CRÍTICA | 308 | Mapping Producto_Proveedor estructura anidada | **CERRADO** | Config.gs:211,308 - estructura corregida |
 | CFG-003 | MAYOR | 113-114, 143 | Variables globales mutables sin persistencia | **ABIERTO** | _SHEETS_CACHE no persiste entre ejecuciones |
 | CFG-004 | MAYOR | 245 | Mutación de const objects | **CERRADO** | Config.gs:243-245 - Object.assign crea nuevo objeto |
