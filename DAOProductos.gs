@@ -41,7 +41,7 @@ const DAO_PRODUCTOS = {
         sheet.getRange(1, 1, 1, expectedNames.length).setValues([expectedNames]);
       }
     }
-    delete _SHEETS_CACHE[DAO_PRODUCTOS.SHEET];
+    CacheService.getScriptCache().remove(DAO_PRODUCTOS.SHEET + '_meta');
   },
 
   /**

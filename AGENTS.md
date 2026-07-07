@@ -389,7 +389,7 @@ Todas las dependencias existen en el proyecto:
 
 | CFG-001 | CRÍTICA | 150 | SPREADSHEET_ID_FALLBACK hardcodeado | **CERRADO** | Eliminado hardcoded. getActiveSpreadsheet() usa PropertiesService o fallback a hoja vinculada |
 | CFG-002 | CRÍTICA | 308 | Mapping Producto_Proveedor estructura anidada | **CERRADO** | Config.gs:211,308 - estructura corregida |
-| CFG-003 | MAYOR | 113-114, 143 | Variables globales mutables sin persistencia | **ABIERTO** | _SHEETS_CACHE no persiste entre ejecuciones |
+| CFG-003 | MAYOR | 113-114, 143 | Variables globales mutables sin persistencia | **CERRADO** | Migrado a CacheService.getScriptCache() para metadata y eliminado _SPREADSHEET_CACHE |
 | CFG-004 | MAYOR | 245 | Mutación de const objects | **CERRADO** | Config.gs:243-245 - Object.assign crea nuevo objeto |
 | CFG-005 | MAYOR | 479 | AuthService no definido | **CERRADO** | Config.gs:480 - guard de existencia agregado |
 | CFG-006 | MAYOR | 537 | getDataRange() ineficiente | **ABIERTO** | Requiere lectura selectiva con offset |

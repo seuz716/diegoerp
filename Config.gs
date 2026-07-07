@@ -137,61 +137,45 @@ function _saveSchemaVersion(version) {
 
 _schemaVersion = _loadSchemaVersion();
 
-// ─ UTILIDADES BÁSICAS ─
-
-// Cache global para objetos Sheet y Spreadsheet
-let _SHEETS_CACHE = {};
-let _SPREADSHEET_CACHE = null;
+// TTL para cache de schema (5 minutos)
+const SHEET_CACHE_TTL = 300;
 
 /**
  * Obtiene el spreadsheet activo.
- * Prioriza SPREADSHEET_ID desde PropertiesService (producción).
- * Fallback: getActiveSpreadsheet() para desarrollo local.
+ * Usa PropertiesService para ID configurado, fallback a hoja vinculada.
+ * Nota: No cacheamos el objeto SpreadsheetApp (evita stale references en GAS).
  */
 function getActiveSpreadsheet() {
-  if (!_SPREADSHEET_CACHE) {
-    const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
-    if (ssId) {
-      _SPREADSHEET_CACHE = SpreadsheetApp.openById(ssId);
-    } else {
-      // Fallback para desarrollo: usar hoja vinculada al script
-      try {
-        _SPREADSHEET_CACHE = SpreadsheetApp.getActiveSpreadsheet();
-        if (!_SPREADSHEET_CACHE) {
-          throw new Error("No spreadsheet available");
-        }
-        Logger.log("[DEV MODE] Usando spreadsheet vinculado al script. Para producción, configurar SPREADSHEET_ID vía generateSetupToken().");
-      } catch (err) {
-        throw new Error("SPREADSHEET_ID no configurado. Ejecutar generateSetupToken() desde el editor o vincular hoja al script.");
-      }
-    }
+  const ssId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID");
+  
+  if (ssId) {
+    return SpreadsheetApp.openById(ssId);
   }
-  return _SPREADSHEET_CACHE;
+  
+  // Fallback para desarrollo: hoja vinculada al script
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) throw new Error("No spreadsheet available");
+    Logger.log("[DEV MODE] Usando spreadsheet vinculada. Para producción, configurar SPREADSHEET_ID vía generateSetupToken().");
+    return ss;
+  } catch (err) {
+    throw new Error("SPREADSHEET_ID no configurado. Ejecutar generateSetupToken() desde el editor.");
+  }
 }
 
 /**
- * Obtiene una hoja de cálculo por nombre, utilizando un caché.
- * Resuelve Problema #1: VIOLACIÓN SEPARACIÓN DE CAPAS
- * Resuelve Problema #5: getSheet() sin cacheo del objeto Sheet
+ * Obtiene una hoja de cálculo por nombre.
+ * Nota: No cacheamos objetos Sheet (pueden volverse stale), llamamos directo a SpreadsheetApp.
  */
 function getSheet(name) {
-  if (_SHEETS_CACHE[name]) return _SHEETS_CACHE[name];
-
   const spreadsheet = getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(name);
   if (!sheet) {
-    Logger.log("Error: Hoja no encontrada: " + name);
     throw new Error("Hoja no encontrada: " + name);
   }
-
-  const keys = Object.keys(_SHEETS_CACHE);
-  if (keys.length >= 20) {
-    delete _SHEETS_CACHE[keys[0]];
-  }
-
-  _SHEETS_CACHE[name] = sheet;
   return sheet;
 }
+
 
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
@@ -226,9 +210,10 @@ CONFIG.reloadSchema = function() {
     if (lastCol === 0) continue;
 
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const cache = CacheService.getScriptCache();
     const expected = CONFIG.SCHEMA_definitions[mapping.key];
 
-    _SHEETS_CACHE[sheetName + '_meta'] = { lastRow: sheet.getLastRow(), lastCol: lastCol, headers: headers };
+    cache.put(sheetName + '_meta', JSON.stringify({ lastRow: sheet.getLastRow(), lastCol: lastCol, headers: headers }), SHEET_CACHE_TTL);
 
     const sheetChanges = { sheet: sheetName, changes: [] };
 
@@ -269,6 +254,7 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
+  const cache = CacheService.getScriptCache();
   const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Producto_Proveedor'];
   const allSheets = getActiveSpreadsheet().getSheets();
   const sheetMap = {};
@@ -277,7 +263,8 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   for (const name of criticalSheets) {
     const sheet = sheetMap[name];
     if (!sheet) continue;
-    const meta = _SHEETS_CACHE[name + '_meta'];
+    const metaRaw = cache.get(name + '_meta');
+    const meta = metaRaw ? JSON.parse(metaRaw) : null;
     if (!meta) return true;
     if (sheet.getLastRow() !== meta.lastRow || sheet.getLastColumn() !== meta.lastCol) return true;
   }
@@ -317,6 +304,7 @@ const sheets = {
     const lastCol = sheet.getLastColumn();
     if (lastCol === 0) continue;
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const cache = CacheService.getScriptCache();
     const expected = CONFIG.SCHEMA_definitions[mapping.key];
     const expectedNames = Object.values(expected);
 
@@ -336,29 +324,31 @@ const sheets = {
 };
 
 CONFIG.checkHeaderChanges = function() {
+   const cache = CacheService.getScriptCache();
    const criticalSheets = ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'];
-   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let changed = false;
+   const spreadsheet = getActiveSpreadsheet();
+   let changed = false;
 
-  for (const name of criticalSheets) {
-    const sheet = spreadsheet.getSheetByName(name);
-    if (!sheet) continue;
-    const lastCol = sheet.getLastColumn();
-    if (lastCol === 0) continue;
-    const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
-    const meta = _SHEETS_CACHE[name + '_meta'];
-    if (!meta) {
-      _schemaValidated = false;
-      changed = true;
-      continue;
-    }
-    if (JSON.stringify(meta.headers) !== JSON.stringify(currentHeaders)) {
-      _schemaValidated = false;
-      changed = true;
-    }
-  }
+   for (const name of criticalSheets) {
+     const sheet = spreadsheet.getSheetByName(name);
+     if (!sheet) continue;
+     const lastCol = sheet.getLastColumn();
+     if (lastCol === 0) continue;
+     const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+     const metaRaw = cache.get(name + '_meta');
+     const meta = metaRaw ? JSON.parse(metaRaw) : null;
+     if (!meta) {
+       _schemaValidated = false;
+       changed = true;
+       continue;
+     }
+     if (JSON.stringify(meta.headers) !== JSON.stringify(currentHeaders)) {
+       _schemaValidated = false;
+       changed = true;
+     }
+   }
 
-  return changed;
+   return changed;
 };
 
 // ─ FUNCIÓN LEGACY: DELEGADA A CONFIG.reloadSchema ─
@@ -477,7 +467,9 @@ function _formatMoneda(centavos) {
 }
 
 function crearBackup() {
-  try { if (AuthService && AuthService.checkPermission) AuthService.checkPermission("ejecutar_mantenimiento"); } catch (e) {}
+  if (typeof AuthService !== 'undefined' && AuthService && AuthService.checkPermission) {
+    try { AuthService.checkPermission("ejecutar_mantenimiento"); } catch (e) { Logger.log("[CFG-002] Backup sin permiso: " + e.message); }
+  }
   const ss = getActiveSpreadsheet();
   const backupName = 'BACKUP_' + ss.getName() + '_' + Utilities.formatDate(new Date(), _getTimeZone(), 'yyyy-MM-dd_HHmmss');
   const backupId = ss.getId();
