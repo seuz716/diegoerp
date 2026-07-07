@@ -395,3 +395,15 @@ Todas las dependencias existen en el proyecto:
 | CFG-006 | MAYOR | 537 | getDataRange() ineficiente | **ABIERTO** | Requiere lectura selectiva con offset |
 | CFG-007 | MENOR | 14-17, 29-32, 47-49 | Índices hardcodeados contradicen reloadSchema | **ABIERTO** | Column indexes fijos existen antes del sistema dinámico |
 | CFG-008 | MENOR | 232 | JSON.stringify frágil | **ABIERTO** | Comparación sin normalización de espacios |
+
+## Hallazgos LockManager.gs Verificados
+
+| ID | Severidad | Línea(s) | Estado | Acción tomada |
+|----|-----------|---------|--------|-------------|
+| LCK-001 | CRÍTICA | 36-38 | ✅ CERRADO | Eliminado dummy lock - solo tryLock nativo real |
+| LCK-002 | CRÍTICA | 80-104 | ✅ CERRADO | Operación atómica bajo lock global |
+| LCK-003 | MAYOR | 25 | ✅ CERRADO | Lazy loading `_getPropagationDelay()` |
+| LCK-004 | MAYOR | 36-38 | ✅ CERRADO | Eliminado - mismo fix que LCK-001 |
+| LCK-005 | MAYOR | 248-265 | ⚠️ ABIERTO | getRange optimizado pero necesita inyección de dependencias |
+| LCK-006 | MAYOR | 348 | ✅ CERRADO | Guard `AuthService && AuthService.checkPermission` agregado |
+| LCK-007 | MENOR | 268-274 | ✅ CERRADO | Rethrow de errores críticos agregado |

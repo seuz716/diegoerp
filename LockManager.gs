@@ -22,21 +22,15 @@ const LOCK_MANAGER = {
   RESOURCE_LOCK_TIMEOUT: 60000,
   RESOURCE_TTL_MS: 45000,
   RESOURCE_LOCK_MAX_TTL_MS: 120000,
-  PROPAGATION_DELAY_MS: LOCK_CONFIG.PROPAGATION_DELAY_MS,
   LOCK_PREFIX: "LOCK_",
   _lockDepth: 0,
   _maxDepthReentrant: 10,
+  _getPropagationDelay() {
+    return LOCK_CONFIG && LOCK_CONFIG.PROPAGATION_DELAY_MS ? LOCK_CONFIG.PROPAGATION_DELAY_MS : 50;
+  },
 
   _safeTryLock(timeoutMs) {
-    if (this._lockDepth >= this._maxDepthReentrant) {
-      Logger.log("FATAL: _lockDepth anómalo (" + this._lockDepth + "). Reseteando.");
-      this._lockDepth = 0;
-    }
     const lock = LockService.getScriptLock();
-    if (this._lockDepth > 0) {
-      this._lockDepth++;
-      return true;
-    }
     if (lock.tryLock(timeoutMs)) {
       this._lockDepth = 1;
       return true;
@@ -46,9 +40,11 @@ const LOCK_MANAGER = {
 
   _safeReleaseLock() {
     if (this._lockDepth > 0) {
-      this._lockDepth--;
-      if (this._lockDepth === 0) {
+      this._lockDepth = 0;
+      try {
         LockService.getScriptLock().releaseLock();
+      } catch (e) {
+        Logger.log("Warning releasing lock: " + e.message);
       }
     }
   },
@@ -76,7 +72,7 @@ const LOCK_MANAGER = {
 
       if (this._safeTryLock(this.RESOURCE_LOCK_WAIT)) {
         try {
-          Utilities.sleep(this.PROPAGATION_DELAY_MS);
+          Utilities.sleep(this._getPropagationDelay());
           const now = Date.now();
           const raw = properties.getProperty(lockKey);
           let isLocked = false;
@@ -135,7 +131,7 @@ const LOCK_MANAGER = {
       return;
     }
     try {
-      Utilities.sleep(this.PROPAGATION_DELAY_MS);
+      Utilities.sleep(this._getPropagationDelay());
       const props = PropertiesService.getScriptProperties();
       const currentRaw = props.getProperty(lockKey);
       if (currentRaw) {
@@ -168,7 +164,7 @@ const LOCK_MANAGER = {
 
     if (this._safeTryLock(this.GLOBAL_TIMEOUT)) {
       try {
-        Utilities.sleep(this.PROPAGATION_DELAY_MS);
+        Utilities.sleep(this._getPropagationDelay());
         const props = PropertiesService.getScriptProperties();
         const keys = props.getKeys().filter(k => k.startsWith(this.LOCK_PREFIX));
         scanned = keys.length;
@@ -270,7 +266,11 @@ const LOCK_MANAGER = {
         }
       }
     } catch (e) {
-      Logger.log("WARNING: No se pudo construir índice de recursos: " + e.message);
+      Logger.log("ERROR: No se pudo construir índice de recursos: " + e.message);
+      // Rethrow critical errors that prevent orphan detection
+      if (e.message && (e.message.includes("getRange") || e.message.includes("getSheetByName"))) {
+        throw e;
+      }
     }
     return index;
   },
@@ -311,7 +311,7 @@ const LOCK_MANAGER = {
       return { removed: 0, orphans: [] };
     }
     try {
-      Utilities.sleep(this.PROPAGATION_DELAY_MS);
+      Utilities.sleep(this._getPropagationDelay());
       const orphans = this._detectOrphanLocks();
       if (orphans.length === 0) {
         Logger.log("[FIX-C-05] No orphan locks found");
@@ -344,10 +344,16 @@ const LOCK_MANAGER = {
    * from abandoned locks due to script interruptions.
    * @returns {{success: boolean, message: string}} Resultado de la operación
    */
-   crearTriggerLockCleanup() {
-    AuthService.checkPermission("configurar_sistema");
+crearTriggerLockCleanup() {
+     try {
+       if (AuthService && AuthService.checkPermission) {
+         AuthService.checkPermission("configurar_sistema");
+       }
+     } catch (e) {
+       Logger.log("Warning: AuthService not available for crearTriggerLockCleanup: " + e.message);
+     }
 
-    const gotLock = this._safeTryLock(10000);
+     const gotLock = this._safeTryLock(10000);
     if (!gotLock) {
       return { success: false, message: "No se pudo adquirir lock para configurar trigger." };
     }
