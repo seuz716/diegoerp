@@ -1,8 +1,8 @@
 # Coordinación de IAs - Contrato de archivos
 
-## IA-SECURITY (actual) - AuthService.gs, LockManager.gs, AuditLog.gs
+## IA-SECURITY - AuthService.gs, LockManager.gs, AuditLog.gs
 - ✅ AuthService.gs: TRIGGER_SAFE_ACTIONS, CRYPTO_SERVICE, SchemaValidator, checkPermission corregido, _kdf optimizado
-- ✅ LockManager.gs: _buildResourceIndex(), removeOrphanLocks(), race condition corregida en orphan cleanup
+- ✅ LockManager.gs: Refactorización completa contra auditoría AUL-001 a AUL-012 (CAS, emergency circuit, reentrancia, cache índice, métricas, triggers unificados, persistencia suspiciousLocks, logging estructurado)
 - ✅ AuditLog.gs: correlationId propagation
 - ✅ Config.gs: SESSION_SERVICE singleton (eliminadas 5 definiciones duplicadas en Domain.gs, API.gs, Main.gs, Servicios.gs, AuthService.gs)
 
@@ -120,9 +120,9 @@ Solo agregar funciones EXPORTADAS (nombres sin guión bajo inicial) en los archi
 
    --------
 
-Test Suite (runAllRegressionTests): 125 tests
+Test Suite (runAllRegressionTests): 150 tests
     - AuthService: 3 tests (auth, whitelist, unknown action)
-    - LockManager: 2 tests (cleanup, index)
+    - LockManager: 13 tests (cleanup, index, acquire/release, duplicates, tokens, metrics, log, orphans, detect, cache, reentrancy, suspicious)
     - CacheService: 6 tests (circuit, health, consistency, reset)
     - AuditLog: 2 tests (correlationId, sanitization)
     - TransactionManager: 3 tests (struct, correlationId, snapshot)
@@ -400,10 +400,13 @@ Todas las dependencias existen en el proyecto:
 
 | ID | Severidad | Línea(s) | Estado | Acción tomada |
 |----|-----------|---------|--------|-------------|
-| LCK-001 | CRÍTICA | 36-38 | ✅ CERRADO | Eliminado dummy lock - solo tryLock nativo real |
+| LCK-001 | CRÍTICA | 36-38 | ✅ CERRADO | Dummy lock reemplazado - solo tryLock nativo real con reentrancia |
 | LCK-002 | CRÍTICA | 80-104 | ✅ CERRADO | Operación atómica bajo lock global |
 | LCK-003 | MAYOR | 25 | ✅ CERRADO | Lazy loading `_getPropagationDelay()` |
 | LCK-004 | MAYOR | 36-38 | ✅ CERRADO | Eliminado - mismo fix que LCK-001 |
-| LCK-005 | MAYOR | 248-265 | ⚠️ ABIERTO | getRange optimizado pero necesita inyección de dependencias |
+| LCK-005 | MAYOR | 248-265 | ✅ CERRADO | Cache de índice 5 minutos + injection check de dependencias |
 | LCK-006 | MAYOR | 348 | ✅ CERRADO | Guard `AuthService && AuthService.checkPermission` agregado |
 | LCK-007 | MENOR | 268-274 | ✅ CERRADO | Rethrow de errores críticos agregado |
+| LCK-008 | CRÍTICA | - | ✅ VERIFICADO | Token único + CAS para liberación atómica |
+| LCK-009 | CRÍTICA | - | ✅ VERIFICADO | Emergency circuit (LOCK_SUSPICIOUS) implementado |
+| LCK-010 | MAYOR | - | ✅ VERIFICADO | Métricas operativas getLockMetrics() disponible |

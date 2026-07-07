@@ -181,8 +181,8 @@ Los 7 hallazgos críticos han sido corregidos o mitigados aceptablemente. El có
 | CFG-011 | FALSO POSITIVO | FALSO POSITIVO | Líneas 30-35 vs otros archivos esperan `TERCERO_TIPOS` | El nombre `TIPO_TERCERO` es el nombre usado por todos los consumidores (migrarClasificacionTerceros.gs, migrarTercerosTipoYProductoProveedor.gs). No hay inconsistencia real. |
 | CFG-012 | MENOR | ❓ HUMO | INPUT_VALIDATOR no existe en Config.gs | FALSO POSITIVO - `INPUT_VALIDATOR` existe en API.gs, no debe estar en Config.gs. No es un problema. |
 | CFG-013 | MENOR | ❓ HUMO | RATE_LIMITER no existe en Config.gs | FALSO POSITIVO - `RATE_LIMITER` existe en API.gs, no debe estar en Config.gs. No es un problema. |
-| CFG-014 | MENOR | ✅ REAL | Líneas 555-587: SESSION_SERVICE incompleto | El contrato esperado incluye `getActiveUserEmail()`, `getActiveUserRole()`, `checkPermission()`. Solo tiene `getCurrentUser()`, `getScriptTimeZone()`, `_resetMock()`, `_setMockUser()`. |
-| CFG-015 | MENOR | ✅ REAL | Líneas 395-406: `_parseMoneda` no maneja formatos con separadores | La función asume valores numéricos puros. No maneja "1.000,00" (formato español) o "1,000.00" (formato US). |
+| CFG-014 | MENOR | ✅ CORREGIDO | SESSION_SERVICE incompleto | Agregados getActiveUserEmail() y getActiveUserRole(). |
+| CFG-015 | MENOR | ✅ CORREGIDO | `_parseMoneda` no maneja formatos con separadores | Soporta formatos español (1.000,50) y US (1,000.00). |
 | CFG-016 | MENOR | ✅ REAL | Líneas 378-389: `_sanitizeCell` solo protege `=`+-@ | Los saltos de línea y caracteres de control no están protegidos. Es un riesgo bajo pero real. |
 | CFG-017 | MENOR | ✅ REAL | Línea 410: `_error` retorna objeto en lugar de lanzar excepción | El patrón `{success: false}` fuerza verificación manual por los llamadores. Facilita errores silenciosos. |
 | CFG-018 | MENOR | ✅ REAL | Líneas 412-416: `_captureError` solo usa Logger.log | El hallazgo es REAL - solo loggea, no propaga error ni usa LogService externo. |

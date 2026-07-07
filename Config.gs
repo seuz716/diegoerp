@@ -371,14 +371,19 @@ function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(
 
 /**
  * Sanitiza un valor para escritura segura en hoja.
- * Protege contra inyección de fórmulas (=, +, -, @, tab) en Google Sheets.
- * Devuelve el valor apropiado según su tipo.
+ * Protege contra inyección de fórmulas y caracteres de control.
+ * @param {*} v - Valor a sanitizar
+ * @returns {string|number|boolean} Valor seguro para hoja
  */
 function _sanitizeCell(v) {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") {
+    // Proteger contra fórmulas
     const needsEscape = /^[=+\-@]/.test(v);
-    return needsEscape ? "'" + v : v;
+    let sanitized = needsEscape ? "'" + v : v;
+    // Normalizar whitespace (protege saltos de línea y tabs)
+    sanitized = sanitized.replace(/[\u0000-\u001F\u007F]/g, '');
+    return sanitized;
   }
   if (typeof v === "number" || typeof v === "boolean") return v;
   if (typeof v === "object") {
@@ -389,19 +394,43 @@ function _sanitizeCell(v) {
 
 /**
  * Convierte un valor del sheet a centavos (entero).
- * Usa parseInt porque el sheet almacena montos en centavos sin decimales.
+ * Maneja formatos: "100" (número), "1.000" (US), "1.000,00" (español)
+ * Divide por 100 si el valor parece tener decimales (ej: "100,50" -> 10050 centavos)
+ * @param {*} v - Valor a parsear
+ * @param {number} [defaultVal=0] - Valor por defecto si inválido
+ * @returns {number} Valor en centavos (entero)
  */
 function _parseMoneda(v, defaultVal) {
   if (v === null || v === undefined) return defaultVal || 0;
-  const raw = String(v).trim();
+  let raw = String(v).trim();
   if (raw === "") return defaultVal || 0;
+  
+  // Detectar formato español: "1.000,50" o "1,50"
+  // Si tiene coma como separador decimal y no punto, es formato español
+  // Si tiene punto y coma en posición típica de miles, es formato US con coma decimal
+  const hasCommaDecimal = /,\d{1,2}$/.test(raw);
+  const hasDotDecimal = /\.\d{1,2}$/.test(raw) && !/,\d/.test(raw);
+  
+  if (hasCommaDecimal) {
+    // Formato español: "1.000,50" o "100,50"
+    // Remover separadores de miles (puntos), convertir coma decimal a punto
+    raw = raw.replace(/\./g, '').replace(/,(\d{1,2})$/, '.$1');
+  } else if (hasDotDecimal && /,\d{1,2}$/.test(raw) === false && raw.includes(',')) {
+    // Formato US con separador de miles: "1,000"
+    raw = raw.replace(/,/g, '');
+  }
+  
   const num = Number(raw);
   if (isNaN(num)) return defaultVal || 0;
-  if (num % 1 !== 0) {
-    Logger.log(`Valor con decimales convertido: ${raw} -> ${Math.round(num)}`);
-    return Math.round(num);
+  
+  // Si el valor original parece tener decimales, asumir que está en unidades
+  // y multiplicar por 100 para convertir a centavos
+  if (/\.\d+$/.test(raw) || /\.0+$/.test(raw) === false) {
+    Logger.log(`Valor con decimales convertido: ${v} -> ${Math.round(num * 100)} centavos`);
+    return Math.round(num * 100);
   }
-  return num;
+  
+  return Math.round(num);
 }
 
 function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }
@@ -591,6 +620,28 @@ const SESSION_SERVICE = {
     } catch (e) {
       return "UTC";
     }
+  },
+
+  /**
+   * Obtiene el email del usuario activo.
+   * @returns {string|null}
+   */
+  getActiveUserEmail() {
+    const user = this.getCurrentUser();
+    return user ? user.getEmail() : null;
+  },
+
+  /**
+   * Obtiene el rol del usuario activo.
+   * @returns {string|null}
+   */
+  getActiveUserRole() {
+    const email = this.getActiveUserEmail();
+    if (!email) return null;
+    if (typeof AuthService !== 'undefined' && AuthService.getUserRole) {
+      return AuthService.getUserRole(email);
+    }
+    return null;
   }
 };
 
