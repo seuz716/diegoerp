@@ -5,6 +5,14 @@
  * - #7: Tiempo de vida del caché sin mecanismo de refresh bajo demanda
  */
 
+function _cacheLogWarn(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logWarn === 'function') {
+    LogService.logWarn(message, context);
+  } else {
+    Logger.log("[CACHE-LOG] WARN: " + message);
+  }
+}
+
 // Dependencies verified lazily when CACHE.refresh() is called
 class CacheIntegrityError extends Error {
   /**
@@ -82,7 +90,7 @@ let CACHE = {
       this._metricsLoaded = true;
     } catch (e) {
       Logger.log("CACHE: Error loading metrics: " + e.toString());
-      LogService.logWarn("Error loading metrics", { functionName: '_loadMetrics', error: e });
+      _cacheLogWarn("Error loading metrics", { functionName: "_loadMetrics", error: e });
     }
   },
 

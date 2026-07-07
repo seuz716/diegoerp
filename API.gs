@@ -18,6 +18,14 @@ function generateCorrelationId() {
   return 'REQ-' + Utilities.formatDate(new Date(), timezone, 'yyyyMMdd') + '-' + _apiCallCounter;
 }
 
+function _apiLogError(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+    LogService.logError(message, context);
+  } else {
+    Logger.log("[API-LOG] ERROR: " + message);
+  }
+}
+
 /**
  * Genera respuesta de error segura (sin stack traces) con correlationId.
  * @param {string} context - Nombre de la operación donde ocurrió el error.
@@ -34,7 +42,7 @@ function _safeError(context, error, correlationId, executionTimeMs) {
   const message = error && error.message ? error.message : String(error || 'Error desconocido');
   const startTimeProp = PropertiesService.getScriptProperties().getProperty('API_CALL_START_' + corrId);
   const execTime = executionTimeMs !== undefined ? executionTimeMs : (Date.now() - (parseInt(startTimeProp) || Date.now()));
-  LogService.logError(context + ': ' + message, { functionName: context, correlationId: corrId, error: error });
+  _apiLogError(context + ': ' + message, { functionName: context, correlationId: corrId, error: error });
   return { success: false, error: message, correlationId: corrId, executionTimeMs: execTime };
 }
 
@@ -322,7 +330,7 @@ function getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pag
     
     if (!result || typeof result !== 'object') {
       Logger.log("ERROR getCartera: resultado inválido de DOMAIN.getCartera: " + JSON.stringify(result));
-      LogService.logError("Resultado inválido de DOMAIN.getCartera", { functionName: 'getCartera', details: { result: result } });
+      _apiLogError("Resultado inválido de DOMAIN.getCartera", { functionName: 'getCartera', details: { result: result } });
     }
     
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };

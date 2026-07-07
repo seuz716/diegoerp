@@ -13,10 +13,19 @@
 class DAOError extends Error {
   constructor(message, code, details) {
     super(message);
-    this.name = "DAOError";
     this.code = code;
+    this.name = 'DAOError';
     this.details = details;
   }
+}
+
+function _daoLogError(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+    LogService.logError(message, context);
+  } else {
+    Logger.log("[DAO-LOG] ERROR: " + message);
+  }
+}
 }
 
 function _sanitizeCell(value) {
@@ -45,7 +54,7 @@ const DAO = {
       sheet.getRange(row, 1, rows.length, rows[0].length).setValues(rows);
     } catch (e) {
       Logger.log(`[DAO.batchInsert] Error: Error en operación`);
-      LogService.logError('Error en batchInsert', { functionName: 'batchInsert', error: e });
+      _daoLogError('Error en batchInsert', { functionName: 'batchInsert', error: e });
       throw e;
     } finally {
       // === INICIO FIX RACE-CONDITION ===

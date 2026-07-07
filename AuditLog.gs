@@ -8,6 +8,28 @@
 const MAX_LOG_ROWS = 10000;
 const MAX_EXECUTION_TIME_MS = 300000; // 5 minutes
 
+/**
+ * Wrapper seguro para LogService que fallback a Logger.log si LogService no está disponible.
+ */
+function _safeLogError(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+    LogService.logError(message, context);
+  } else {
+    Logger.log("[LOG] ERROR: " + message + " | " + JSON.stringify(context || {}));
+  }
+}
+
+/**
+ * Wrapper seguro para LogService INFO.
+ */
+function _safeLogInfo(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logInfo === 'function') {
+    LogService.logInfo(message, context);
+  } else {
+    Logger.log("[LOG] INFO: " + message + " | " + JSON.stringify(context || {}));
+  }
+}
+
 const LOG_ENGINE = {
   /**
    * Get client IP from HTTP headers (when available)
@@ -29,19 +51,15 @@ const LOG_ENGINE = {
 
   /**
    * Generate or retrieve correlation ID.
-   * Persists to ScriptProperties for chain propagation.
-   * Only writes to PropertiesService if value changed (avoids overhead).
+   * Solo usa paso explícito de parámetro — no persiste a PropertiesService
+   * para evitar race condition entre ejecuciones concurrentes (AUL-001).
    * @param {string} providedId - Optional correlation ID
    * @returns {string}
    * @private
    */
   _getCorrelationId(providedId) {
     if (providedId) return providedId;
-    const stored = PropertiesService.getScriptProperties().getProperty('CURRENT_CORRELATION_ID');
-    if (stored) return stored;
-    const newId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-    PropertiesService.getScriptProperties().setProperty('CURRENT_CORRELATION_ID', newId);
-    return newId;
+    return 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
   },
 
   /**
@@ -67,46 +85,51 @@ const LOG_ENGINE = {
       const ip = this._getClientIP();
       const id = "LOG_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
 
-      // Check if audit log sheet has the new columns (correlationId, ip, executionTime)
-      const headerRange = sheetAudit.getRange(1, 1, 1, 12);
-      const headers = headerRange.getValues()[0];
-      const hasNewColumns = headers.length >= 12 && headers[9] === "CorrelationId";
-
-      const rowData = hasNewColumns ? [
-        _sanitizeCell(id),
-        timestamp,
-        _sanitizeCell(operacion),
-        _sanitizeCell(tabla),
-        _sanitizeCell(idRegistro),
-        _sanitizeCell(usuario),
-        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosPrevios || {}))),
-        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosNuevos || {}))),
-        _sanitizeCell(estado),
-        _sanitizeCell(correlationId),
-        _sanitizeCell(ip),
-        executionTimeMs
-      ] : [
-        _sanitizeCell(id),
-        timestamp,
-        _sanitizeCell(operacion),
-        _sanitizeCell(tabla),
-        _sanitizeCell(idRegistro),
-        _sanitizeCell(usuario),
-        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosPrevios || {}))),
-        _sanitizeCell(JSON.stringify(_sanitizeForLog(datosNuevos || {}))),
-        _sanitizeCell(estado)
-      ];
-
       // Write + purge atómico bajo lock global (evita race condition entre logEvent concurrentes)
       let lock = null;
       try {
         lock = LOCK_MANAGER.acquireGlobalLock(30000);
       } catch (lockErr) {
-        Logger.log("[FIX-C-03] WARNING: No se pudo adquirir lock para AuditLog: " + lockErr.message);
-        LogService.logWarn("No se pudo adquirir lock para AuditLog", { functionName: 'logEvent', error: lockErr });
+        Logger.log("[AUL-002] ERROR: No se pudo adquirir lock para AuditLog: " + lockErr.message);
+        _safeLogError("Lock no adquirido en logEvent", { functionName: 'logEvent', error: lockErr });
+        return false;
+      }
+      if (!lock) {
+        Logger.log("[AUL-002] ERROR: Lock nulo en logEvent");
+        return false;
       }
 
       try {
+        // Detección de esquema dentro del lock (AUL-003: evitar race en estructura de hoja)
+        const headerRange = sheetAudit.getRange(1, 1, 1, 12);
+        const headers = headerRange.getValues()[0];
+        const hasNewColumns = headers.length >= 12 && headers[9] === "CorrelationId";
+
+        const rowData = hasNewColumns ? [
+          _sanitizeCell(id),
+          timestamp,
+          _sanitizeCell(operacion),
+          _sanitizeCell(tabla),
+          _sanitizeCell(idRegistro),
+          _sanitizeCell(usuario),
+          _sanitizeCell(JSON.stringify(_sanitizeForLog(datosPrevios || {}))),
+          _sanitizeCell(JSON.stringify(_sanitizeForLog(datosNuevos || {}))),
+          _sanitizeCell(estado),
+          _sanitizeCell(correlationId),
+          _sanitizeCell(ip),
+          executionTimeMs
+        ] : [
+          _sanitizeCell(id),
+          timestamp,
+          _sanitizeCell(operacion),
+          _sanitizeCell(tabla),
+          _sanitizeCell(idRegistro),
+          _sanitizeCell(usuario),
+          _sanitizeCell(JSON.stringify(_sanitizeForLog(datosPrevios || {}))),
+          _sanitizeCell(JSON.stringify(_sanitizeForLog(datosNuevos || {}))),
+          _sanitizeCell(estado)
+        ];
+
         const lastRow = sheetAudit.getLastRow() || 0;
         if (lastRow === 0) {
           const headerRow = hasNewColumns ? 
@@ -121,7 +144,7 @@ const LOG_ENGINE = {
           const rowsToDelete = totalRows - MAX_LOG_ROWS;
           sheetAudit.deleteRows(2, rowsToDelete);
           Logger.log("[FIX-C-03] Purge atómico: " + rowsToDelete + " filas borradas");
-      LogService.logInfo("Purge atómico completado", { functionName: 'logEvent', details: { rowsToDelete: rowsToDelete } });
+      _safeLogInfo("Purge atómico completado", { functionName: "logEvent", details: { rowsToDelete: rowsToDelete } });
         }
       } finally {
         if (lock) lock.releaseLock();
@@ -130,7 +153,7 @@ const LOG_ENGINE = {
       return true;
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE: Error en operación");
-      LogService.logError("Error en logEvent", { functionName: 'logEvent', error: e });
+      _safeLogError("Error en logEvent", { functionName: "logEvent", error: e });
       return false;
     }
   },
@@ -143,7 +166,11 @@ const LOG_ENGINE = {
       const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
       if (!sheetAudit) return [];
 
-      const data = sheetAudit.getDataRange().getValues();
+      const lastRow = sheetAudit.getLastRow();
+      if (lastRow < 2) return [];
+      const readLimit = Math.min(limit * 10, lastRow - 1);
+      const startRow = Math.max(2, lastRow - readLimit + 1);
+      const data = sheetAudit.getRange(startRow, 1, lastRow - startRow + 1, 12).getValues();
       const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
 
       return data.slice(1)
@@ -161,7 +188,7 @@ const LOG_ENGINE = {
         .reverse();
     } catch (e) {
       Logger.log("ERROR LOG_ENGINE.getHistory: Error en operación");
-      LogService.logError("Error en getHistory", { functionName: 'getHistory', error: e });
+      _safeLogError("Error en getHistory", { functionName: "getHistory", error: e });
       return [];
     }
   },
@@ -174,10 +201,14 @@ const LOG_ENGINE = {
       const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
       if (!sheetAudit) return { success: false, ventas: [] };
 
-      const data = sheetAudit.getDataRange().getValues();
+      const lastRow = sheetAudit.getLastRow();
+      if (lastRow < 2) return { success: false, ventas: [] };
+      const readLimit = Math.min(limit * 10, lastRow - 1);
+      const startRow = Math.max(2, lastRow - readLimit + 1);
+      const data = sheetAudit.getRange(startRow, 1, lastRow - startRow + 1, 12).getValues();
       const COL = CARTERA_CONFIG.COLUMNS.AUDIT_LOG;
 
-      const ventas = data.slice(1)
+      const ventas = data
         .filter(r => String(r[COL.tabla]).trim() === "VENTAS")
         .map(r => ({
           id: String(r[COL.id]).trim(),
@@ -317,8 +348,7 @@ const AUDIT_ARCHIVE = {
     try {
       let archiveSheet = getSheet(ARCHIVE_SHEET_NAME);
       if (!archiveSheet) {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        archiveSheet = ss.insertSheet(ARCHIVE_SHEET_NAME);
+        archiveSheet = getActiveSpreadsheet().insertSheet(ARCHIVE_SHEET_NAME);
         archiveSheet.appendRow(headers);
         Logger.log("[PRF-004] Creada hoja " + ARCHIVE_SHEET_NAME);
       }
@@ -333,17 +363,28 @@ const AUDIT_ARCHIVE = {
         archivedIds[String(rowsToArchive[i][0])] = true;
       }
 
+      // Borrado por rangos contiguos en vez de deleteRow individual (AUL-005)
       var rowIndices = [];
       for (var j = 0; j < rows.length; j++) {
         if (archivedIds[String(rows[j][0])]) {
           rowIndices.push(j + 2);
         }
       }
-      rowIndices.sort(function(a, b) { return b - a; });
+      rowIndices.sort(function(a, b) { return a - b; });
 
-      for (var k = 0; k < rowIndices.length; k++) {
-        sheetAudit.deleteRow(rowIndices[k]);
+      // Agrupa filas contiguas y borra por rangos
+      var rangeStart = rowIndices[0];
+      var rangeEnd = rangeStart;
+      for (var k = 1; k < rowIndices.length; k++) {
+        if (rowIndices[k] === rangeEnd + 1) {
+          rangeEnd = rowIndices[k];
+        } else {
+          sheetAudit.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
+          rangeStart = rowIndices[k];
+          rangeEnd = rangeStart;
+        }
       }
+      sheetAudit.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
 
       props.setProperty("LAST_ARCHIVE_MONTH", thisMonth);
       Logger.log("[PRF-004] Archivadas " + rowsToArchive.length + " filas");

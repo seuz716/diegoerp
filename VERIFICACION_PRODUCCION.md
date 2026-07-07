@@ -169,7 +169,7 @@ Los 7 hallazgos críticos han sido corregidos o mitigados aceptablemente. El có
 | ID | Severidad | Estado | Evidencia | Justificación |
 |----|-----------|--------|-----------|---------------|
 | CFG-001 | CRÍTICA | ✅ CORREGIDO | Línea 150: `SPREADSHEET_ID_FALLBACK` eliminado | Usa PropertiesService o getActiveSpreadsheet() como fallback para desarrollo.
-| CFG-002 | CRÍTICA | ✅ REAL | Líneas 480, 412: `AuthService` y `_captureError` usan servicios externos sin importar | `crearBackup()` llama `AuthService.checkPermission()` sin verificar que AuthService esté cargado. Si el orden de carga es incorrecto, falla. |
+| CFG-002 | CRÍTICA | ✅ CORREGIDO | AuthService implícito en crearBackup, LogService implícito en múltiples archivos | Agregados guards de existencia (AuthService && checkPermission) y wrappers seguros (_authLogError, _safeLogError) que fallback a Logger.log. |
 | CFG-003 | CRÍTICA | ✅ REAL | Líneas 613-631: lógica de Productos embebida en setupSistema | La función `setupSistema()` tiene lógica específica para agregar columnas faltantes en Productos, mezclando setup con migración. |
 | CFG-004 | MAYOR | ✅ CORREGIDO | Líneas 113-114, 143-144: `let` para variables globales | `_SHEETS_CACHE` y `_SPREADSHEET_CACHE` eliminados. Schema metadata ahora usa CacheService.getScriptCache() con TTL. |
 | CFG-005 | FALSO POSITIVO | FALSO POSITIVO | Línea 6: `BACKUP_CONFIG` declarado con `const` (NO `var`) | El hallazgo es FALSO - está declarado correctamente con `const`. |

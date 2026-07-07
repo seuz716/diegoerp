@@ -402,7 +402,12 @@ function _error(msg) { return { success: false, message: String(msg || "Error de
 function _captureError(context, error) {
   const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
   const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
-  Logger.log(`[${context}] ${stack} (corr: ${corrId})`);
+  // Use LogService if available, fallback to Logger.log
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+    LogService.logError(stack, { functionName: context, correlationId: corrId });
+  } else {
+    Logger.log(`[${context}] ${stack} (corr: ${corrId})`);
+  }
 }
 
 let _CACHED_TIMEZONE = null;
@@ -520,27 +525,29 @@ function crearBackup() {
      return this._currentCorrelationId;
    },
 
-   _takeSnapshot() {
-     const carteraSnapshot = [];
-     try {
-       const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-       if (carteraSheet && carteraSheet.getLastRow() > 1) {
-         const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
-         const data = carteraSheet.getDataRange().getValues();
-         for (let i = 1; i < data.length; i++) {
-           carteraSnapshot.push({
-             rowIndex: i + 1,
-             id: String(data[i][COL.id] || "").trim(),
-             saldo: _parseMoneda(data[i][COL.saldo], 0),
-             estado: String(data[i][COL.estado] || "").trim()
-           });
-         }
-       }
-     } catch (e) {
-       Logger.log("TransactionManager: error snapshot cartera: " + e.toString());
-     }
-     return { cartera: carteraSnapshot };
-   }
+    _takeSnapshot() {
+      const carteraSnapshot = [];
+      try {
+        const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+        const lastRow = carteraSheet ? carteraSheet.getLastRow() : 0;
+        if (lastRow > 1) {
+          const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+          const neededCols = Math.max(COL.id, COL.saldo, COL.estado) + 1;
+          const data = carteraSheet.getRange(2, 1, lastRow - 1, neededCols).getValues();
+          for (let i = 0; i < data.length; i++) {
+            carteraSnapshot.push({
+              rowIndex: i + 2,
+              id: String(data[i][COL.id] || "").trim(),
+              saldo: _parseMoneda(data[i][COL.saldo], 0),
+              estado: String(data[i][COL.estado] || "").trim()
+            });
+          }
+        }
+      } catch (e) {
+        Logger.log("TransactionManager: error snapshot cartera: " + e.toString());
+      }
+      return { cartera: carteraSnapshot };
+    }
  };
 
 // ─ SESSION SERVICE (singleton) ─

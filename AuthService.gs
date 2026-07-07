@@ -1,6 +1,30 @@
 const ROLES = { ADMIN: 'ADMIN', OPERATOR: 'OPERATOR', VIEWER: 'VIEWER' };
 const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
+function _authLogError(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+    (_authLogError(message, context);
+  } else {
+    Logger.log("[AUTH-LOG] ERROR: " + message);
+  }
+}
+
+function _authLogWarn(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logWarn === 'function') {
+    (_authLogWarn(message, context);
+  } else {
+    Logger.log("[AUTH-LOG] WARN: " + message);
+  }
+}
+
+function _authLogInfo(message, context) {
+  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logInfo === 'function') {
+    (_authLogInfo(message, context);
+  } else {
+    Logger.log("[AUTH-LOG] INFO: " + message);
+  }
+}
+
 const PERMISSION_ROLES = {
   ver_terceros: ROLES.VIEWER,
   ver_cartera: ROLES.VIEWER,
@@ -207,7 +231,7 @@ const CRYPTO_SERVICE = {
       return JSON.stringify({ c: encoded, i: iv, s: salt, h: hmac, v: this.TAG });
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.encrypt error:", e.message);
-      LogService.logError("encrypt error", { functionName: 'encrypt', error: e });
+      (_authLogError("encrypt error", { functionName: 'encrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en cifrado");
     }
   },
@@ -256,7 +280,7 @@ const CRYPTO_SERVICE = {
       return Utilities.newBlob(plaintext).getDataAsString();
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.decrypt error:", e.message);
-      LogService.logError("decrypt error", { functionName: 'decrypt', error: e });
+      (_authLogError("decrypt error", { functionName: 'decrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en descifrado");
     }
   },
@@ -403,7 +427,7 @@ const AuthService = {
     const validation = SCHEMA_VALIDATOR.validateRoleMap(raw);
     if (!validation.valid) {
       Logger.log("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
-      LogService.logError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
+      (_authLogError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
       return null;
     }
     
@@ -435,7 +459,7 @@ const normalized = email.toLowerCase().trim();
     
     if (!email && isSafeAction) {
       Logger.log('[PERMISSION] Ejecución de acción segura "' + accion + '" sin identidad (trigger)');
-      LogService.logInfo('Ejecución de acción segura sin identidad (trigger)', { functionName: 'checkPermission', details: { accion: accion } });
+      (_authLogInfo('Ejecución de acción segura sin identidad (trigger)', { functionName: 'checkPermission', details: { accion: accion } });
       return;
     }
     

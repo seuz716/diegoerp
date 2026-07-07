@@ -196,7 +196,7 @@ function runSmokeTests() {
   
   // Registrar en LogService si existe
   try {
-    if (typeof LogService !== 'undefined') {
+    if (typeof LogService !== 'undefined' && typeof LogService.logInfo === 'function') {
       LogService.logInfo('Smoke tests completed', { 
         functionName: 'runSmokeTests', 
         details: { success: result.success, summary: result.summary } 
