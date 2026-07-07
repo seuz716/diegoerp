@@ -14,9 +14,10 @@ const SamplingStrategy = {
   /**
    * Segments items by age/delinquency buckets.
    * @param {Array<{dias_vencido: number|null}>} items - Items with days overdue.
+   * @param {number} [maxPerSegment=500] - Max items per bucket (DoS protection).
    * @returns {Object<string, Array>} Buckets keyed by age category.
    */
-  segmentByAge(items) {
+  segmentByAge(items, maxPerSegment = 500) {
     const buckets = {
       SIN_FECHA: [],
       SIN_VENCER: [],
@@ -42,6 +43,15 @@ const SamplingStrategy = {
         buckets.MORA_180_PLUS.push(item);
       }
     });
+
+    if (maxPerSegment > 0) {
+      for (const key of Object.keys(buckets)) {
+        if (buckets[key].length > maxPerSegment) {
+          Logger.log("[PRF-003] Bucket " + key + " truncado de " + buckets[key].length + " a " + maxPerSegment + " items");
+          buckets[key] = buckets[key].slice(0, maxPerSegment);
+        }
+      }
+    }
 
     return Object.fromEntries(
       Object.entries(buckets).filter(([_, v]) => v.length > 0)

@@ -40,28 +40,30 @@
 **Componente:** `AuditLog.gs` (líneas 100-126)  
 **Vulnerabilidad:** La hoja AUDIT_LOG crece indefinidamente. El purge elimina filas pero no limita el archivo.  
 **Impacto:** Límite de filas de Google Sheets (10K), degradación de rendimiento.  
-**Solución:** Implementar archived logs en hojas separadas con timestamp.
+**Solución:** Implementar archived logs en hojas separadas con timestamp.  
+**Estado:** ✅ CORREGIDO (PRF-004) — `AUDIT_ARCHIVE.autoArchive()` en `AuditLog.gs` con archive mensual a hoja `AUDIT_LOG_ARCHIVE`
 
 ## AUD-007: Optimización prompt Gemini
 **Severidad:** MAYOR  
 **Componente:** `IAService.gs` (líneas 13-100)  
 **Vulnerabilidad:** `segmentByAge` incluye todos los items sin límite, causando payloads > 1M tokens.  
 **Impacto:** Timeout de API, costos elevados, respuesta lenta.  
-**Solución:** Aplicar límite máximo 500 items por segmento.
+**Solución:** Aplicar límite máximo 500 items por segmento.  
+**Estado:** ✅ CORREGIDO (PRF-003) — `segmentByAge()` truncado a 500 items por bucket
 
 ## Hallazgos MAYORES (3-8) omitidos por espacio
 
 ## Matriz de Riesgos Priorizada
 
-| ID | Severidad | Impacto | Effort | Prioridad |
-|---|---|---|---|---|---|
-| AUD-001 | CRÍTICA | Remote Code Execution | Medio | 1 |
-| AUD-002 | CRÍTICA | Auth Bypass | Bajo | 1 |
-| AUD-003 | CRÍTICA | Credential Leak | Alto | 1 |
-| AUD-004 | CRÍTICA | Data Corruption | Alto | 1 |
-| AUD-005 | CRÍTICA | Lost Updates | Medio | 1 |
-| AUD-006 | MAYOR | DoS | Bajo | 2 |
-| AUD-007 | MAYOR | Performance | Bajo | 2 |
+| ID | Severidad | Impacto | Effort | Prioridad | Estado |
+|---|---|---|---|---|---|---|---|
+| AUD-001 | CRÍTICA | Remote Code Execution | Medio | 1 | 🔴 PENDIENTE |
+| AUD-002 | CRÍTICA | Auth Bypass | Bajo | 1 | 🔴 PENDIENTE |
+| AUD-003 | CRÍTICA | Credential Leak | Alto | 1 | 🔴 PENDIENTE |
+| AUD-004 | CRÍTICA | Data Corruption | Alto | 1 | 🔴 PENDIENTE |
+| AUD-005 | CRÍTICA | Lost Updates | Medio | 1 | 🔴 PENDIENTE |
+| AUD-006 | MAYOR | DoS | Bajo | 2 | ✅ CORREGIDO (PRF-004) |
+| AUD-007 | MAYOR | Performance | Bajo | 2 | ✅ CORREGIDO (PRF-003) |
 
 ## Plan de Remediación (4 Fases)
 

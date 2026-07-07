@@ -256,3 +256,160 @@ function getVentasHistory(limit = 100) {
     return { success: false, ventas: [], error: "Error interno" };
   }
 }
+
+// =============================================================================
+// PRF-004: AUDIT_ARCHIVE — Archivado mensual de logs antiguos
+// =============================================================================
+
+const ARCHIVE_SHEET_NAME = "AUDIT_LOG_ARCHIVE";
+
+const AUDIT_ARCHIVE = {
+  ARCHIVE_AFTER_DAYS: 30,
+
+  /**
+   * Mueve registros de AUDIT_LOG mayores a ARCHIVE_AFTER_DAYS a una hoja de
+   * archivo. Corre una vez por mes calendario (controlado por propiedad
+   * LAST_ARCHIVE_MONTH).
+   * @returns {{archived: number, skipped?: boolean, reason?: string, error?: string}}
+   */
+  autoArchive() {
+    const props = PropertiesService.getScriptProperties();
+    const timeZone = SESSION_SERVICE.getScriptTimeZone();
+    const thisMonth = Utilities.formatDate(new Date(), timeZone, "yyyyMM");
+    const lastMonth = props.getProperty("LAST_ARCHIVE_MONTH");
+
+    if (lastMonth === thisMonth) {
+      Logger.log("[PRF-004] Ya se archivó este mes (" + thisMonth + ")");
+      return { archived: 0, skipped: true, reason: "already_archived" };
+    }
+
+    const sheetAudit = getSheet(CARTERA_CONFIG.SHEETS.AUDIT_LOG);
+    if (!sheetAudit) return { archived: 0, error: "no_sheet" };
+
+    const data = sheetAudit.getDataRange().getValues();
+    if (data.length <= 1) {
+      props.setProperty("LAST_ARCHIVE_MONTH", thisMonth);
+      return { archived: 0, skipped: true, reason: "no_data" };
+    }
+
+    const headers = data[0];
+    const rows = data.slice(1);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.ARCHIVE_AFTER_DAYS);
+
+    const rowsToArchive = rows.filter(function(r) {
+      return r[1] instanceof Date && r[1] < cutoff;
+    });
+
+    if (rowsToArchive.length === 0) {
+      props.setProperty("LAST_ARCHIVE_MONTH", thisMonth);
+      return { archived: 0, skipped: true, reason: "nothing_to_archive" };
+    }
+
+    let lock = null;
+    try {
+      lock = LOCK_MANAGER.acquireGlobalLock(60000);
+    } catch (lockErr) {
+      Logger.log("[PRF-004] WARNING: No se pudo adquirir lock para archive: " + lockErr.message);
+      return { archived: 0, error: "lock_failed" };
+    }
+
+    try {
+      let archiveSheet = getSheet(ARCHIVE_SHEET_NAME);
+      if (!archiveSheet) {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        archiveSheet = ss.insertSheet(ARCHIVE_SHEET_NAME);
+        archiveSheet.appendRow(headers);
+        Logger.log("[PRF-004] Creada hoja " + ARCHIVE_SHEET_NAME);
+      }
+
+      archiveSheet.getRange(
+        archiveSheet.getLastRow() + 1, 1,
+        rowsToArchive.length, headers.length
+      ).setValues(rowsToArchive);
+
+      const archivedIds = {};
+      for (var i = 0; i < rowsToArchive.length; i++) {
+        archivedIds[String(rowsToArchive[i][0])] = true;
+      }
+
+      var rowIndices = [];
+      for (var j = 0; j < rows.length; j++) {
+        if (archivedIds[String(rows[j][0])]) {
+          rowIndices.push(j + 2);
+        }
+      }
+      rowIndices.sort(function(a, b) { return b - a; });
+
+      for (var k = 0; k < rowIndices.length; k++) {
+        sheetAudit.deleteRow(rowIndices[k]);
+      }
+
+      props.setProperty("LAST_ARCHIVE_MONTH", thisMonth);
+      Logger.log("[PRF-004] Archivadas " + rowsToArchive.length + " filas");
+
+      return { archived: rowsToArchive.length };
+    } catch (e) {
+      Logger.log("[PRF-004] Error en autoArchive: " + e.message);
+      return { archived: 0, error: e.message };
+    } finally {
+      if (lock) lock.releaseLock();
+    }
+  },
+
+  /**
+   * Retorna estadísticas del archivo de auditoría.
+   * @returns {{exists: boolean, totalArchived: number, lastArchiveMonth: string|null}}
+   */
+  getArchiveStats() {
+    const props = PropertiesService.getScriptProperties();
+    const lastMonth = props.getProperty("LAST_ARCHIVE_MONTH") || null;
+    try {
+      var archiveSheet = getSheet(ARCHIVE_SHEET_NAME);
+      var total = archiveSheet ? Math.max(0, archiveSheet.getLastRow() - 1) : 0;
+      return { exists: !!archiveSheet, totalArchived: total, lastArchiveMonth: lastMonth };
+    } catch (e) {
+      return { exists: false, totalArchived: 0, lastArchiveMonth: lastMonth };
+    }
+  }
+};
+
+/**
+ * Configura el trigger mensual de archivado de auditoría.
+ * Es idempotente: solo crea el trigger si no existe.
+ */
+function setupMonthlyArchive() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty("MONTHLY_ARCHIVE_TRIGGER_SET")) {
+    Logger.log("[PRF-004] Trigger mensual ya configurado");
+    return { success: true, skipped: true };
+  }
+
+  const triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "autoArchive") {
+      props.setProperty("MONTHLY_ARCHIVE_TRIGGER_SET", "true");
+      Logger.log("[PRF-004] Trigger ya existe en proyecto");
+      return { success: true, skipped: true };
+    }
+  }
+
+  ScriptApp.newTrigger("autoArchive")
+    .timeBased()
+    .everyDays(30)
+    .create();
+
+  props.setProperty("MONTHLY_ARCHIVE_TRIGGER_SET", "true");
+  Logger.log("[PRF-004] Trigger mensual creado para autoArchive");
+  return { success: true };
+}
+
+/**
+ * Punto de entrada para el trigger time-based.
+ * Delega en AUDIT_ARCHIVE.autoArchive().
+ * @returns {Object} Resultado de la operación.
+ */
+function autoArchive() {
+  Logger.log("[PRF-004] Trigger autoArchive ejecutándose");
+  return AUDIT_ARCHIVE.autoArchive();
+}

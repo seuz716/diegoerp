@@ -55,6 +55,9 @@ escapeAttr(str)     // Atributos HTML → escapados (quot, apos, lt, gt)
 - [x] Dependencias sin circularidad (guard en CacheService.gs)
 - [x] Scripts redundantes eliminados
 - [x] Funciones API mapeadas correctamente
+- [x] segmentByAge limitado a 500 items/bucket (PRF-003, AUD-007)
+- [x] AUDIT_ARCHIVE con autoArchive mensual (PRF-004, AUD-006)
+- [x] 31/31 archivos .gs pasan validación sintáctica (acorn)
 
 ---
 
