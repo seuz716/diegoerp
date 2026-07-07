@@ -3,6 +3,13 @@
  * v2.5.1 - Load order fixed via filePushOrder
  */
 
+const BACKUP_CONFIG = {
+  FOLDER_NAME: "MicroERP_Backups",
+  EXPORT_FOLDER_NAME: "MicroERP_Exportaciones",
+  MAX_BACKUPS: 7,
+  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG", "Producto_Proveedor"],
+};
+
 const CARTERA_CONFIG = {
   SHEETS: {
     TERCEROS: "Terceros",
@@ -11,7 +18,7 @@ const CARTERA_CONFIG = {
     AUDIT_LOG: "AUDIT_LOG",
   },
   COLUMNS: {
-    TERCEROS:    { id: 0, nombre: 1, telefono: 2, tipo: 3, tipoTercero: 3, limite_credito: 4, activo: 5 },
+    TERCEROS:    { id: 0, nombre: 1, telefono: 2, tipo: 3, limite_credito: 4, activo: 5 },
     CARTERA:     { id: 0, fecha: 1, id_tercero: 2, origen_id: 3, total: 4, saldo: 5, tipo: 6, estado: 7, fecha_vencimiento: 8, vencida_timestamp: 9, version: 10 },
     MOV_CARTERA: { id: 0, fecha: 1, id_cartera: 2, id_tercero: 3, valor: 4, tipo_mov: 5, referencia: 6 },
     AUDIT_LOG:   { id: 0, timestamp: 1, operacion: 2, tabla: 3, id_registro: 4, usuario: 5, datos_previos: 6, datos_nuevos: 7, estado: 8 },
@@ -371,11 +378,13 @@ function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(
 function _sanitizeCell(v) {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") {
-    // Protect against formula injection in Google Sheets
     const needsEscape = /^[=+\-@]/.test(v);
     return needsEscape ? "'" + v : v;
   }
   if (typeof v === "number" || typeof v === "boolean") return v;
+  if (typeof v === "object") {
+    return JSON.stringify(v);
+  }
   return String(v);
 }
 
@@ -403,7 +412,7 @@ function _error(msg) { return { success: false, message: String(msg || "Error de
 function _captureError(context, error) {
   const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
   const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
-  LogService.logError(stack, { functionName: context, correlationId: corrId, error: error });
+  Logger.log(`[${context}] ${stack} (corr: ${corrId})`);
 }
 
 let _CACHED_TIMEZONE = null;
@@ -541,15 +550,6 @@ function crearBackup() {
      return { cartera: carteraSnapshot };
    }
  };
-
-// ─ BACKUP & EXPORT CONFIG ─
-
-var BACKUP_CONFIG = {
-  FOLDER_NAME: "MicroERP_Backups",
-  EXPORT_FOLDER_NAME: "MicroERP_Exportaciones",
-  MAX_BACKUPS: 7,
-  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG", "Producto_Proveedor"],
-};
 
 // ─ SESSION SERVICE (singleton) ─
 const SESSION_SERVICE = {
