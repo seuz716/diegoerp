@@ -36,7 +36,7 @@ function _isIdempotent(correlationId, idTercero) {
  */
 const _Transaction = {
   create() {
-    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], productoPreRows: 0, productoPostRows: 0, compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, active: false };
+    const ctx = { carteraSnapshots: [], movPreRows: 0, movPostRows: 0, terceroSnapshots: [], productoSnapshots: [], productoPreRows: 0, productoPostRows: 0, compraSnapshots: [], pagoPreRows: 0, pagoPostRows: 0, detallePreRows: 0, detallePostRows: 0, carteraPreRows: 0, carteraPostRows: 0, compraPreRows: 0, compraPostRows: 0, kardexPreRows: 0, kardexPostRows: 0, libroPreRows: 0, libroPostRows: 0, flujoPreRows: 0, flujoPostRows: 0, productoProveedorPreRows: 0, productoProveedorPostRows: 0, active: false };
 
     return {
       begin() {
@@ -53,6 +53,18 @@ const _Transaction = {
         ctx.pagoPostRows = 0;
         ctx.detallePreRows = 0;
         ctx.detallePostRows = 0;
+        ctx.carteraPreRows = 0;
+        ctx.carteraPostRows = 0;
+        ctx.compraPreRows = 0;
+        ctx.compraPostRows = 0;
+        ctx.kardexPreRows = 0;
+        ctx.kardexPostRows = 0;
+        ctx.libroPreRows = 0;
+        ctx.libroPostRows = 0;
+        ctx.flujoPreRows = 0;
+        ctx.flujoPostRows = 0;
+        ctx.productoProveedorPreRows = 0;
+        ctx.productoProveedorPostRows = 0;
       },
 
       snapshotTerceroRow(rowIndex) {
@@ -155,6 +167,56 @@ const _Transaction = {
         ctx.pagoPostRows = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES).getLastRow();
       },
 
+      // === NUEVOS marcadores para tablas principales y contables (#1) ===
+      markCarteraPreAppend() {
+        if (!ctx.active) return;
+        ctx.carteraPreRows = getSheet(CARTERA_CONFIG.SHEETS.CARTERA).getLastRow();
+      },
+      markCarteraPostAppend() {
+        if (!ctx.active) return;
+        ctx.carteraPostRows = getSheet(CARTERA_CONFIG.SHEETS.CARTERA).getLastRow();
+      },
+      markCompraPreAppend() {
+        if (!ctx.active) return;
+        ctx.compraPreRows = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS).getLastRow();
+      },
+      markCompraPostAppend() {
+        if (!ctx.active) return;
+        ctx.compraPostRows = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS).getLastRow();
+      },
+      markKardexPreAppend() {
+        if (!ctx.active) return;
+        ctx.kardexPreRows = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX).getLastRow();
+      },
+      markKardexPostAppend() {
+        if (!ctx.active) return;
+        ctx.kardexPostRows = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX).getLastRow();
+      },
+      markLibroPreAppend() {
+        if (!ctx.active) return;
+        ctx.libroPreRows = getSheet(CONFIG.SHEETS.LIBRO_DIARIO).getLastRow();
+      },
+      markLibroPostAppend() {
+        if (!ctx.active) return;
+        ctx.libroPostRows = getSheet(CONFIG.SHEETS.LIBRO_DIARIO).getLastRow();
+      },
+      markFlujoPreAppend() {
+        if (!ctx.active) return;
+        ctx.flujoPreRows = getSheet(CONFIG.SHEETS.FLUJO_CAJA).getLastRow();
+      },
+      markFlujoPostAppend() {
+        if (!ctx.active) return;
+        ctx.flujoPostRows = getSheet(CONFIG.SHEETS.FLUJO_CAJA).getLastRow();
+      },
+      markProductoProveedorPreAppend() {
+        if (!ctx.active) return;
+        ctx.productoProveedorPreRows = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET).getLastRow();
+      },
+      markProductoProveedorPostAppend() {
+        if (!ctx.active) return;
+        ctx.productoProveedorPostRows = getSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET).getLastRow();
+      },
+
       commit() {
         ctx.active = false;
         ctx.carteraSnapshots = [];
@@ -169,121 +231,127 @@ const _Transaction = {
         ctx.pagoPostRows = 0;
         ctx.detallePreRows = 0;
         ctx.detallePostRows = 0;
+        ctx.carteraPreRows = 0;
+        ctx.carteraPostRows = 0;
+        ctx.compraPreRows = 0;
+        ctx.compraPostRows = 0;
+        ctx.kardexPreRows = 0;
+        ctx.kardexPostRows = 0;
+        ctx.libroPreRows = 0;
+        ctx.libroPostRows = 0;
+        ctx.flujoPreRows = 0;
+        ctx.flujoPostRows = 0;
+        ctx.productoProveedorPreRows = 0;
+        ctx.productoProveedorPostRows = 0;
       },
 
       rollback() {
-  if (!ctx.active) return;
-  // === INICIO FIX M-02 ===
-  // Rollback de Terceros (nuevo) con verificación de versión optimista
-  if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
-    const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
-    const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
-    for (const snap of ctx.terceroSnapshots) {
-      // Check version for optimistic locking
-      const currentRow = sheet.getRange(snap.rowIndex, COL.version + 1, 1, 1).getValues()[0];
-      const currentVersion = Number(currentRow[0]) || 1;
-      const snapshotVersion = Number(snap.values[COL.version]) || 1;
-      if (currentVersion !== snapshotVersion) {
-        const err = new Error("CONFLICTO_ROLLBACK: Tercero fila " + snap.rowIndex + 
-          " fue modificado por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
-        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "TERCEROS", snap.rowIndex, {}, { error: err.message }, "ERROR");
-        throw err;
-      }
-      const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
-      sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
-    }
-    Logger.log("[FIX-M-02] Rollback de tercero completado para " + ctx.terceroSnapshots.length + " fila(s)");
-  }
-  // === FIN FIX M-02 ===
+        if (!ctx.active) return;
+        // === FASE 1: restaurar snapshots existentes (acumulando conflictos, #5) ===
+        const conflicts = [];
 
-  // Rollback de Cartera con verificación de versión optimista
-  const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
-  const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
-  for (const snap of ctx.carteraSnapshots) {
-    // Leer versión actual de la hoja
-    const currentRow = carteraSheet.getRange(snap.rowIndex, COL.version + 1, 1, 1).getValues()[0];
-    const currentVersion = Number(currentRow[0]) || 1;
-    const snapshotVersionIdx = COL.version - snap.startCol;
-    const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
-    
-    if (currentVersion !== snapshotVersion) {
-      const err = new Error("CONFLICTO_ROLLBACK: Cartera fila " + snap.rowIndex + 
-        " fue modificada por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
-      LOG_ENGINE.logEvent("ERROR_ROLLBACK", "CARTERA", snap.rowIndex, {}, { error: err.message }, "ERROR");
-      throw err;
-    }
-    const restoredRow = snap.values.slice();
-    const numCols = restoredRow.length;
-    carteraSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
-  }
-  // === FIN FIX-VERSION-CHECK ===
-  
-  if (ctx.movPostRows > ctx.movPreRows) {
-          const movSheet = getSheet(CARTERA_CONFIG.SHEETS.MOV_CARTERA);
-          const startRow = ctx.movPreRows + 1;
-          const count = ctx.movPostRows - ctx.movPreRows;
-          movSheet.deleteRows(startRow, count);
+        // Rollback de Terceros
+        if (ctx.terceroSnapshots && ctx.terceroSnapshots.length > 0) {
+          const sheet = getSheet(CARTERA_CONFIG.SHEETS.TERCEROS);
+          const COL = CARTERA_CONFIG.COLUMNS.TERCEROS;
+          for (const snap of ctx.terceroSnapshots) {
+            const currentRow = sheet.getRange(snap.rowIndex, COL.version + 1, 1, 1).getValues()[0];
+            const currentVersion = Number(currentRow[0]) || 1;
+            const snapshotVersion = Number(snap.values[COL.version]) || 1;
+            if (currentVersion !== snapshotVersion) {
+              conflicts.push({ table: 'TERCEROS', rowIndex: snap.rowIndex, expected: snapshotVersion, actual: currentVersion });
+              continue;
+            }
+            const numCols = Math.max(...Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS)) + 1;
+            sheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+          }
         }
-        // Producto stock rollback
-  if (ctx.productoSnapshots && ctx.productoSnapshots.length > 0) {
-    const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-    const prodCOL = CONFIG.COLUMNS.PRODUCTOS;
-    for (const snap of ctx.productoSnapshots) {
-      const snapshotVersionIdx = prodCOL.version - snap.startCol;
-      const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
-      const currentRow = prodSheet.getRange(snap.rowIndex, prodCOL.version + 1, 1, 1).getValues()[0];
-      const currentVersion = Number(currentRow[0]) || 1;
-      
-      if (currentVersion !== snapshotVersion) {
-        const err = new Error("CONFLICTO_ROLLBACK: Producto fila " + snap.rowIndex + 
-          " fue modificado por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
-        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "PRODUCTOS", snap.rowIndex, {}, { error: err.message }, "ERROR");
-        throw err;
-      }
-      const numCols = snap.values.length;
-      prodSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
-    }
-    Logger.log("[FIX-RBK-STOCK] Rollback de producto completado para " + ctx.productoSnapshots.length + " fila(s)");
-  }
-        if (ctx.productoPostRows > ctx.productoPreRows) {
+
+        // Rollback de Cartera (filas existentes)
+        const carteraSheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+        const CARCOL = CARTERA_CONFIG.COLUMNS.CARTERA;
+        for (const snap of ctx.carteraSnapshots) {
+          const currentRow = carteraSheet.getRange(snap.rowIndex, CARCOL.version + 1, 1, 1).getValues()[0];
+          const currentVersion = Number(currentRow[0]) || 1;
+          const snapshotVersionIdx = CARCOL.version - snap.startCol;
+          const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
+          if (currentVersion !== snapshotVersion) {
+            conflicts.push({ table: 'CARTERA', rowIndex: snap.rowIndex, expected: snapshotVersion, actual: currentVersion });
+            continue;
+          }
+          const restoredRow = snap.values.slice();
+          const numCols = restoredRow.length;
+          carteraSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([restoredRow]);
+        }
+
+        // Rollback de Productos (stock)
+        if (ctx.productoSnapshots && ctx.productoSnapshots.length > 0) {
           const prodSheet = getSheet(CONFIG.SHEETS.PRODUCTOS);
-          const startRow = ctx.productoPreRows + 1;
-          const count = ctx.productoPostRows - ctx.productoPreRows;
-          prodSheet.deleteRows(startRow, count);
-          Logger.log("[DOMAIN] Rollback de productos inline: " + count + " fila(s) eliminada(s)");
+          const PCOL = CONFIG.COLUMNS.PRODUCTOS;
+          for (const snap of ctx.productoSnapshots) {
+            const snapshotVersionIdx = PCOL.version - snap.startCol;
+            const snapshotVersion = Number(snap.values[snapshotVersionIdx]) || 1;
+            const currentRow = prodSheet.getRange(snap.rowIndex, PCOL.version + 1, 1, 1).getValues()[0];
+            const currentVersion = Number(currentRow[0]) || 1;
+            if (currentVersion !== snapshotVersion) {
+              conflicts.push({ table: 'PRODUCTOS', rowIndex: snap.rowIndex, expected: snapshotVersion, actual: currentVersion });
+              continue;
+            }
+            const numCols = snap.values.length;
+            prodSheet.getRange(snap.rowIndex, snap.startCol + 1, 1, numCols).setValues([snap.values]);
+          }
         }
-        // Compras rollback
-  if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
-    const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-    const compraCOL = COMPRAS_CONFIG.COLUMNS.COMPRAS;
-    for (const snap of ctx.compraSnapshots) {
-      const snapshotVersion = Number(snap.values[compraCOL.version]) || 1;
-      const currentRow = compraSheet.getRange(snap.rowIndex, compraCOL.version + 1, 1, 1).getValues()[0];
-      const currentVersion = Number(currentRow[0]) || 1;
-      
-      if (currentVersion !== snapshotVersion) {
-        const err = new Error("CONFLICTO_ROLLBACK: Compra fila " + snap.rowIndex + 
-          " fue modificada por otra transacción (esperado: " + snapshotVersion + ", actual: " + currentVersion + ")");
-        LOG_ENGINE.logEvent("ERROR_ROLLBACK", "COMPRAS", snap.rowIndex, {}, { error: err.message }, "ERROR");
-        throw err;
-      }
-      const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
-      compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
-    }
-  }
-        if (ctx.pagoPostRows > ctx.pagoPreRows) {
-          const pagoSheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
-          const startRow = ctx.pagoPreRows + 1;
-          const count = ctx.pagoPostRows - ctx.pagoPreRows;
-          pagoSheet.deleteRows(startRow, count);
+
+        // Rollback de Compras (filas existentes)
+        if (ctx.compraSnapshots && ctx.compraSnapshots.length > 0) {
+          const compraSheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+          const CCOL = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+          for (const snap of ctx.compraSnapshots) {
+            const snapshotVersion = Number(snap.values[CCOL.version]) || 1;
+            const currentRow = compraSheet.getRange(snap.rowIndex, CCOL.version + 1, 1, 1).getValues()[0];
+            const currentVersion = Number(currentRow[0]) || 1;
+            if (currentVersion !== snapshotVersion) {
+              conflicts.push({ table: 'COMPRAS', rowIndex: snap.rowIndex, expected: snapshotVersion, actual: currentVersion });
+              continue;
+            }
+            const numCols = Math.max(...Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)) + 1;
+            compraSheet.getRange(snap.rowIndex, 1, 1, numCols).setValues([snap.values]);
+          }
         }
-        if (ctx.detallePostRows > ctx.detallePreRows) {
-          const detSheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
-          const startRow = ctx.detallePreRows + 1;
-          const count = ctx.detallePostRows - ctx.detallePreRows;
-          detSheet.deleteRows(startRow, count);
+
+        // === FASE 2: eliminar inserciones en orden descendente por startRow (#1) ===
+        const deletes = [];
+        function _addDel(sheetName, pre, post) {
+          if (post > pre) {
+            deletes.push({ sheet: getSheet(sheetName), startRow: pre + 1, count: post - pre });
+          }
         }
+        _addDel(CARTERA_CONFIG.SHEETS.MOV_CARTERA, ctx.movPreRows, ctx.movPostRows);
+        _addDel(CONFIG.SHEETS.PRODUCTOS, ctx.productoPreRows, ctx.productoPostRows);
+        _addDel(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES, ctx.pagoPreRows, ctx.pagoPostRows);
+        _addDel(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS, ctx.detallePreRows, ctx.detallePostRows);
+        _addDel(CARTERA_CONFIG.SHEETS.CARTERA, ctx.carteraPreRows, ctx.carteraPostRows);
+        _addDel(COMPRAS_CONFIG.SHEETS.COMPRAS, ctx.compraPreRows, ctx.compraPostRows);
+        _addDel(COMPRAS_CONFIG.SHEETS.KARDEX, ctx.kardexPreRows, ctx.kardexPostRows);
+        _addDel(CONFIG.SHEETS.LIBRO_DIARIO, ctx.libroPreRows, ctx.libroPostRows);
+        _addDel(CONFIG.SHEETS.FLUJO_CAJA, ctx.flujoPreRows, ctx.flujoPostRows);
+        _addDel(PRODUCTO_PROVEEDOR_CONFIG.SHEET, ctx.productoProveedorPreRows, ctx.productoProveedorPostRows);
+
+        deletes.sort((a, b) => b.startRow - a.startRow);
+        for (const d of deletes) {
+          if (d.sheet.getLastRow() >= d.startRow) {
+            d.sheet.deleteRows(d.startRow, d.count);
+          }
+        }
+
         ctx.active = false;
+
+        // === FASE 3: reportar conflictos acumulados (#5) ===
+        if (conflicts.length > 0) {
+          LOG_ENGINE.logEvent("ROLLBACK_PARCIAL", "SYSTEM", "", {}, { conflicts: conflicts }, "ERROR");
+          const resumen = conflicts.map(c => c.table + " fila " + c.rowIndex).join(", ");
+          throw new Error("Rollback parcial: " + conflicts.length + " conflicto(s) de version [" + resumen + "]");
+        }
       },
     };
   },
@@ -607,16 +675,17 @@ const _executeAbonoTx = () => {
 
         DAO.updateCarteraBatch(plan.cambios);
         CACHE.invalidateCartera();
-        tx.markMovPostAppend();
         if (plan.movimientos.length > 0) {
           for (const mov of plan.movimientos) { DAO.createMovimiento(mov); }
         }
+        tx.markMovPostAppend();
 
         // === GENERAR ASIENTO CONTABLE PARA ABONO (dentro del lock, antes del commit) ===
         // F2: el asiento contable debe registrarse ANTES de tx.commit() para que,
         // si falla, el rollback de cartera/movimientos se aplique y no quede la
         // ecuación contable rota (cartera aplicada sin libro diario/flujo de caja).
         const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
+        tx.markLibroPreAppend();
         LIBRO_DIARIO.registrarAbonoCliente(
           new Date(),
           "ABONO-" + Date.now(),
@@ -624,8 +693,10 @@ const _executeAbonoTx = () => {
           plan.aplicadoTotal,
           usuario
         );
+        tx.markLibroPostAppend();
 
         // Registrar entrada de caja por abono
+        tx.markFlujoPreAppend();
         FLUJO_CAJA.registrarMovimiento(
           new Date(),
           FLUJO_CAJA.TIPOS.ENTRADA_ABONO,
@@ -634,6 +705,7 @@ const _executeAbonoTx = () => {
           refLimpia,
           usuario
         );
+        tx.markFlujoPostAppend();
 
         tx.commit();
 
@@ -911,8 +983,10 @@ DAO.createCartera(record);
 
         tx.begin();
         tx.markDetallePreAppend();
+        tx.markCompraPreAppend();
 
         DAO_COMPRAS.crearCompra(compraRecord);
+        tx.markCompraPostAppend();
 
         // Collect stock updates for batch write
         const stockUpdates = {}; // pid -> { cantidad, rowIndex, stockAnterior, stockNuevo }
@@ -1054,6 +1128,7 @@ DAO.createCartera(record);
       if (existingRow) {
         sheet.getRange(existingRow, COL.precioUltimaCompra + 1, 1, 3).setValues([[_parseMoneda(precio, 0), esPreferido === true ? "TRUE" : "FALSE", new Date()]]);
       } else {
+        tx.markProductoProveedorPreAppend();
         const rowData = [
           _sanitizeCell(idProdLimpio),
           _sanitizeCell(idProvLimpio),
@@ -1062,6 +1137,7 @@ DAO.createCartera(record);
           new Date()
         ];
         sheet.appendRow(rowData);
+        tx.markProductoProveedorPostAppend();
       }
 
       tx.commit();
@@ -1160,7 +1236,9 @@ DAO.createCartera(record);
           });
         }
         if (kardexEntries.length > 0) {
+          tx.markKardexPreAppend();
           DAO_COMPRAS.crearMovimientosKardexBatch(kardexEntries);
+          tx.markKardexPostAppend();
         }
 
         tx.markDetallePostAppend();
@@ -1266,6 +1344,7 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
         // F2: registrar el asiento antes de tx.commit() para que un fallo dispare
         // el rollback de cartera/pago y no deje la ecuación contable rota.
         const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
+        tx.markLibroPreAppend();
         LIBRO_DIARIO.registrarPagoProveedor(
           new Date(),
           "PAGO-" + pagoId,
@@ -1273,8 +1352,10 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
           montoLimpio,
           usuario
         );
+        tx.markLibroPostAppend();
 
         // Registrar salida de caja por pago proveedor
+        tx.markFlujoPreAppend();
         FLUJO_CAJA.registrarMovimiento(
           new Date(),
           FLUJO_CAJA.TIPOS.SALIDA_PAGO_PROV,
@@ -1283,6 +1364,7 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
           String(referencia || "Pago").trim(),
           usuario
         );
+        tx.markFlujoPostAppend();
 
         tx.commit();
 
@@ -1628,10 +1710,13 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
         // Write deferred kardex entries (Bug #2 fix: after opt-lock validation)
         if (kardexEntries.length > 0) {
+          tx.markKardexPreAppend();
           DAO_COMPRAS.crearMovimientosKardexBatch(kardexEntries);
+          tx.markKardexPostAppend();
         }
 
         // Crear registro de venta en cartera
+        tx.markCarteraPreAppend();
         const idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
         const carteraRecord = {
           id: idVenta,
@@ -1647,11 +1732,13 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         };
 
         DAO.saveCartera(carteraRecord);
+        tx.markCarteraPostAppend();
 
         CACHE.invalidateCartera();
 
         // Registrar en libro diario
         const usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+        tx.markLibroPreAppend();
         LIBRO_DIARIO.registrarVenta(
           new Date(),
           idVenta,
@@ -1678,8 +1765,10 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             usuario
           );
         }
+        tx.markLibroPostAppend();
 
         // Registrar entrada de caja por venta contado
+        tx.markFlujoPreAppend();
         FLUJO_CAJA.registrarMovimiento(
           new Date(),
           FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
@@ -1700,6 +1789,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             usuario
           );
         }
+        tx.markFlujoPostAppend();
 
         tx.commit();
 

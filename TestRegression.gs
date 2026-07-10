@@ -2645,6 +2645,99 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     }
   });
 
+  // ===== RBK — Rollback transaccional (#1 y #5) =====
+
+  _test('RBK-01: rollback elimina fila principal de Compras insertada', () => {
+    try {
+      const tx = _Transaction.create();
+      tx.begin();
+      tx.markCompraPreAppend();
+      const idCompra = 'RBKTEST_' + Date.now();
+      DAO_COMPRAS.crearCompra({
+        id: idCompra, fecha: new Date(), id_proveedor: 'TEST', id_factura: '',
+        total: 1, saldo: 1, estado: 'PENDIENTE', fecha_vencimiento: new Date(), vencida_timestamp: '', version: 1
+      });
+      tx.markCompraPostAppend();
+      tx.rollback(); // sin commit -> debe borrar la fila
+      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+      const lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        const data = sheet.getRange(2, COMPRAS_CONFIG.COLUMNS.COMPRAS.id + 1, lastRow - 1, 1).getValues();
+        for (let i = 0; i < data.length; i++) {
+          if (String(data[i][0]).trim() === idCompra) return 'La fila de compra de prueba no fue eliminada por rollback';
+        }
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('RBK-02: rollback elimina inserciones de Kardex/Libro_Diario/Flujo_Caja', () => {
+    try {
+      const idK = 'RBK_KDX_' + Date.now();
+      const idL = 'RBK_LIB_' + Date.now();
+      const idF = 'RBK_FLU_' + Date.now();
+      const tx = _Transaction.create();
+      tx.begin();
+      const kSheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      tx.markKardexPreAppend();
+      kSheet.appendRow([idK, new Date(), 'PROD_X', 'ENTRADA', 1, 0, 1, 'ref', 'COMPRA', 'u', 0, 0]);
+      tx.markKardexPostAppend();
+      const lSheet = getSheet(CONFIG.SHEETS.LIBRO_DIARIO);
+      tx.markLibroPreAppend();
+      lSheet.appendRow([idL, new Date(), 'VENTA', 'ref', 'terc', 1, 'u', 'desc']);
+      tx.markLibroPostAppend();
+      const fSheet = getSheet(CONFIG.SHEETS.FLUJO_CAJA);
+      tx.markFlujoPreAppend();
+      fSheet.appendRow([idF, new Date(), 'ENTRADA', 'concepto', 1, 'ref', 'u']);
+      tx.markFlujoPostAppend();
+      tx.rollback();
+      function exists(sheet, id) {
+        const lr = sheet.getLastRow();
+        if (lr < 2) return false;
+        const vals = sheet.getRange(2, 1, lr - 1, 1).getValues();
+        for (let i = 0; i < vals.length; i++) { if (String(vals[i][0]).trim() === id) return true; }
+        return false;
+      }
+      if (exists(kSheet, idK)) return 'Fila Kardex de prueba no fue eliminada por rollback';
+      if (exists(lSheet, idL)) return 'Fila Libro_Diario de prueba no fue eliminada por rollback';
+      if (exists(fSheet, idF)) return 'Fila Flujo_Caja de prueba no fue eliminada por rollback';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('RBK-03: rollback acumula conflictos y lanza Rollback parcial (#5)', () => {
+    const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return true; // sin datos, skip
+    const rowIndex = lastRow;
+    const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
+    const numCols = Math.max.apply(null, Object.values(COL)) + 1;
+    const orig = sheet.getRange(rowIndex, 1, 1, numCols).getValues()[0];
+    const origVersion = Number(orig[COL.version]) || 1;
+    try {
+      const tx = _Transaction.create();
+      tx.begin();
+      tx.snapshotCarteraRows([rowIndex]);
+      // Simular modificación concurrente: incrementar versión
+      sheet.getRange(rowIndex, COL.version + 1, 1, 1).setValue(origVersion + 1);
+      let threw = false;
+      try {
+        tx.rollback();
+      } catch (e) {
+        threw = true;
+        if (!e.message.includes('Rollback parcial')) return 'Error de rollback no menciona Rollback parcial: ' + e.message;
+      }
+      if (!threw) return 'Rollback debió lanzar Rollback parcial por conflicto de versión';
+      return true;
+    } finally {
+      sheet.getRange(rowIndex, 1, 1, numCols).setValues([orig]); // restaurar fila original
+    }
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,
