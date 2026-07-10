@@ -19,6 +19,17 @@ class DAOError extends Error {
   }
 }
 
+/**
+ * Optimistic lock error for concurrent modification conflicts.
+ */
+class OptimisticLockError extends DAOError {
+  constructor(message, rowIndex, expectedVersion, actualVersion) {
+    super(message, 'OPTIMISTIC_LOCK_FAILURE', { rowIndex, expectedVersion, actualVersion });
+    this.retryable = true;
+    this.type = 'OPTIMISTIC_LOCK_FAILURE';
+  }
+}
+
 function _daoLogError(message, context) {
   if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
     LogService.logError(message, context);
@@ -27,12 +38,8 @@ function _daoLogError(message, context) {
   }
 }
 
-function _sanitizeCell(value) {
-  if (typeof value === 'string' && value.length > 0) {
-    return "'" + value;
-  }
-  return value;
-}
+// NOTA: _sanitizeCell está definida en Config.gs con lógica más robusta
+// que detecta solo valores que empiecen con =, +, -, @ para escaparlos.
 
 const DAO = {
   /**
@@ -90,7 +97,9 @@ const DAO = {
    * @returns {{items: Array<Object>, nextPageToken: (number|null)}} Paginated results.
    */
   getCartera(filtroTipo = null, filtroEstado = null, pageSize = 5000, pageToken = 0) {
-    pageSize = Math.min(5000, pageSize);
+    // Validar pageToken negativo
+    pageToken = Math.max(0, pageToken || 0);
+    pageSize = Math.min(5000, pageSize || 5000);
     const sheet = getSheet(CARTERA_CONFIG.SHEETS.CARTERA);
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     const numCols = Math.max(...Object.values(COL)) + 1;
@@ -99,6 +108,15 @@ const DAO = {
     Logger.log("[DAO.getCartera] filtroTipo=" + filtroTipo + ", filtroEstado=" + filtroEstado + ", lastRow=" + lastRow);
 
     if (!filtroTipo && !filtroEstado) {
+      // Usar caché si está disponible
+      CACHE.refresh();
+      if (CACHE.cartera && CACHE.cartera.length > 0) {
+        const allItems = CACHE.cartera;
+        const paginated = allItems.slice(pageToken, pageToken + pageSize);
+        const nextPageToken = (pageToken + pageSize < allItems.length) ? pageToken + pageSize : null;
+        return { items: paginated, nextPageToken };
+      }
+      // Fallback: lectura directa con paginación
       if (lastRow < 2) return { items: [], nextPageToken: null };
       const startRow = 2 + pageToken;
       if (startRow > lastRow) return { items: [], nextPageToken: null };
@@ -244,11 +262,11 @@ const DAO = {
   _rowToCarteraItem(row, rowIndex) {
     const COL = CARTERA_CONFIG.COLUMNS.CARTERA;
     return {
-      id: String(row[COL.id] || "").trim(),
+      id: _sanitizeId(_stripLeadingQuote(row[COL.id] || "")),
       rowIndex: rowIndex || 0,
       fecha: _safeDate(row[COL.fecha]),
-      id_tercero: String(row[COL.id_tercero] || "").trim(),
-      origen_id: String(row[COL.origen_id] || "").trim(),
+      id_tercero: _sanitizeId(_stripLeadingQuote(row[COL.id_tercero] || "")),
+      origen_id: _sanitizeId(_stripLeadingQuote(row[COL.origen_id] || "")),
       total: _parseMoneda(row[COL.total], 0),
       saldo: _parseMoneda(row[COL.saldo], 0),
       tipo: String(row[COL.tipo] || "").trim(),
@@ -620,7 +638,7 @@ const DAO = {
       if (tipoUpper === "AMBOS") {
         if (tipoTercero === "PROVEEDOR" || tipoTercero === "CLIENTE") {
           result.push({
-            id: String(data[i][COL.id] || "").trim(),
+            id: _sanitizeId(_stripLeadingQuote(data[i][COL.id] || "")),
             nombre: String(data[i][COL.nombre] || "").trim(),
             telefono: String(data[i][COL.telefono] || "").trim(),
             tipo: tipoTercero,
@@ -630,7 +648,7 @@ const DAO = {
         }
       } else if (tipoTercero === tipoUpper) {
         result.push({
-          id: String(data[i][COL.id] || "").trim(),
+          id: _sanitizeId(_stripLeadingQuote(data[i][COL.id] || "")),
           nombre: String(data[i][COL.nombre] || "").trim(),
           telefono: String(data[i][COL.telefono] || "").trim(),
           tipo: tipoTercero,

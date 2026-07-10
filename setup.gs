@@ -30,10 +30,12 @@ const SETUP_SERVICE = {
     };
 
     try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      // Usar Spreadsheet ID configurado con fallback a active
+      const ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+      const ss = ssId ? SpreadsheetApp.openById(ssId) : SpreadsheetApp.getActiveSpreadsheet();
       
       if (!ss) {
-        results.errors.push('No active spreadsheet found');
+        results.errors.push('No spreadsheet found (active or configured)');
         results.success = false;
         return results;
       }
@@ -55,7 +57,8 @@ const SETUP_SERVICE = {
           const sheet = ss.getSheetByName(sheetConfig.name);
           if (sheet) {
             const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-            const needsUpdate = existingHeaders.length < sheetConfig.columns.length;
+            const needsUpdate = existingHeaders.length < sheetConfig.columns.length ||
+              !existingHeaders.every((h, i) => String(h || '').trim() === sheetConfig.columns[i]);
             
             if (needsUpdate) {
               const hasData = sheet.getLastRow() > 1;
@@ -86,6 +89,7 @@ const SETUP_SERVICE = {
         results.sheetsCreated = [];
       }
 
+      // Guardar SPREADSHEET_ID solo si no estaba configurado
       const props = PropertiesService.getScriptProperties();
       if (!props.getProperty('SPREADSHEET_ID')) {
         props.setProperty('SPREADSHEET_ID', ss.getId());
@@ -108,8 +112,10 @@ const SETUP_SERVICE = {
     
     if (sheet.getLastRow() > 1) {
       const existingHeaders = headers.getValues()[0];
-      const same = existingHeaders.every((h, i) => String(h).trim() === String(columns[i]).trim());
-      if (same) return;
+      // Comparar solo los primeros N elementos para evitar sobreescritura de columnas adicionales
+      const needsUpdate = existingHeaders.length !== columns.length ||
+        !existingHeaders.every((h, i) => String(h || '').trim() === columns[i]);
+      if (!needsUpdate) return;
     }
     
     headers.setValues([columns]);
@@ -177,7 +183,20 @@ const SETUP_SERVICE = {
     };
     
     try {
-      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
+      // Usar Spreadsheet ID configurado con fallback
+      const ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+      const ss = ssId ? SpreadsheetApp.openById(ssId) : SpreadsheetApp.getActiveSpreadsheet();
+      if (!ss) {
+        results.status = 'failed';
+        results.errors.push('No spreadsheet available');
+        return results;
+      }
+      
+      // Usar string literal con fallback para COMPRAS_CONFIG
+      const kardexSheetName = (COMPRAS_CONFIG && COMPRAS_CONFIG.SHEETS && COMPRAS_CONFIG.SHEETS.KARDEX) 
+        || 'Kardex_Movilizaciones';
+      const sheet = ss.getSheetByName(kardexSheetName);
+      
       if (!sheet || sheet.getLastRow() < 2) {
         results.operations.push({ name: 'migrateKardexFormat', status: 'skipped', reason: 'Empty or missing sheet' });
       } else {
@@ -210,13 +229,19 @@ const SETUP_SERVICE = {
         
         if (modifiedRows > 0) {
           sheet.getRange(2, 1, data.length - 1, data[0].length).setValues(data.slice(1));
+          SpreadsheetApp.flush();
         }
         results.operations.push({ name: 'migrateKardexFormat', status: 'success', modifiedRows: modifiedRows });
       }
     } catch (e) {
       results.status = 'failed';
       results.errors.push(e.message);
-      LogService && LogService.logError && LogService.logError('migrateLegacy', e);
+      // Usar Logger como fallback si LogService no está disponible
+      if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
+        LogService.logError('migrateLegacy', e);
+      } else {
+        Logger.log('migrateLegacy error: ' + e.message);
+      }
     }
 
     if (results.status !== 'failed') {

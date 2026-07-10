@@ -427,6 +427,19 @@ function _sanitizeCell(v) {
 }
 
 /**
+ * Elimina la comilla simple inicial de un valor leído del sheet.
+ * Los valores con comilla se usan para prevenir inyección de fórmulas.
+ * @param {*} v - Valor a normalizar
+ * @returns {*} Valor sin comilla inicial
+ */
+function _stripLeadingQuote(v) {
+  if (typeof v === 'string' && v.length > 1 && v[0] === "'") {
+    return v.substring(1);
+  }
+  return v;
+}
+
+/**
  * Convierte un valor del sheet a centavos (entero).
  * Maneja formatos: "100" (número), "1.000" (US), "1.000,00" (español)
  * Divide por 100 si el valor parece tener decimales (ej: "100,50" -> 10050 centavos)

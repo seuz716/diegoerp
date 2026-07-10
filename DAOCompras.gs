@@ -7,23 +7,7 @@ const DAO_COMPRAS = {
   PAGOS_COL: COMPRAS_CONFIG.COLUMNS.PAGOS_PROVEEDORES,
   KARDEX_COL: COMPRAS_CONFIG.COLUMNS.KARDEX,
 
-  _requestCache: {},
-
-  _cacheSheet(sheetName) {
-    if (this._requestCache[sheetName] && this._requestCache[sheetName].expires > Date.now()) {
-      return this._requestCache[sheetName].data;
-    }
-    return null;
-  },
-
-  _setCacheSheet(sheetName, data, ttlMs) {
-    if (!ttlMs) ttlMs = 5000;
-    this._requestCache[sheetName] = { data: data, expires: Date.now() + ttlMs };
-  },
-
-  _clearCache() {
-    this._requestCache = {};
-  },
+  // NOTA: _requestCache eliminado - se usa CACHE global con índices
 
   _safeDateCompare(a, b) {
     const da = new Date(a);
@@ -76,14 +60,14 @@ const DAO_COMPRAS = {
    * @param {number} [movimiento.precio_unitario] - Unit sale price (for SALIDA movements).
    */
   crearMovimientoKardex(movimiento) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const lock = LOCK_MANAGER.acquireResourceLock(movimiento.id_producto || "kardex");
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
       const C = DAO_COMPRAS.KARDEX_COL;
       const row = [];
-      row[C.id] = movimiento.id;
+      row[C.id] = _sanitizeCell(movimiento.id);
       row[C.fecha] = movimiento.fecha || new Date();
-      row[C.id_producto] = movimiento.id_producto;
+      row[C.id_producto] = _sanitizeCell(movimiento.id_producto);
       row[C.tipo_mov] = movimiento.tipo_mov;
       row[C.cantidad] = movimiento.cantidad;
       row[C.stock_anterior] = movimiento.stock_anterior;
@@ -105,7 +89,7 @@ const DAO_COMPRAS = {
     for (let m = 0; m < movimientos.length; m++) {
       this._validateRequired(movimientos[m], ['id_producto', 'tipo_mov', 'cantidad'], 'crearMovimientosKardexBatch[' + m + ']');
     }
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const lock = LOCK_MANAGER.acquireResourceLock("kardex_batch");
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.KARDEX);
       const C = DAO_COMPRAS.KARDEX_COL;
@@ -113,9 +97,9 @@ const DAO_COMPRAS = {
       for (let m = 0; m < movimientos.length; m++) {
         const mov = movimientos[m];
         const row = [];
-        row[C.id] = mov.id || ("KD" + Date.now() + "_" + m);
+        row[C.id] = _sanitizeCell(mov.id || ("KD" + Date.now() + "_" + m));
         row[C.fecha] = mov.fecha || new Date();
-        row[C.id_producto] = mov.id_producto || "";
+        row[C.id_producto] = _sanitizeCell(mov.id_producto || "");
         row[C.tipo_mov] = mov.tipo_mov || "";
         row[C.cantidad] = mov.cantidad || 0;
         row[C.stock_anterior] = mov.stock_anterior || 0;
@@ -195,10 +179,10 @@ const DAO_COMPRAS = {
   _rowToCompra(row, rowIndex) {
     const C = DAO_COMPRAS.COMPRAS_COL;
     return {
-      id: String(row[C.id] || "").trim(),
+      id: _sanitizeId(_stripLeadingQuote(row[C.id] || "")),
       fecha: row[C.fecha],
-      id_proveedor: String(row[C.id_proveedor] || "").trim(),
-      id_factura: String(row[C.id_factura] || "").trim(),
+      id_proveedor: _sanitizeId(_stripLeadingQuote(row[C.id_proveedor] || "")),
+      id_factura: _sanitizeId(_stripLeadingQuote(row[C.id_factura] || "")),
       total: _parseMoneda(row[C.total], 0),
       saldo: _parseMoneda(row[C.saldo], 0),
       estado: String(row[C.estado] || COMPRAS_CONFIG.ESTADOS.ABIERTA).trim(),
@@ -212,9 +196,9 @@ const DAO_COMPRAS = {
   _rowToDetalle(row) {
     const C = DAO_COMPRAS.DETALLE_COL;
     return {
-      id: String(row[C.id] || "").trim(),
-      id_compra: String(row[C.id_compra] || "").trim(),
-      id_producto: String(row[C.id_producto] || "").trim(),
+      id: _sanitizeId(_stripLeadingQuote(row[C.id] || "")),
+      id_compra: _sanitizeId(_stripLeadingQuote(row[C.id_compra] || "")),
+      id_producto: _sanitizeId(_stripLeadingQuote(row[C.id_producto] || "")),
       cantidad: _parseMoneda(row[C.cantidad], 0),
       precio_unitario: _parseMoneda(row[C.precio_unitario], 0),
       subtotal: _parseMoneda(row[C.subtotal], 0),
@@ -236,16 +220,21 @@ const DAO_COMPRAS = {
 
   crearCompra(registro) {
     this._validateRequired(registro, ['id', 'fecha', 'id_proveedor', 'total', 'saldo', 'estado', 'fecha_vencimiento'], 'crearCompra');
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    // Validar duplicado usando índice en caché
+    const idLimpio = _sanitizeId(registro.id);
+    if (CACHE.getCompraIndex && CACHE.getCompraIndex(idLimpio)) {
+      throw new Error("ID de compra ya registrado: " + idLimpio);
+    }
+    const lock = LOCK_MANAGER.acquireResourceLock(idLimpio || "compra");
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
       const C = DAO_COMPRAS.COMPRAS_COL;
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
       const row = [];
-      row[C.id] = registro.id;
+      row[C.id] = _sanitizeCell(registro.id);
       row[C.fecha] = registro.fecha;
-      row[C.id_proveedor] = registro.id_proveedor;
-      row[C.id_factura] = registro.id_factura || "";
+      row[C.id_proveedor] = _sanitizeCell(registro.id_proveedor);
+      row[C.id_factura] = _sanitizeCell(registro.id_factura || "");
       row[C.total] = registro.total;
       row[C.saldo] = registro.saldo;
       row[C.estado] = registro.estado;
@@ -254,6 +243,9 @@ const DAO_COMPRAS = {
       row[C.version] = 1;
       for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
       sheet.appendRow(row);
+      // Actualizar índice en caché
+      CACHE._ensureComprasLoaded();
+      CACHE.compraIndex[idLimpio] = sheet.getLastRow();
       return registro.id;
     } finally {
       if (lock) lock.releaseLock();
@@ -262,15 +254,15 @@ const DAO_COMPRAS = {
 
   crearDetalleCompra(detalle) {
     this._validateRequired(detalle, ['id', 'id_compra', 'id_producto', 'cantidad', 'precio_unitario', 'subtotal'], 'crearDetalleCompra');
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const lock = LOCK_MANAGER.acquireResourceLock(detalle.id_compra || "detalle");
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS);
       const C = DAO_COMPRAS.DETALLE_COL;
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
       const row = [];
-      row[C.id] = detalle.id;
-      row[C.id_compra] = detalle.id_compra;
-      row[C.id_producto] = detalle.id_producto;
+      row[C.id] = _sanitizeCell(detalle.id);
+      row[C.id_compra] = _sanitizeCell(detalle.id_compra);
+      row[C.id_producto] = _sanitizeCell(detalle.id_producto);
       row[C.cantidad] = detalle.cantidad;
       row[C.precio_unitario] = detalle.precio_unitario;
       row[C.subtotal] = detalle.subtotal;
@@ -282,12 +274,27 @@ const DAO_COMPRAS = {
   },
 
   getCompraById(id) {
+    const idLimpio = _sanitizeId(id);
+    // Usar índice en caché si está disponible
+    const rowIndex = CACHE.getCompraIndex && CACHE.getCompraIndex(idLimpio);
+    if (rowIndex) {
+      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+      const C = DAO_COMPRAS.COMPRAS_COL;
+      const numCols = Math.max.apply(null, Object.values(C)) + 1;
+      const data = sheet.getRange(rowIndex, 1, 1, numCols).getValues();
+      if (data.length > 0) {
+        return DAO_COMPRAS._rowToCompra(data[0], rowIndex);
+      }
+      return null;
+    }
+    // Fallback: escaneo completo
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return null;
     const data = sheet.getRange(2, 1, lastRow - 1, Math.max.apply(null, Object.values(DAO_COMPRAS.COMPRAS_COL)) + 1).getValues();
     for (let i = 0; i < data.length; i++) {
-      if (String(data[i][DAO_COMPRAS.COMPRAS_COL.id] || "").trim() === id) {
+      const rowId = _sanitizeId(_stripLeadingQuote(data[i][DAO_COMPRAS.COMPRAS_COL.id] || ""));
+      if (rowId === idLimpio) {
         return DAO_COMPRAS._rowToCompra(data[i], i + 2);
       }
     }
@@ -295,104 +302,104 @@ const DAO_COMPRAS = {
   },
 
   getComprasByProveedor(idProveedor) {
-    const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-    const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return [];
-    const data = sheet.getRange(2, 1, lastRow - 1, Math.max.apply(null, Object.values(DAO_COMPRAS.COMPRAS_COL)) + 1).getValues();
-    const result = [];
-    for (let i = 0; i < data.length; i++) {
-      if (String(data[i][DAO_COMPRAS.COMPRAS_COL.id_proveedor] || "").trim() === idProveedor) {
-        result.push(DAO_COMPRAS._rowToCompra(data[i], i + 2));
-      }
-    }
-    return result;
+    const idLimpio = _sanitizeId(idProveedor);
+    // Usar índice si está disponible
+    CACHE._ensureComprasLoaded();
+    const comprasFiltradas = CACHE.compras ? CACHE.compras.filter(c => c.id_proveedor === idLimpio) : [];
+    return comprasFiltradas.length > 0 ? comprasFiltradas : [];
   },
 
   /**
-   * Retrieves purchase records with optional filters.
+   * Retrieves purchase records with optional filters and pagination.
    * @param {string|null} filtroProveedor - Filter by provider ID.
    * @param {string|null} filtroEstado - Filter by estado.
-   * @param {number} [maxRows=10000] - Max rows to read from sheet.
-   * @returns {Array<Object>} List of purchase records.
+   * @param {number} [pageSize=5000] - Page size (max 5000).
+   * @param {number} [pageToken=0] - Page offset.
+   * @returns {{items: Array<Object>, nextPageToken: number|null, truncated: boolean}} Paginated results.
    */
-  getCompras(filtroProveedor, filtroEstado, maxRows) {
+  getCompras(filtroProveedor, filtroEstado, pageSize, pageToken) {
     const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
     const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return [];
-    const C = DAO_COMPRAS.COMPRAS_COL;
-    const numCols = Math.max.apply(null, Object.values(C)) + 1;
-    if (!maxRows || maxRows <= 0) maxRows = 10000;
-    const totalDataRows = Math.min(lastRow - 1, maxRows);
-    if (totalDataRows < lastRow - 1) {
-      Logger.log("[DAO_COMPRAS.getCompras] ADVERTENCIA: Datos truncados a " + totalDataRows + " filas. Total disponible: " + (lastRow - 1));
+    if (lastRow < 2) return { items: [], nextPageToken: null, truncated: false };
+
+    // Usar caché si está disponible
+    CACHE._ensureComprasLoaded();
+    const MAX_SAFE_ROWS = 20000;
+    const effectivePageSize = Math.min(pageSize || 5000, 5000);
+    const safePageToken = Math.max(0, pageToken || 0);
+
+    let allItems = CACHE.compras || [];
+    const totalOriginal = allItems.length;
+
+    // Aplicar filtros
+    if (filtroProveedor) {
+      const idLimpio = _sanitizeId(filtroProveedor);
+      allItems = allItems.filter(item => item.id_proveedor === idLimpio);
     }
-    const data = sheet.getRange(2, 1, totalDataRows, numCols).getValues();
-    const result = [];
-    for (let i = 0; i < data.length; i++) {
-      const item = DAO_COMPRAS._rowToCompra(data[i], i + 2);
-      if (filtroProveedor && item.id_proveedor !== filtroProveedor) continue;
-      if (filtroEstado && item.estado !== filtroEstado) continue;
-      result.push(item);
+    if (filtroEstado) {
+      allItems = allItems.filter(item => item.estado === filtroEstado);
     }
-    return result;
+
+    // Limitar para seguridad (si no hay caché)
+    const truncated = totalOriginal >= MAX_SAFE_ROWS && !CACHE.compras;
+
+    // Paginar
+    const paginated = allItems.slice(safePageToken, safePageToken + effectivePageSize);
+    const nextPageToken = (safePageToken + effectivePageSize < allItems.length) ? safePageToken + effectivePageSize : null;
+
+    return { items: paginated, nextPageToken, truncated };
   },
 
   actualizarSaldoCompra(idCompra, nuevoSaldo, nuevoEstado, expectedVersion) {
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const idLimpio = _sanitizeId(idCompra);
+    // Usar índice para lookup O(1)
+    const rowIndex = CACHE.getCompraIndex(idLimpio);
+    if (!rowIndex) {
+      throw new Error("Compra no encontrada: " + idLimpio);
+    }
+    const lock = LOCK_MANAGER.acquireResourceLock(idLimpio);
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
-      const lastRow = sheet.getLastRow();
-      if (lastRow < 2) throw new Error("Compra no encontrada: " + idCompra);
       const C = DAO_COMPRAS.COMPRAS_COL;
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
-      const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
-      for (let i = 0; i < data.length; i++) {
-        if (String(data[i][C.id] || "").trim() === idCompra) {
-          const rowIdx = i + 2;
-          const currentVersion = parseInt(data[i][C.version]) || 1;
-          if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
-            const err = new Error(
-              "OptimisticLockError: Compra " + idCompra + " fue modificada concurrentemente " +
-              "(esperada v" + expectedVersion + ", actual v" + currentVersion + "). Reintente."
-            );
-            err.type = 'OPTIMISTIC_LOCK_FAILURE';
-            err.rowIndex = rowIdx;
-            err.expectedVersion = expectedVersion;
-            err.actualVersion = currentVersion;
-            err.retryable = true;
-            throw err;
-          }
-          data[i][C.saldo] = nuevoSaldo;
-          data[i][C.estado] = nuevoEstado;
-          data[i][C.version] = currentVersion + 1;
-          sheet.getRange(rowIdx, 1, 1, numCols).setValues([data[i]]);
-          return true;
-        }
+      const rowValues = sheet.getRange(rowIndex, 1, 1, numCols).getValues()[0];
+      const currentVersion = parseInt(rowValues[C.version]) || 1;
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        const err = new OptimisticLockError(
+          "OptimisticLockError: Compra " + idLimpio + " fue modificada concurrentemente " +
+          "(esperada v" + expectedVersion + ", actual v" + currentVersion + "). Reintente.",
+          rowIndex, expectedVersion, currentVersion
+        );
+        throw err;
       }
-      throw new Error("Compra no encontrada: " + idCompra);
+      rowValues[C.saldo] = nuevoSaldo;
+      rowValues[C.estado] = nuevoEstado;
+      rowValues[C.version] = currentVersion + 1;
+      sheet.getRange(rowIndex, 1, 1, numCols).setValues([rowValues]);
+      return true;
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
   },
 
   crearPagoProveedor(pago) {
     this._validateRequired(pago, ['id', 'fecha', 'id_compra', 'id_proveedor', 'valor'], 'crearPagoProveedor');
-    const lock = LOCK_MANAGER.acquireGlobalLock(30000);
+    const lock = LOCK_MANAGER.acquireResourceLock(pago.id_compra || "pago");
     try {
       const sheet = getSheet(COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES);
       const C = DAO_COMPRAS.PAGOS_COL;
       const row = [];
-      row[C.id] = pago.id;
+      row[C.id] = _sanitizeCell(pago.id);
       row[C.fecha] = pago.fecha;
-      row[C.id_compra] = pago.id_compra;
-      row[C.id_proveedor] = pago.id_proveedor;
+      row[C.id_compra] = _sanitizeCell(pago.id_compra);
+      row[C.id_proveedor] = _sanitizeCell(pago.id_proveedor);
       row[C.valor] = pago.valor;
       row[C.referencia] = pago.referencia || "";
       row[C.metodo_pago] = pago.metodo_pago || "";
       for (let i = 0; i < row.length; i++) { if (row[i] === undefined) row[i] = ""; }
       sheet.appendRow(row);
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
   },
 

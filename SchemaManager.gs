@@ -23,6 +23,12 @@ var SchemaManager = {
    */
   ensureSchemaVersion: function() {
     var current = this.getCurrentSchemaVersion();
+    
+    // Verificar versión superior (downgrade no soportado)
+    if (current && current > this.CURRENT_VERSION) {
+      return { success: false, message: 'Schema version ' + current + ' is newer than supported ' + this.CURRENT_VERSION };
+    }
+    
     if (current === this.CURRENT_VERSION) {
       return { success: true, message: 'Schema up to date', version: current };
     }
@@ -35,24 +41,50 @@ var SchemaManager = {
     ];
     
     var executed = [];
+    var errors = [];
+    var lastSuccessful = current;
+    
     for (var i = 0; i < migrations.length; i++) {
       var m = migrations[i];
       if (current === m.from || current < m.from) {
-        m.fn.call(this);
-        executed.push({ from: m.from, to: m.to });
-        current = m.to;
-        PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', current);
+        try {
+          m.fn.call(this);
+          executed.push({ from: m.from, to: m.to });
+          lastSuccessful = m.to;
+          current = m.to;
+        } catch (e) {
+          errors.push({ migration: m.from + '→' + m.to, error: e.message });
+          // No continuar con migraciones posteriores
+          break;
+        }
       }
     }
     
-    // Registrar en log
-    this._logMigration(executed);
+    // Solo actualizar versión si todas las migraciones relevantes tuvieron éxito
+    if (errors.length === 0 && current === this.CURRENT_VERSION) {
+      PropertiesService.getScriptProperties().setProperty('SCHEMA_VERSION', current);
+      this._logMigration(executed);
+      return {
+        success: true,
+        message: 'Migración completada de ' + lastSuccessful + ' a ' + this.CURRENT_VERSION,
+        version: this.CURRENT_VERSION,
+        executed: executed
+      };
+    } else if (errors.length > 0) {
+      // Mantener versión anterior para permitir reintento
+      return {
+        success: false,
+        message: 'Migration failed, current version: ' + lastSuccessful,
+        version: lastSuccessful,
+        errors: errors,
+        executed: executed
+      };
+    }
     
     return {
       success: true,
-      message: 'Migración completada de ' + this.getCurrentSchemaVersion() + ' a ' + this.CURRENT_VERSION,
-      version: this.CURRENT_VERSION,
-      executed: executed
+      message: 'Schema at version ' + current,
+      version: current
     };
   },
   
@@ -66,16 +98,25 @@ var SchemaManager = {
     var sheet = ss.getSheetByName(CONFIG.SHEETS.PRODUCTOS);
     if (!sheet) return;
     
-    var headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastCol = sheet.getLastColumn();
+    if (lastCol === 0) {
+      // Hoja vacía sin encabezados - crear estructura completa
+      sheet.getRange(1, 1, 1, CONFIG.SCHEMA_definitions.PRODUCTOS.length).setValues([CONFIG.SCHEMA_definitions.PRODUCTOS]);
+      SpreadsheetApp.flush();
+      return;
+    }
+    
+    var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var hasCategoria = headerRow.some(function(h) { return h && h.toString().toLowerCase() === 'categoria'; });
     if (!hasCategoria) {
-      sheet.getRange(1, sheet.getLastColumn() + 1).setValue('categoria');
+      sheet.getRange(1, lastCol + 1).setValue('categoria');
       var lastRow = sheet.getLastRow();
       if (lastRow > 1) {
-        sheet.getRange(2, sheet.getLastColumn(), lastRow - 1, 1).setValue('General');
+        sheet.getRange(2, lastCol + 1, lastRow - 1, 1).setValue('General');
       }
-      Logger.log('✅ Columna "categoria" agregada a Productos');
+      SpreadsheetApp.flush();
     }
+    Logger.log('✅ Migración 1.0→1.1 completada');
   },
   
   /**
@@ -88,16 +129,25 @@ var SchemaManager = {
     var sheet = ss.getSheetByName(CONFIG.SHEETS.COMPRAS);
     if (!sheet) return;
     
-    var headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastCol = sheet.getLastColumn();
+    if (lastCol === 0) {
+      // Hoja vacía sin encabezados - crear estructura completa
+      sheet.getRange(1, 1, 1, CONFIG.SCHEMA_definitions.COMPRAS.length).setValues([CONFIG.SCHEMA_definitions.COMPRAS]);
+      SpreadsheetApp.flush();
+      return;
+    }
+    
+    var headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var hasTotalPagado = headerRow.some(function(h) { return h && h.toString().toLowerCase() === 'total_pagado'; });
     if (!hasTotalPagado) {
-      sheet.getRange(1, sheet.getLastColumn() + 1).setValue('total_pagado');
+      sheet.getRange(1, lastCol + 1).setValue('total_pagado');
       var lastRow = sheet.getLastRow();
       if (lastRow > 1) {
-        sheet.getRange(2, sheet.getLastColumn(), lastRow - 1, 1).setValue(0);
+        sheet.getRange(2, lastCol + 1, lastRow - 1, 1).setValue(0);
       }
-      Logger.log('✅ Columna "total_pagado" agregada a Compras');
+      SpreadsheetApp.flush();
     }
+    Logger.log('✅ Migración 1.1→1.2 completada');
   },
   
   /**
@@ -114,14 +164,29 @@ var SchemaManager = {
       Logger.log('⚠️ Función migrarClasificacionTerceros no encontrada, omitiendo migración de clasificación');
     }
     
-    // Asegurar que la hoja Producto_Proveedor existe
+    // Asegurar que la hoja Producto_Proveedor existe con estructura correcta
     var ss = this._getSpreadsheet();
     var ppSheet = ss.getSheetByName(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
+    var expectedHeaders = ['ID_Producto', 'ID_Proveedor', 'Precio_Ultima_Compra', 'Es_Preferido', 'Fecha_Ultima_Compra'];
+    
     if (!ppSheet) {
       ppSheet = ss.insertSheet(PRODUCTO_PROVEEDOR_CONFIG.SHEET);
-      ppSheet.appendRow(['ID_Producto', 'ID_Proveedor', 'Precio_Ultima_Compra', 'Es_Preferido', 'Fecha_Ultima_Compra']);
+      this._createHeaders(ppSheet, expectedHeaders);
       Logger.log('✅ Hoja "Producto_Proveedor" creada');
+    } else {
+      // Verificar encabezados existentes
+      var lastCol = ppSheet.getLastColumn();
+      var existingHeaders = [];
+      if (lastCol > 0 && ppSheet.getLastRow() >= 1) {
+        existingHeaders = ppSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      }
+      if (existingHeaders.length !== expectedHeaders.length || 
+          !existingHeaders.every((h, i) => String(h || '').trim() === expectedHeaders[i])) {
+        this._createHeaders(ppSheet, expectedHeaders);
+        Logger.log('✅ Hoja "Producto_Proveedor" actualizada con encabezados correctos');
+      }
     }
+    SpreadsheetApp.flush();
   },
   
   /**
@@ -152,5 +217,17 @@ var SchemaManager = {
         'Migración automática'
       ]);
     }
+  },
+  
+  /**
+   * Crear encabezados en una hoja.
+   * @param {Sheet} sheet - Hoja objetivo.
+   * @param {Array<string>} columns - Columnas a escribir.
+   */
+  _createHeaders: function(sheet, columns) {
+    if (!sheet || !columns || !Array.isArray(columns)) return;
+    var headers = sheet.getRange(1, 1, 1, columns.length);
+    headers.setValues([columns]);
+    headers.setFontWeight('bold');
   }
 };

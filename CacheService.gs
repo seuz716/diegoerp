@@ -34,31 +34,57 @@ let CACHE = {
    terceros: null,
    terceroIndex: {},  
    cartera: null,
-   carteraIndex: {},  
+   carteraIndex: {},
+   compras: null,
+   compraIndex: {},
+   productos: null,
+   productoIndex: {},
    lastRefreshTerceros: 0,
    lastRefreshCartera: 0,
+   lastRefreshCompras: 0,
+   lastRefreshProductos: 0,
    CACHE_TTL: 300000,
    MAX_STALE_MS: 900000,
    MAX_CONSECUTIVE_FAILURES: 3,
    tercerosStale: false,
    carteraStale: false,
+   comprasStale: false,
+   productosStale: false,
    tercerosStaleStart: 0,
    carteraStaleStart: 0,
+   comprasStaleStart: 0,
+   productosStaleStart: 0,
    tercerosFailCount: 0,
    carteraFailCount: 0,
+   comprasFailCount: 0,
+   productosFailCount: 0,
    // Cache hit tracking
    _hitsTerceros: 0,
    _missesTerceros: 0,
    _hitsCartera: 0,
    _missesCartera: 0,
-   // Circuit breaker states: 'closed' | 'open' | 'half_open'
+   _hitsCompras: 0,
+   _missesCompras: 0,
+   _hitsProductos: 0,
+   _missesProductos: 0,
+   // Circuit breaker states
    tercerosCircuitState: 'closed',
    carteraCircuitState: 'closed',
+   comprasCircuitState: 'closed',
+   productosCircuitState: 'closed',
    tercerosCircuitOpen: false,
    carteraCircuitOpen: false,
+   comprasCircuitOpen: false,
+   productosCircuitOpen: false,
   // === INICIO FIX C-02 ===
   _circuitOpenTercerosTimestamp: 0,
   _circuitOpenCarteraTimestamp: 0,
+  _circuitOpenComprasTimestamp: 0,
+  _circuitOpenProductosTimestamp: 0,
+  _refreshingTerceros: false,
+  _refreshingCartera: false,
+  _refreshingCompras: false,
+  _refreshingProductos: false,
   CIRCUIT_AUTO_CLOSE_MS: 30000,
   // === FIN FIX C-02 ===
   // === INICIO FIX CACHE-METRICS ===
@@ -72,8 +98,8 @@ let CACHE = {
   // === FIN FIX CACHE-METRICS ===
   lastChecksumTerceros: "",
   lastChecksumCartera: "",
-  _refreshingTerceros: false,
-  _refreshingCartera: false,
+  lastChecksumCompras: "",
+  lastChecksumProductos: "",
 
   // === ESTADO DEL CIRCUIT BREAKER ===
   _CIRCUIT_STATES: {
@@ -776,7 +802,7 @@ ttl: this.CACHE_TTL
       const newIndex = {};
       for (let i = 0; i < dataTerceros.length; i++) {
         const rowIdx = 2 + i;
-        const id = String(dataTerceros[i][COL_T.id]).trim();
+        const id = _sanitizeId(_stripLeadingQuote(dataTerceros[i][COL_T.id]));
         if (!id) continue;
         newIndex[id] = rowIdx;  
         newTerceros.push({
@@ -852,14 +878,15 @@ ttl: this.CACHE_TTL
       const newIndex = {};
       for (let i = 0; i < dataCartera.length; i++) {
         const rowIdx = 2 + i;
-        const id = String(dataCartera[i][COL_C.id]).trim();
+        const id = _sanitizeId(_stripLeadingQuote(dataCartera[i][COL_C.id]));
         if (!id) continue;
+        const idTercero = _sanitizeId(_stripLeadingQuote(dataCartera[i][COL_C.id_tercero]));
         newIndex[id] = rowIdx;
         newCartera.push({
           id,
           rowIndex: rowIdx,
           fecha: _safeDate(dataCartera[i][COL_C.fecha]),
-          id_tercero: String(dataCartera[i][COL_C.id_tercero]).trim(),
+          id_tercero: idTercero,
           total: _parseMoneda(dataCartera[i][COL_C.total], 0),
           saldo: _parseMoneda(dataCartera[i][COL_C.saldo], 0),
           tipo: String(dataCartera[i][COL_C.tipo] || "CxC").trim(),
@@ -1151,18 +1178,14 @@ _putNativeCache(keyPrefix, data) {
    */
   _estimateMemoryUsage() {
     let size = 0;
-    if (this.terceros) {
-      size += JSON.stringify(this.terceros).length;
-    }
-    if (this.terceroIndex) {
-      size += JSON.stringify(this.terceroIndex).length;
-    }
-    if (this.cartera) {
-      size += JSON.stringify(this.cartera).length;
-    }
-    if (this.carteraIndex) {
-      size += JSON.stringify(this.carteraIndex).length;
-    }
+    if (this.terceros) size += JSON.stringify(this.terceros).length;
+    if (this.terceroIndex) size += JSON.stringify(this.terceroIndex).length;
+    if (this.cartera) size += JSON.stringify(this.cartera).length;
+    if (this.carteraIndex) size += JSON.stringify(this.carteraIndex).length;
+    if (this.compras) size += JSON.stringify(this.compras).length;
+    if (this.compraIndex) size += JSON.stringify(this.compraIndex).length;
+    if (this.productos) size += JSON.stringify(this.productos).length;
+    if (this.productoIndex) size += JSON.stringify(this.productoIndex).length;
     size += JSON.stringify(this._cache || {}).length;
     size += JSON.stringify(this._metadata || {}).length;
     return size;
@@ -1179,6 +1202,12 @@ _putNativeCache(keyPrefix, data) {
     }
     if (this.carteraStale) {
       count += this.cartera ? this.cartera.length : 0;
+    }
+    if (this.comprasStale) {
+      count += this.compras ? this.compras.length : 0;
+    }
+    if (this.productosStale) {
+      count += this.productos ? this.productos.length : 0;
     }
     return count;
   },
@@ -1217,10 +1246,187 @@ _putNativeCache(keyPrefix, data) {
         nextRetryMs: cState.nextRetryMs,
         checksumValidationStatus: this.lastChecksumCartera ? 'valid' : 'not_initialized'
       },
+      compras: {
+        cacheHitRate: (this._hitsCompras + this._missesCompras > 0) ? (this._hitsCompras / (this._hitsCompras + this._missesCompras)) * 100 : 0,
+        circuitState: this.getCircuitState('compras').state,
+        staleEntriesCount: this.comprasStale ? (this.compras ? this.compras.length : 0) : 0,
+        memoryUsage: this.compras ? JSON.stringify(this.compras).length : 0,
+        failCount: this.comprasFailCount,
+        nextRetryMs: this.getCircuitState('compras').nextRetryMs,
+        checksumValidationStatus: this.lastChecksumCompras ? 'valid' : 'not_initialized'
+      },
+      productos: {
+        cacheHitRate: (this._hitsProductos + this._missesProductos > 0) ? (this._hitsProductos / (this._hitsProductos + this._missesProductos)) * 100 : 0,
+        circuitState: this.getCircuitState('productos').state,
+        staleEntriesCount: this.productosStale ? (this.productos ? this.productos.length : 0) : 0,
+        memoryUsage: this.productos ? JSON.stringify(this.productos).length : 0,
+        failCount: this.productosFailCount,
+        nextRetryMs: this.getCircuitState('productos').nextRetryMs,
+        checksumValidationStatus: this.lastChecksumProductos ? 'valid' : 'not_initialized'
+      },
       global: {
         staleEntriesCount: this._countStaleEntries(),
         memoryUsage: this._estimateMemoryUsage()
       }
     };
+  },
+
+  // === ÍNDICES PARA COMPRAS Y PRODUCTOS ===
+
+  /**
+   * Gets compra index for O(1) lookup by ID.
+   * @param {string} id - Compra ID.
+   * @returns {number|null} Row index or null if not found.
+   */
+  getCompraIndex(id) {
+    if (!id) return null;
+    this._ensureComprasLoaded();
+    return this.compraIndex[_sanitizeId(id)] || null;
+  },
+
+  /**
+   * Gets producto index for O(1) lookup by ID.
+   * @param {string} id - Producto ID.
+   * @returns {number|null} Row index or null if not found.
+   */
+  getProductoIndex(id) {
+    if (!id) return null;
+    this._ensureProductosLoaded();
+    return this.productoIndex[_sanitizeId(id)] || null;
+  },
+
+  /**
+   * Ensures compras are loaded in cache.
+   * @private
+   */
+  _ensureComprasLoaded() {
+    if (!this.compras || this.compras.length === 0 || this.comprasStale) {
+      this._refreshCompras();
+    }
+  },
+
+  /**
+   * Ensures productos are loaded in cache.
+   * @private
+   */
+  _ensureProductosLoaded() {
+    if (!this.productos || this.productos.length === 0 || this.productosStale) {
+      this._refreshProductos();
+    }
+  },
+
+  /**
+   * Refreshes only compras entity.
+   * @private
+   */
+  _refreshCompras() {
+    if (this._refreshingCompras) return;
+    this._refreshingCompras = true;
+    try {
+      const sheet = getSheet(COMPRAS_CONFIG.SHEETS.COMPRAS);
+      const C = COMPRAS_CONFIG.COLUMNS.COMPRAS;
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) {
+        this.compras = [];
+        this.compraIndex = {};
+        this._refreshingCompras = false;
+        return;
+      }
+      const numCols = Math.max(...Object.values(C)) + 1;
+      const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+      const newCompras = [];
+      const newIndex = {};
+      for (let i = 0; i < data.length; i++) {
+        const rowIdx = 2 + i;
+        const id = _sanitizeId(_stripLeadingQuote(data[i][C.id] || ""));
+        if (!id) continue;
+        newIndex[id] = rowIdx;
+        newCompras.push({
+          id,
+          rowIndex: rowIdx,
+          fecha: data[i][C.fecha],
+          id_proveedor: _sanitizeId(_stripLeadingQuote(data[i][C.id_proveedor] || "")),
+          id_factura: _sanitizeId(_stripLeadingQuote(data[i][C.id_factura] || "")),
+          total: _parseMoneda(data[i][C.total], 0),
+          saldo: _parseMoneda(data[i][C.saldo], 0),
+          estado: String(data[i][C.estado] || "").trim(),
+          version: parseInt(data[i][C.version]) || 1
+        });
+      }
+      this.compras = newCompras;
+      this.compraIndex = newIndex;
+      this.lastRefreshCompras = Date.now();
+      this.comprasStale = false;
+      this.lastChecksumCompras = this._computeChecksum(newCompras);
+    } catch (e) {
+      this.comprasFailCount++;
+      this.comprasStale = true;
+      Logger.log("CACHE: Error _refreshCompras #" + this.comprasFailCount + ": " + e.toString());
+    } finally {
+      this._refreshingCompras = false;
+    }
+  },
+
+  /**
+   * Refreshes only productos entity.
+   * @private
+   */
+  _refreshProductos() {
+    if (this._refreshingProductos) return;
+    this._refreshingProductos = true;
+    try {
+      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      const C = DAO_PRODUCTOS.COL;
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) {
+        this.productos = [];
+        this.productoIndex = {};
+        this._refreshingProductos = false;
+        return;
+      }
+      const numCols = Math.max(...Object.values(C)) + 1;
+      const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+
+      const newProductos = [];
+      const newIndex = {};
+      for (let i = 0; i < data.length; i++) {
+        const rowIdx = 2 + i;
+        const id = _sanitizeId(_stripLeadingQuote(data[i][C.id] || ""));
+        if (!id) continue;
+        newIndex[id] = rowIdx;
+        newProductos.push({
+          id,
+          rowIndex: rowIdx,
+          nombre: String(data[i][C.nombre] || "").trim(),
+          stock: _parseMoneda(data[i][C.stock], 0),
+          version: _parseMoneda(data[i][C.version], 1)
+        });
+      }
+      this.productos = newProductos;
+      this.productoIndex = newIndex;
+      this.lastRefreshProductos = Date.now();
+      this.productosStale = false;
+      this.lastChecksumProductos = this._computeChecksum(newProductos);
+    } catch (e) {
+      this.productosFailCount++;
+      this.productosStale = true;
+      Logger.log("CACHE: Error _refreshProductos #" + this.productosFailCount + ": " + e.toString());
+    } finally {
+      this._refreshingProductos = false;
+    }
+  },
+
+  // === MÉTODO DE REFRESCO SELECTIVO ===
+
+  /**
+   * Refreshes a specific entity by kind.
+   * @param {string} kind - Entity kind ('terceros', 'cartera', 'compras', 'productos').
+   */
+  refreshEntity(kind) {
+    if (kind === 'terceros') this._refreshTerceros();
+    else if (kind === 'cartera') this._refreshCartera();
+    else if (kind === 'compras') this._refreshCompras();
+    else if (kind === 'productos') this._refreshProductos();
   }
 };

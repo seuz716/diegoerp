@@ -9,7 +9,7 @@ const DAO_PRODUCTOS = {
   _rowToProducto(row, rowIndex) {
     const C = DAO_PRODUCTOS.COL;
     return {
-      id: String(row[C.id] || "").trim(),
+      id: _sanitizeId(_stripLeadingQuote(row[C.id] || "")),
       nombre: String(row[C.nombre] || "").trim(),
       stock: _parseMoneda(row[C.stock], 0),
       precio_compra: _parseMoneda(row[C.precio_compra], 0),
@@ -85,6 +85,19 @@ const DAO_PRODUCTOS = {
   obtener(id) {
     const idLimpio = _sanitizeId(id);
     if (!idLimpio) return null;
+    // Usar índice para lookup O(1)
+    const rowIndex = CACHE.getProductoIndex && CACHE.getProductoIndex(idLimpio);
+    if (rowIndex) {
+      const sheet = getSheet(DAO_PRODUCTOS.SHEET);
+      const C = DAO_PRODUCTOS.COL;
+      const numCols = Math.max.apply(null, Object.values(C)) + 1;
+      const data = sheet.getRange(rowIndex, 1, 1, numCols).getValues();
+      if (data.length > 0) {
+        return DAO_PRODUCTOS._rowToProducto(data[0], rowIndex);
+      }
+      return null;
+    }
+    // Fallback: escaneo completo
     const sheet = getSheet(DAO_PRODUCTOS.SHEET);
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return null;
@@ -92,7 +105,8 @@ const DAO_PRODUCTOS = {
     const numCols = Math.max.apply(null, Object.values(C)) + 1;
     const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
     for (let i = 0; i < data.length; i++) {
-      if (String(data[i][C.id] || "").trim() === idLimpio) {
+      const rowId = _sanitizeId(_stripLeadingQuote(data[i][C.id] || ""));
+      if (rowId === idLimpio) {
         return DAO_PRODUCTOS._rowToProducto(data[i], i + 2);
       }
     }
@@ -125,7 +139,7 @@ crear(datos) {
       if (lastRow > 1) {
         const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
         for (let i = 0; i < data.length; i++) {
-          const existingId = String(data[i][C.id] || "").trim();
+          const existingId = _sanitizeId(_stripLeadingQuote(data[i][C.id] || ""));
           if (existingId === id) {
             return { success: false, error: "ID ya registrado: " + id };
           }
@@ -179,20 +193,15 @@ actualizar(id, cambios, expectedVersion) {
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
       const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       for (let i = 0; i < data.length; i++) {
-        if (String(data[i][C.id] || "").trim() === idLimpio) {
+        if (_sanitizeId(_stripLeadingQuote(data[i][C.id] || "")) === idLimpio) {
           const rowIdx = i + 2;
           const currentVersion = _parseMoneda(data[i][C.version], 1);
           if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
-            const err = new Error(
+            throw new OptimisticLockError(
               "OptimisticLockError: Producto " + idLimpio + " fue modificado concurrentemente " +
-              "(esperada v" + expectedVersion + ", actual v" + currentVersion + "). Reintente."
+              "(esperada v" + expectedVersion + ", actual v" + currentVersion + "). Reintente.",
+              rowIdx, expectedVersion, currentVersion
             );
-            err.type = 'OPTIMISTIC_LOCK_FAILURE';
-            err.rowIndex = rowIdx;
-            err.expectedVersion = expectedVersion;
-            err.actualVersion = currentVersion;
-            err.retryable = true;
-            throw err;
           }
           if (cambios.nombre !== undefined) {
             const nuevoNombre = String(cambios.nombre).trim().toLowerCase();
@@ -244,7 +253,7 @@ actualizar(id, cambios, expectedVersion) {
       const numCols = Math.max.apply(null, Object.values(C)) + 1;
       const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       for (let i = 0; i < data.length; i++) {
-        if (String(data[i][C.id] || "").trim() === idLimpio) {
+        if (_sanitizeId(_stripLeadingQuote(data[i][C.id] || "")) === idLimpio) {
           const rowIdx = i + 2;
            const stockActual = _parseMoneda(data[i][C.stock], 0);
            const nuevoStock = stockActual + cantidad;
@@ -285,7 +294,7 @@ toggleActivo(id) {
       const data = sheet.getRange(2, 1, lastRow - 1, numCols).getValues();
       let rowIdx = -1;
       for (let i = 0; i < data.length; i++) {
-        if (String(data[i][C.id] || "").trim() === idLimpio) {
+        if (_sanitizeId(_stripLeadingQuote(data[i][C.id] || "")) === idLimpio) {
           rowIdx = i + 2;
           break;
         }
