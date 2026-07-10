@@ -26,7 +26,6 @@ function _daoLogError(message, context) {
     Logger.log("[DAO-LOG] ERROR: " + message);
   }
 }
-}
 
 function _sanitizeCell(value) {
   if (typeof value === 'string' && value.length > 0) {

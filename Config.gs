@@ -3,11 +3,12 @@
  * v2.5.1 - Load order fixed via filePushOrder
  */
 
+/** Configuración de copias de seguridad automatizadas. */
 const BACKUP_CONFIG = {
   FOLDER_NAME: "MicroERP_Backups",
   EXPORT_FOLDER_NAME: "MicroERP_Exportaciones",
   MAX_BACKUPS: 7,
-  BACKUP_SHEETS: ["Cartera", "Terceros", "Productos", "Compras", "Detalle_Compras", "Libro_Diario", "Flujo_Caja", "AUDIT_LOG", "Producto_Proveedor"],
+  BACKUP_SHEETS: [],
 };
 
 const CARTERA_CONFIG = {
@@ -27,6 +28,7 @@ const CARTERA_CONFIG = {
   TIPOS:   { CXC: "CxC", CXP: "CxP" },
 };
 
+/** Tipos de tercero (CLIENTE, PROVEEDOR, AMBOS) con lista de válidos. */
 const TIPO_TERCERO = {
   CLIENTE: "CLIENTE",
   PROVEEDOR: "PROVEEDOR",
@@ -34,6 +36,7 @@ const TIPO_TERCERO = {
   VALIDOS: ["CLIENTE", "PROVEEDOR", "AMBOS"],
 };
 
+/** Configuración de la hoja de vinculación producto-proveedor. */
 const PRODUCTO_PROVEEDOR_CONFIG = {
   SHEET: "Producto_Proveedor",
   COLUMNS: {
@@ -61,17 +64,23 @@ const COMPRAS_CONFIG = {
   ESTADOS: { ABIERTA: "PENDIENTE", PARCIAL: "PARCIAL", PAGADA: "PAGADA", CANCELADA: "CANCELADA" },
 };
 
+/** Configuración de la hoja de productos. */
 const PRODUCTOS_CONFIG = {
   SHEET: "Productos",
   ESTADOS_PRODUCTO: { ACTIVO: "ACTIVO", INACTIVO: "INACTIVO" },
 };
 
+/**
+ * Configuración de concurrencia para LockManager.
+ * Estos valores son defaults; pueden overridearse vía LOCK_OVERRIDE_* en PropertiesService.
+ * @see LockManager.gs
+ */
 const LOCK_CONFIG = {
-  GLOBAL_TIMEOUT: 30000,
+  GLOBAL_TIMEOUT: 60000,
   MAX_RETRIES: 4,
   BASE_BACKOFF: 500,
   RESOURCE_LOCK_WAIT: 1500,
-  RESOURCE_LOCK_TIMEOUT: 25000,
+  RESOURCE_LOCK_TIMEOUT: 60000,
   RESOURCE_TTL_MS: 45000,
   RESOURCE_LOCK_MAX_TTL_MS: 120000,
   PROPAGATION_DELAY_MS: 50,
@@ -91,7 +100,7 @@ const CONFIG = {
   STOCK_MINIMO: 5,
   MATERIALITY_THRESHOLD: 100000, // 1,000 COP en centavos
   SCHEMA_definitions: {
-    TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", tipoTercero: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
+    TERCEROS: { id: "ID", nombre: "Nombre", telefono: "Teléfono", tipo: "Tipo", limite_credito: "Límite_Crédito", activo: "Activo" },
     CARTERA: { id: "ID", fecha: "Fecha", id_tercero: "ID_Tercero", origen_id: "Origen_ID", total: "Total", saldo: "Saldo", tipo: "Tipo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     MOV_CARTERA: { id: "ID", fecha: "Fecha", id_cartera: "ID_Cartera", id_tercero: "ID_Tercero", valor: "Valor", tipo_mov: "Tipo_Mov", referencia: "Referencia" },
     AUDIT_LOG: { id: "ID", timestamp: "Timestamp", operacion: "Operacion", tabla: "Tabla", id_registro: "ID_Registro", usuario: "Usuario", datos_previos: "Datos_Previos", datos_nuevos: "Datos_Nuevos", estado: "Estado" },
@@ -99,7 +108,7 @@ const CONFIG = {
     COMPRAS: { id: "ID", fecha: "Fecha", id_proveedor: "ID_Proveedor", id_factura: "ID_Factura", total: "Total", saldo: "Saldo", estado: "Estado", fecha_vencimiento: "Fecha_Vencimiento", vencida_timestamp: "Vencida_Timestamp", version: "Version" },
     DETALLE_COMPRAS: { id: "ID", id_compra: "ID_Compra", id_producto: "ID_Producto", cantidad: "Cantidad", precio_unitario: "Precio_Unitario", subtotal: "Subtotal" },
     PAGOS_PROVEEDORES: { id: "ID", fecha: "Fecha", id_compra: "ID_Compra", id_proveedor: "ID_Proveedor", valor: "Valor", referencia: "Referencia", metodo_pago: "Metodo_Pago" },
-    KARDEX: { id: "ID", fecha: "Fecha", id_producto: "ID_Producto", tipo_mov: "Tipo_Mov", cantidad: "Cantidad", stock_anterior: "Stock_Anterior", stock_nuevo: "Stock_Nuevo", referencia: "Referencia", origen: "Origen", usuario: "Usuario" },
+    KARDEX: { id: "ID", fecha: "Fecha", id_producto: "ID_Producto", tipo_mov: "Tipo_Mov", cantidad: "Cantidad", stock_anterior: "Stock_Anterior", stock_nuevo: "Stock_Nuevo", referencia: "Referencia", origen: "Origen", usuario: "Usuario", costo_unitario: "Costo_Unitario", precio_unitario: "Precio_Unitario" },
     LIBRO_DIARIO: { id: "ID", fecha: "Fecha", tipo: "Tipo", id_referencia: "ID_Referencia", tercero: "Tercero", monto: "Monto", usuario: "Usuario", descripcion: "Descripcion" },
     FLUJO_CAJA: { id: "ID", fecha: "Fecha", tipo: "Tipo", concepto: "Concepto", monto: "Monto", referencia: "Referencia", usuario: "Usuario" },
     PRODUCTO_PROVEEDOR: { idProducto: "ID_Producto", idProveedor: "ID_Proveedor", precioUltimaCompra: "Precio_Ultima_Compra", esPreferido: "Es_Preferido", fechaUltimaCompra: "Fecha_Ultima_Compra" },
@@ -140,17 +149,16 @@ _schemaVersion = _loadSchemaVersion();
 // TTL para cache de schema (5 minutos)
 const SHEET_CACHE_TTL = 300;
 
-/**
- * Nombres de hojas del spreadsheet - constante única de referencia.
- * Evita duplicación y discrepancias entre funciones.
- */
+/** Nombres de hojas — única fuente de verdad. */
 const SHEET_NAMES = {
   REQUIRED: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos'],
   OPTIONAL: ['Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
-  CRITICAL: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
-  ALL: ['Terceros', 'Cartera', 'Movimientos_Cartera', 'AUDIT_LOG', 'Productos', 'Compras', 'Detalle_Compras', 'Pagos_Proveedores', 'Kardex_Movilizaciones', 'Libro_Diario', 'Flujo_Caja', 'Producto_Proveedor'],
-  get ALL_NAMES() { return this.ALL; }
 };
+SHEET_NAMES.ALL = SHEET_NAMES.REQUIRED.concat(SHEET_NAMES.OPTIONAL);
+SHEET_NAMES.CRITICAL = SHEET_NAMES.ALL.slice();
+SHEET_NAMES.ALL_NAMES = SHEET_NAMES.ALL;
+
+BACKUP_CONFIG.BACKUP_SHEETS = SHEET_NAMES.ALL.slice();
 
 /**
  * Obtiene el spreadsheet activo.
@@ -189,23 +197,62 @@ function getSheet(name) {
 }
 
 
+/** Cache de columnas mutables para reloadSchema. Se clona de const en init. */
+var _MUTABLE_COLUMNS = null;
+
+/**
+ * Inicializa _MUTABLE_COLUMNS clonando las configs const.
+ * reloadSchema muta estas copias en vez de los objetos originales.
+ */
+function _initMutableColumns() {
+  if (_MUTABLE_COLUMNS) return;
+  _MUTABLE_COLUMNS = {};
+  function clone(obj) {
+    var c = {};
+    for (var k in obj) { if (obj.hasOwnProperty(k)) c[k] = obj[k]; }
+    return c;
+  }
+  _MUTABLE_COLUMNS.TERCEROS = clone(CARTERA_CONFIG.COLUMNS.TERCEROS);
+  _MUTABLE_COLUMNS.CARTERA = clone(CARTERA_CONFIG.COLUMNS.CARTERA);
+  _MUTABLE_COLUMNS.MOV_CARTERA = clone(CARTERA_CONFIG.COLUMNS.MOV_CARTERA);
+  _MUTABLE_COLUMNS.AUDIT_LOG = clone(CARTERA_CONFIG.COLUMNS.AUDIT_LOG);
+  _MUTABLE_COLUMNS.PRODUCTOS = clone(CONFIG.COLUMNS.PRODUCTOS);
+  _MUTABLE_COLUMNS.COMPRAS = clone(COMPRAS_CONFIG.COLUMNS.COMPRAS);
+  _MUTABLE_COLUMNS.DETALLE_COMPRAS = clone(COMPRAS_CONFIG.COLUMNS.DETALLE_COMPRAS);
+  _MUTABLE_COLUMNS.PAGOS_PROVEEDORES = clone(COMPRAS_CONFIG.COLUMNS.PAGOS_PROVEEDORES);
+  _MUTABLE_COLUMNS.KARDEX = clone(COMPRAS_CONFIG.COLUMNS.KARDEX);
+  _MUTABLE_COLUMNS.LIBRO_DIARIO = clone(CONFIG.COLUMNS.LIBRO_DIARIO);
+  _MUTABLE_COLUMNS.FLUJO_CAJA = clone(CONFIG.COLUMNS.FLUJO_CAJA);
+  _MUTABLE_COLUMNS.PRODUCTO_PROVEEDOR = clone(PRODUCTO_PROVEEDOR_CONFIG.COLUMNS);
+}
+
+/**
+ * Mapea nombre de hoja → { conf, key } para recorrer schemas.
+ * conf apunta a _MUTABLE_COLUMNS para evitar mutar const (CFG-004).
+ * @returns {Object<string, {conf: Object, key: string}>}
+ */
+function _getSheetsMapping() {
+  _initMutableColumns();
+  return {
+    [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: _MUTABLE_COLUMNS, key: 'TERCEROS' },
+    [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: _MUTABLE_COLUMNS, key: 'CARTERA' },
+    [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: _MUTABLE_COLUMNS, key: 'MOV_CARTERA' },
+    [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: _MUTABLE_COLUMNS, key: 'AUDIT_LOG' },
+    [CONFIG.SHEETS.PRODUCTOS]: { conf: _MUTABLE_COLUMNS, key: 'PRODUCTOS' },
+    [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: _MUTABLE_COLUMNS, key: 'COMPRAS' },
+    [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: _MUTABLE_COLUMNS, key: 'DETALLE_COMPRAS' },
+    [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: _MUTABLE_COLUMNS, key: 'PAGOS_PROVEEDORES' },
+    [COMPRAS_CONFIG.SHEETS.KARDEX]: { conf: _MUTABLE_COLUMNS, key: 'KARDEX' },
+    [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: _MUTABLE_COLUMNS, key: 'LIBRO_DIARIO' },
+    [CONFIG.SHEETS.FLUJO_CAJA]: { conf: _MUTABLE_COLUMNS, key: 'FLUJO_CAJA' },
+    [PRODUCTO_PROVEEDOR_CONFIG.SHEET]: { conf: _MUTABLE_COLUMNS, key: 'PRODUCTO_PROVEEDOR' },
+  };
+}
+
 // ─ MÉTODOS DE ESQUEMA EN CONFIG ─
 
 CONFIG.reloadSchema = function() {
-   const sheets = {
-     [CARTERA_CONFIG.SHEETS.TERCEROS]: { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
-     [CARTERA_CONFIG.SHEETS.CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
-     [CARTERA_CONFIG.SHEETS.MOV_CARTERA]: { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
-     [CARTERA_CONFIG.SHEETS.AUDIT_LOG]: { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-     [CONFIG.SHEETS.PRODUCTOS]: { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
-     [COMPRAS_CONFIG.SHEETS.COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
-     [COMPRAS_CONFIG.SHEETS.DETALLE_COMPRAS]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
-     [COMPRAS_CONFIG.SHEETS.PAGOS_PROVEEDORES]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
-     [COMPRAS_CONFIG.SHEETS.KARDEX]: { conf: COMPRAS_CONFIG.COLUMNS, key: 'KARDEX' },
-     [CONFIG.SHEETS.LIBRO_DIARIO]: { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
-     [CONFIG.SHEETS.FLUJO_CAJA]: { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
-     [PRODUCTO_PROVEEDOR_CONFIG.SHEET]: { conf: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS, key: 'PRODUCTO_PROVEEDOR' },
-   };
+  const sheets = _getSheetsMapping();
 
   const spreadsheet = getActiveSpreadsheet();
   const changes = [];
@@ -214,7 +261,7 @@ CONFIG.reloadSchema = function() {
     const sheet = spreadsheet.getSheetByName(sheetName);
     if (!sheet) {
       if (SHEET_NAMES.OPTIONAL.includes(sheetName)) continue;
-      throw new Error(`Hoja obligatoria "${sheetName}" no encontrada.`);
+      throw new Error('Hoja obligatoria "' + sheetName + '" no encontrada.');
     }
 
     const lastCol = sheet.getLastColumn();
@@ -233,12 +280,12 @@ CONFIG.reloadSchema = function() {
       if (idx === -1) {
         continue;
       }
-      const oldIdx = mapping.conf[mapping.key][key];
+      var colObj = mapping.conf[mapping.key];
+      var oldIdx = colObj[key];
       if (oldIdx !== idx) {
-        sheetChanges.changes.push({ key, from: oldIdx, to: idx });
+        sheetChanges.changes.push({ key: key, from: oldIdx, to: idx });
       }
-      // Create new object to avoid mutating const configuration
-      mapping.conf[mapping.key] = Object.assign({}, mapping.conf[mapping.key], { [key]: idx });
+      colObj[key] = idx; // mutable clone, no const mutation (CFG-004)
     }
 
     const expectedNames = Object.values(expected);
@@ -252,9 +299,7 @@ CONFIG.reloadSchema = function() {
 
   _schemaVersion = Date.now();
   _schemaValidated = true;
-  // === INICIO FIX m-03 ===
   _saveSchemaVersion(_schemaVersion);
-  // === FIN FIX m-03 ===
 
   return { success: true, changes: changes };
 };
@@ -265,12 +310,12 @@ CONFIG.isSchemaStale = function(maxAgeMs) {
   if (!_schemaVersion) return true;
   if (Date.now() - _schemaVersion > maxAgeMs) return true;
 
-const cache = CacheService.getScriptCache();
-   const allSheets = getActiveSpreadsheet().getSheets();
-   const sheetMap = {};
-   for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
+  const cache = CacheService.getScriptCache();
+  const allSheets = getActiveSpreadsheet().getSheets();
+  const sheetMap = {};
+  for (let i = 0; i < allSheets.length; i++) sheetMap[allSheets[i].getName()] = allSheets[i];
 
-   for (const name of SHEET_NAMES.CRITICAL) {
+  for (const name of SHEET_NAMES.CRITICAL) {
     const sheet = sheetMap[name];
     if (!sheet) continue;
     const metaRaw = cache.get(name + '_meta');
@@ -291,19 +336,7 @@ CONFIG.getSchemaReport = function() {
     columnMappings: {}
   };
 
-const sheets = {
-     'Terceros': { conf: CARTERA_CONFIG.COLUMNS, key: 'TERCEROS' },
-     'Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'CARTERA' },
-     'Movimientos_Cartera': { conf: CARTERA_CONFIG.COLUMNS, key: 'MOV_CARTERA' },
-     'AUDIT_LOG': { conf: CARTERA_CONFIG.COLUMNS, key: 'AUDIT_LOG' },
-     'Productos': { conf: CONFIG.COLUMNS, key: 'PRODUCTOS' },
-     'Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'COMPRAS' },
-     'Detalle_Compras': { conf: COMPRAS_CONFIG.COLUMNS, key: 'DETALLE_COMPRAS' },
-     'Pagos_Proveedores': { conf: COMPRAS_CONFIG.COLUMNS, key: 'PAGOS_PROVEEDORES' },
-     'Libro_Diario': { conf: CONFIG.COLUMNS, key: 'LIBRO_DIARIO' },
-     'Flujo_Caja': { conf: CONFIG.COLUMNS, key: 'FLUJO_CAJA' },
-     'Producto_Proveedor': { conf: PRODUCTO_PROVEEDOR_CONFIG.COLUMNS, key: 'PRODUCTO_PROVEEDOR' },
-   };
+  const sheets = _getSheetsMapping();
 
   for (const [sheetName, mapping] of Object.entries(sheets)) {
     report.sheetsValidated.push(sheetName);
@@ -334,30 +367,30 @@ const sheets = {
 };
 
 CONFIG.checkHeaderChanges = function() {
-    const cache = CacheService.getScriptCache();
-    const spreadsheet = getActiveSpreadsheet();
-    let changed = false;
+  const cache = CacheService.getScriptCache();
+  const spreadsheet = getActiveSpreadsheet();
+  let changed = false;
 
-   for (const name of SHEET_NAMES.CRITICAL) {
-     const sheet = spreadsheet.getSheetByName(name);
-     if (!sheet) continue;
-     const lastCol = sheet.getLastColumn();
-     if (lastCol === 0) continue;
-     const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
-     const metaRaw = cache.get(name + '_meta');
-     const meta = metaRaw ? JSON.parse(metaRaw) : null;
-     if (!meta) {
-       _schemaValidated = false;
-       changed = true;
-       continue;
-     }
-     if (JSON.stringify(meta.headers) !== JSON.stringify(currentHeaders)) {
-       _schemaValidated = false;
-       changed = true;
-     }
-   }
+  for (const name of SHEET_NAMES.CRITICAL) {
+    const sheet = spreadsheet.getSheetByName(name);
+    if (!sheet) continue;
+    const lastCol = sheet.getLastColumn();
+    if (lastCol === 0) continue;
+    const currentHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+    const metaRaw = cache.get(name + '_meta');
+    const meta = metaRaw ? JSON.parse(metaRaw) : null;
+    if (!meta) {
+      _schemaValidated = false;
+      changed = true;
+      continue;
+    }
+    if (JSON.stringify(meta.headers) !== JSON.stringify(currentHeaders)) {
+      _schemaValidated = false;
+      changed = true;
+    }
+  }
 
-   return changed;
+  return changed;
 };
 
 // ─ FUNCIÓN LEGACY: DELEGADA A CONFIG.reloadSchema ─
@@ -367,6 +400,7 @@ function validateAndMapSchemas() {
   CONFIG.reloadSchema();
 }
 
+/** Sanitiza un ID: uppercase, solo A-Z0-9_- */
 function _sanitizeId(id) { return String(id || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ""); }
 
 /**
@@ -426,26 +460,23 @@ function _parseMoneda(v, defaultVal) {
   // Si el valor original parece tener decimales, asumir que está en unidades
   // y multiplicar por 100 para convertir a centavos
   if (/\.\d+$/.test(raw) || /\.0+$/.test(raw) === false) {
-    Logger.log(`Valor con decimales convertido: ${v} -> ${Math.round(num * 100)} centavos`);
+    Logger.log('Valor con decimales convertido: ' + v + ' -> ' + Math.round(num * 100) + ' centavos');
     return Math.round(num * 100);
   }
   
   return Math.round(num);
 }
 
+/** Valida que un valor sea una Date no inválida. */
 function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }
 
+/** Retorna un objeto de error estándar {success: false, message, code}. */
 function _error(msg) { return { success: false, message: String(msg || "Error desconocido"), code: "ERROR" }; }
 
 function _captureError(context, error) {
-  const stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
-  const corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
-  // Use LogService if available, fallback to Logger.log
-  if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
-    LogService.logError(stack, { functionName: context, correlationId: corrId });
-  } else {
-    Logger.log(`[${context}] ${stack} (corr: ${corrId})`);
-  }
+  var stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
+  var corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
+  Logger.log('[' + context + '] ' + stack + ' (corr: ' + corrId + ')');
 }
 
 let _CACHED_TIMEZONE = null;
@@ -460,6 +491,7 @@ function _getTimeZone() {
   }
 }
 
+/** Retorna la fecha actual a medianoche (zona horaria del script). */
 function _today() {
   const tz = _getTimeZone();
   const s = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
@@ -509,6 +541,7 @@ function _formatMoneda(centavos) {
   return (centavos / 100).toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 }
 
+/** Crea una copia de seguridad del spreadsheet y rota las antiguas. @returns {{success, name, url}} */
 function crearBackup() {
   if (typeof AuthService !== 'undefined' && AuthService && AuthService.checkPermission) {
     try { AuthService.checkPermission("ejecutar_mantenimiento"); } catch (e) { Logger.log("[CFG-002] Backup sin permiso: " + e.message); }
@@ -538,8 +571,7 @@ function crearBackup() {
   return { success: true, name: backupName, url: backupUrl };
 }
 
- // ─ TRANSACTION MANAGER ─
-
+/** Gestor de transacciones con snapshot de cartera para rollback. */
  const TransactionManager = {
    _currentCorrelationId: null,
 
@@ -588,7 +620,11 @@ function crearBackup() {
     }
  };
 
-// ─ SESSION SERVICE (singleton) ─
+/**
+ * Servicio de sesión singleton.
+ * Expone getCurrentUser(), getScriptTimeZone() — reemplaza acceso directo a Session.
+ * Única instancia en la aplicación (ver AGENTS.md).
+ */
 const SESSION_SERVICE = {
   _mockUser: null,
 
@@ -647,6 +683,7 @@ const SESSION_SERVICE = {
 
 // ─ SETUP INICIAL (consolidado) ─
 
+/** Inicializa hoja y configuración básica del sistema. Crea columnas faltantes. @returns {{success, spreadsheetId, sheets, message}} */
 function setupSistema() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
@@ -662,7 +699,7 @@ function setupSistema() {
   Logger.log("Spreadsheet: " + ss.getName());
   Logger.log("ID: " + ssId);
 
-  const requiredSheets = ["Terceros", "Cartera", "Movimientos_Cartera", "AUDIT_LOG", "Productos"];
+  const requiredSheets = SHEET_NAMES.REQUIRED;
   let mensaje = "\nHOJAS:\n";
 
   for (const nombre of requiredSheets) {
@@ -710,6 +747,7 @@ function setupSistema() {
  * @param {string} value - Valor a validar
  * @returns {string|null} - Valor normalizado en uppercase o null si es inválido
  */
+/** Valida que un valor sea un tipo de tercero permitido. @returns {string|null} normalizado o null. */
 function _validateTipoTercero(value) {
   if (!value) return null;
   const upper = String(value).toUpperCase().trim();

@@ -611,9 +611,11 @@ const _executeAbonoTx = () => {
         if (plan.movimientos.length > 0) {
           for (const mov of plan.movimientos) { DAO.createMovimiento(mov); }
         }
-        tx.commit();
 
-        // === GENERAR ASIENTO CONTABLE PARA ABONO ===
+        // === GENERAR ASIENTO CONTABLE PARA ABONO (dentro del lock, antes del commit) ===
+        // F2: el asiento contable debe registrarse ANTES de tx.commit() para que,
+        // si falla, el rollback de cartera/movimientos se aplique y no quede la
+        // ecuación contable rota (cartera aplicada sin libro diario/flujo de caja).
         const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
         LIBRO_DIARIO.registrarAbonoCliente(
           new Date(),
@@ -632,6 +634,8 @@ const _executeAbonoTx = () => {
           refLimpia,
           usuario
         );
+
+        tx.commit();
 
         LOG_ENGINE.logEvent("ABONO_PROCESADO", "CARTERA", idTerceroLimpio,
           { anterior_saldo: totalDeuda },
@@ -1257,9 +1261,10 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
         });
 
         tx.markPagoPostAppend();
-        tx.commit();
 
-        // === GENERAR ASIENTO CONTABLE PARA PAGO PROVEEDOR ===
+        // === GENERAR ASIENTO CONTABLE PARA PAGO PROVEEDOR (dentro del lock, antes del commit) ===
+        // F2: registrar el asiento antes de tx.commit() para que un fallo dispare
+        // el rollback de cartera/pago y no deje la ecuación contable rota.
         const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
         LIBRO_DIARIO.registrarPagoProveedor(
           new Date(),
@@ -1278,6 +1283,8 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
           String(referencia || "Pago").trim(),
           usuario
         );
+
+        tx.commit();
 
         CACHE.invalidateCartera();
 

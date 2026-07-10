@@ -96,7 +96,131 @@ function runAllRegressionTests() {
     }
     return 'Invalid result structure';
   });
-  
+
+  _test('acquireResourceLock adquiere y libera con token CAS', () => {
+    const handle = LOCK_MANAGER.acquireResourceLock('TEST_LOCK_001');
+    if (!handle || typeof handle.releaseLock !== 'function') return 'No releaseLock function';
+    handle.releaseLock();
+    const metrics = LOCK_MANAGER.getLockMetrics();
+    if (metrics.acquired < 1) return 'acquired no incrementado';
+    return true;
+  });
+
+  _test('acquireResourceLock rechaza lock duplicado activo', () => {
+    const handle1 = LOCK_MANAGER.acquireResourceLock('TEST_LOCK_DUP');
+    if (!handle1) return 'Fallo al adquirir primer lock';
+    try {
+      LOCK_MANAGER.acquireResourceLock('TEST_LOCK_DUP');
+      handle1.releaseLock();
+      return 'Debió lanzar error por lock duplicado';
+    } catch (e) {
+      handle1.releaseLock();
+      if (e.message.indexOf('bloqueo') >= 0 || e.message.indexOf('Timeout') >= 0) return true;
+      return 'Error inesperado: ' + e.message;
+    }
+  });
+
+  _test('acquireResourceLock genera token único por adquisición', () => {
+    const h1 = LOCK_MANAGER.acquireResourceLock('TEST_TOKEN_A');
+    const h2 = LOCK_MANAGER.acquireResourceLock('TEST_TOKEN_B');
+    h1.releaseLock();
+    h2.releaseLock();
+    const log = LOCK_MANAGER.getLockLog(20);
+    var tokensA = '';
+    var tokensB = '';
+    for (var li = 0; li < log.length; li++) {
+      if (log[li].resourceId === 'TEST_TOKEN_A' && log[li].action === 'acquire') tokensA = log[li].token;
+      if (log[li].resourceId === 'TEST_TOKEN_B' && log[li].action === 'acquire') tokensB = log[li].token;
+    }
+    if (!tokensA) return 'No se encontró token para TEST_TOKEN_A';
+    if (!tokensB) return 'No se encontró token para TEST_TOKEN_B';
+    if (tokensA === tokensB) return 'Tokens duplicados en locks distintos';
+    return true;
+  });
+
+  _test('getLockMetrics retorna estructura completa', () => {
+    const m = LOCK_MANAGER.getLockMetrics();
+    if (typeof m.acquired !== 'number') return 'acquired no es número';
+    if (typeof m.failed !== 'number') return 'failed no es número';
+    if (typeof m.timeouts !== 'number') return 'timeouts no es número';
+    if (typeof m.orphansDetected !== 'number') return 'orphansDetected no es número';
+    if (typeof m.orphansRemoved !== 'number') return 'orphansRemoved no es número';
+    if (typeof m.cleanups !== 'number') return 'cleanups no es número';
+    if (typeof m.lockDepth !== 'number') return 'lockDepth no es número';
+    if (typeof m.indexCached !== 'boolean') return 'indexCached no es boolean';
+    if (typeof m.suspiciousLocks !== 'number') return 'suspiciousLocks no es número';
+    return true;
+  });
+
+  _test('getLockLog retorna array de eventos', () => {
+    const log = LOCK_MANAGER.getLockLog(5);
+    if (!Array.isArray(log)) return 'No es array';
+    if (log.length > 0) {
+      if (typeof log[0].action !== 'string') return 'action no es string';
+      if (typeof log[0].timestamp !== 'number') return 'timestamp no es number';
+    }
+    return true;
+  });
+
+  _test('removeOrphanLocks ejecuta sin error', () => {
+    const result = LOCK_MANAGER.removeOrphanLocks();
+    if (typeof result.removed !== 'number') return 'removed no es número';
+    if (!Array.isArray(result.orphans)) return 'orphans no es array';
+    return true;
+  });
+
+  _test('_detectOrphanLocks retorna array', () => {
+    if (typeof LOCK_MANAGER._safeTryLock !== 'function') return '_safeTryLock no disponible';
+    if (LOCK_MANAGER._safeTryLock(10000)) {
+      try {
+        const orphans = LOCK_MANAGER._detectOrphanLocks();
+        if (!Array.isArray(orphans)) return 'No retornó array';
+        return true;
+      } finally {
+        LOCK_MANAGER._safeReleaseLock();
+      }
+    }
+    return 'No se pudo adquirir lock global para test';
+  });
+
+  _test('_buildResourceIndex cacheado funciona', () => {
+    var first = LOCK_MANAGER._buildResourceIndex();
+    if (!(first instanceof Set)) return 'Primera llamada no retornó Set';
+    var cached = LOCK_MANAGER._buildResourceIndex();
+    if (!(cached instanceof Set)) return 'Segunda llamada no retornó Set';
+    // Verificar que devuelve el mismo objeto (cache hit)
+    if (first !== cached) return 'Cache miss: objetos distintos';
+    LOCK_MANAGER._invalidateIndexCache();
+    var afterInvalidate = LOCK_MANAGER._buildResourceIndex();
+    if (first === afterInvalidate) return 'Invalidación no funcionó: mismo objeto';
+    return true;
+  });
+
+  _test('acquireGlobalLock reentrancia maneja depth', () => {
+    var initialDepth = LOCK_MANAGER._lockDepth;
+    var h1 = LOCK_MANAGER.acquireGlobalLock(5000);
+    if (LOCK_MANAGER._lockDepth <= initialDepth) return 'Depth no incrementado tras primer acquireGlobalLock';
+    var h2 = LOCK_MANAGER.acquireGlobalLock(5000);
+    if (LOCK_MANAGER._lockDepth <= initialDepth + 1) return 'Depth no incrementado tras reentrada';
+    h2.releaseLock();
+    if (LOCK_MANAGER._lockDepth !== initialDepth + 1) return 'Depth no decrementado tras release dummy';
+    h1.releaseLock();
+    if (LOCK_MANAGER._lockDepth !== initialDepth) return 'Depth no restaurado tras release real';
+    return true;
+  });
+
+  _test('getLockMetrics suspiciousLocks refleja registro', () => {
+    var before = LOCK_MANAGER.getLockMetrics().suspiciousLocks;
+    LOCK_MANAGER._loadSuspiciousLocks();
+    LOCK_MANAGER._suspiciousLocks.push({ resourceId: 'TEST_SUSPICIOUS', lockKey: 'LOCK_TEST_SUSPICIOUS', token: 'x', writtenAt: Date.now(), pending: true });
+    LOCK_MANAGER._saveSuspiciousLocks();
+    var after = LOCK_MANAGER.getLockMetrics().suspiciousLocks;
+    if (after <= before) return 'suspiciousLocks no incrementó';
+    LOCK_MANAGER._suspiciousLocks = [];
+    LOCK_MANAGER._saveSuspiciousLocks();
+    return true;
+  });
+
   _test('forceResetCircuit clears state', () => {
     CACHE.forceResetCircuit('terceros');
     const state = CACHE.getCircuitState('terceros');
