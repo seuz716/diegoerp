@@ -707,6 +707,7 @@ function getUserInfo() {
 
 /**
  * API Pública: Procesar venta (contado o crédito)
+ * Delegate to DOMAIN.registrarVentaAtomic which handles complete transaction.
  */
 function procesarVenta(carrito, opciones) {
   const startTime = Date.now();
@@ -719,12 +720,20 @@ function procesarVenta(carrito, opciones) {
     INPUT_VALIDATOR.validateItemCount(carrito);
     if (!opciones || typeof opciones !== 'object') throw new Error('Opciones de venta inválidas');
     const tipo = INPUT_VALIDATOR.validateEnum(opciones.tipo, ['CONTADO', 'CXC', 'CREDITO'], 'Tipo de venta');
-    if (tipo !== 'CONTADO') {
+    if (tipo !== 'CONTADO' && tipo !== 'CXC') {
       INPUT_VALIDATOR.validateId(opciones.idTercero);
-      INPUT_VALIDATOR.validatePositiveInt(opciones.dias, 'Días de crédito');
+    }
+    if (opciones.diasCredito !== undefined) {
+      INPUT_VALIDATOR.validatePositiveInt(opciones.diasCredito, 'Días de crédito');
     }
     
-    const result = procesarVentaV2(carrito, opciones);
+    // Call the updated procesarVentaV2 which delegates to DOMAIN.registrarVentaAtomic
+    const result = procesarVentaV2(carrito, {
+      tipo: tipo,
+      idTercero: opciones.idTercero,
+      diasCredito: opciones.diasCredito,
+      correlationId: correlationId
+    });
     return { ...result, correlationId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("procesarVenta", e, correlationId, Date.now() - startTime);
@@ -892,14 +901,33 @@ function getVentasDelDia() {
 
 /**
  * API Pública: Registrar venta de productos (reduce stock, registra kardex)
+ * Supports both legacy (clienteId, items, total, correlationId) and new (params) signatures.
  */
-function registrarVentaAtomic(clienteId, items, total, correlationId) {
+function registrarVentaAtomic(paramsOrClienteId, items, total, correlationId) {
   const startTime = Date.now();
-  const corrId = correlationId || generateCorrelationId();
+  let corrId = correlationId || generateCorrelationId();
+
   try {
     RATE_LIMITER.check("registrarVentaAtomic");
     AuthService.checkPermission("registrar_venta");
-    const result = DOMAIN.registrarVentaAtomic(clienteId, items, total, corrId);
+
+    // Support both signatures
+    let params;
+    if (typeof paramsOrClienteId === 'object' && paramsOrClienteId !== null) {
+      // New signature with params object
+      params = paramsOrClienteId;
+      corrId = params.correlationId || corrId;
+    } else {
+      // Legacy signature: wrap into params
+      params = {
+        clienteId: paramsOrClienteId,
+        items: items,
+        total: total,
+        correlationId: corrId
+      };
+    }
+
+    const result = DOMAIN.registrarVentaAtomic(params);
     return { ...result, correlationId: corrId, executionTimeMs: Date.now() - startTime };
   } catch (e) {
     return _safeError("registrarVentaAtomic", e, corrId, Date.now() - startTime);

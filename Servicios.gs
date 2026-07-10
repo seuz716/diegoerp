@@ -78,6 +78,7 @@ function _validateCarrito(carrito) {
 
 /**
  * Procesa una venta, ya sea al contado o a crédito.
+ * Delegate to DOMAIN.registrarVentaAtomic which handles complete transaction.
  * @param {Array<Object>} carrito Lista de productos en el carrito.
  * @param {Object} opciones Opciones de la venta (e.g., tipo, idTercero, diasCredito).
  * @returns {Object} Resultado de la operación.
@@ -85,130 +86,86 @@ function _validateCarrito(carrito) {
 function procesarVentaV2(carrito, opciones) {
   const _startTime = Date.now();
 
+  // Input validation
   if (!carrito || !Array.isArray(carrito) || carrito.length === 0) {
     return _error("El carrito no puede estar vacío.");
   }
   if (!opciones || typeof opciones !== 'object') {
     return _error("Opciones de venta inválidas.");
   }
-  const tipoValido = Object.values(CARTERA_CONFIG.TIPOS).includes(opciones.tipo);
-  if (!tipoValido) {
-    return _error("Tipo de venta inválido: " + opciones.tipo + ". Use " + CARTERA_CONFIG.TIPOS.CXC + " para crédito o contado.");
-  }
 
-  const esCredito = opciones.tipo === CARTERA_CONFIG.TIPOS.CXC;
-  const idTercero = _sanitizeId(opciones.idTercero || "");
-
-  if (esCredito && !idTercero) {
-    return _error("ID de tercero es requerido para ventas a crédito.");
-  }
-
+  // Validate and consolidate cart
   const validation = _validateCarrito(carrito);
   if (!validation.valid) {
     return _error(validation.errors[0]);
   }
   const carritoConsolidado = validation.consolidated;
 
-  const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+  // Determine mode
+  const tipoVenta = (opciones.tipo || 'CXC').toUpperCase();
+  const idTercero = _sanitizeId(opciones.idTercero || "");
+  const esCredito = tipoVenta === CARTERA_CONFIG.TIPOS.CXC;
 
-  AuthService.checkPermission("registrar_venta");
+  // For CxC mode, clienteId is required
+  if (esCredito && !idTercero) {
+    return _error("ID de tercero es requerido para ventas a crédito.");
+  }
 
-  const state = _createStateMachine();
-  const lock = LOCK_MANAGER.acquireGlobalLock(15000);
+  // Check credit limit for CxC sales
+  if (esCredito && idTercero) {
+    CACHE.refresh();
+    const tercero = CACHE.getTerceroRAW(idTercero);
+    if (!tercero) {
+      return _error("Tercero " + idTercero + " no encontrado.");
+    }
+    if (!tercero.limite_credito || tercero.limite_credito === 0) {
+      return _error("Cliente sin límite de crédito configurado. Configure un límite o use venta de contado.");
+    }
+    const totalVenta = carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0);
+    const saldoActual = CACHE.getSaldoTercero(idTercero);
+    if ((saldoActual + totalVenta) > tercero.limite_credito) {
+      return _error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
+    }
+  }
+
+  // Delegate to DOMAIN.registrarVentaAtomic with new signature
+  const params = {
+    clienteId: idTercero || undefined,
+    items: carritoConsolidado.map(item => ({
+      id: item.id,
+      cantidad: item.cantidad,
+      precio_unitario: item.precio
+    })),
+    total: carritoConsolidado.reduce((sum, item) => sum + (item.precio || 0) * item.cantidad, 0),
+    modo: esCredito ? 'CXC' : 'CONTADO',
+    diasCredito: Number(opciones.diasCredito) || 30,
+    correlationId: opciones.correlationId || ('venta_' + Date.now()),
+    usuario: SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM"
+  };
 
   try {
+    AuthService.checkPermission("registrar_venta");
+    const result = DOMAIN.registrarVentaAtomic(params);
 
-    // Credit check inside lock — no TOCTOU vs DOMAIN.crearCarteraAtomic
-    if (esCredito && idTercero) {
-      CACHE.refresh();
-      const tercero = CACHE.getTerceroRAW(idTercero);
-      if (!tercero) throw new Error(`Tercero ${idTercero} no encontrado.`);
-      if (!tercero.limite_credito || tercero.limite_credito === 0) {
-        throw new Error("Cliente sin límite de crédito configurado. Configure un límite o use venta de contado.");
-      }
-      const saldoActual = CACHE.getSaldoTercero(idTercero);
-      if ((saldoActual + totalVenta) > tercero.limite_credito) {
-        throw new Error(`Límite de crédito superado. Disponible: ${_formatMoneda(tercero.limite_credito - saldoActual)}`);
-      }
+    if (result.success) {
+      return {
+        success: true,
+        total: result.total,
+        tipo: tipoVenta,
+        idTercero: idTercero || null,
+        ventaId: result.id,
+        state: {
+          transitions: ["VALIDATED", "PROCESSED"],
+          durationMs: Date.now() - _startTime,
+        },
+      };
     }
-
-    state.transition('STOCK_VALIDATED', () => {
-      const errorStock = _validarStockCarrito(carritoConsolidado);
-      if (errorStock) throw new Error(errorStock);
-    });
-
-    state.transition('INVENTORY_RESERVED',
-      () => _descontarInventario(carritoConsolidado),
-      () => _revertirDescuentoInventario(carritoConsolidado)
-    );
-
-    state.transition('CARTERA_CREATED', () => {
-      if (esCredito && idTercero) {
-        const diasCredito = Number(opciones.diasCredito) || 30;
-        if (!Number.isInteger(diasCredito) || diasCredito <= 0) {
-          throw new Error("diasCredito debe ser un entero positivo.");
-        }
-        DOMAIN.crearCarteraAtomic(idTercero, "VENTA_" + Date.now(), totalVenta, CARTERA_CONFIG.TIPOS.CXC, diasCredito);
-      }
-    });
-
-    // === GENERAR ASIENTO CONTABLE ===
-    const usuario = SESSION_SERVICE.getCurrentUser().getEmail() || "SYSTEM";
-
-    if (esCredito && idTercero) {
-      LIBRO_DIARIO.registrarVentaCredito(
-        new Date(), 
-        "VENTA-" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), 
-        idTercero, 
-        totalVenta, 
-        usuario
-      );
-    } else {
-      LIBRO_DIARIO.registrarVentaContado(
-        new Date(),
-        "VENTA-" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-        idTercero || "CONTADO",
-        totalVenta,
-        usuario
-      );
-      FLUJO_CAJA.registrarMovimiento(
-        new Date(),
-        FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
-        "Venta contado: " + (idTercero || "Contado"),
-        totalVenta,
-        "VENTA-" + Date.now(),
-        usuario
-      );
-    }
-
-    state.current = VENTA_STATES.COMPLETED;
-
-    LOG_ENGINE.logEvent("VENTA_PROCESADA", "VENTAS", idTercero || "CONTADO",
-      { items: carritoConsolidado.length },
-      { total: totalVenta, tipo: opciones.tipo },
-      "SUCCESS"
-    );
-
-    return {
-      success: true,
-      total: totalVenta,
-      tipo: opciones.tipo,
-      idTercero: idTercero || null,
-      state: {
-        transitions: state.transitions,
-        durationMs: Date.now() - _startTime,
-      },
-    };
+    return result;
   } catch (e) {
     const msg = e.message || "Error procesando venta.";
-    state.fail(msg);
     LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idTercero || "CONTADO",
       {}, { error: msg }, "FAILED");
     return _error(msg);
-  } finally {
-    if (lock) {
-      lock.releaseLock();
-    }
   }
 }
 

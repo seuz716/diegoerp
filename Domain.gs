@@ -1561,30 +1561,67 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
   },
 
   /**
-   * Registers a cash sale to a client with real-time stock deduction.
+   * Registers a sale to a client with real-time stock deduction.
    * Validates client existence and stock availability for all items.
    * Applies optimistic locking per product (deadlock prevention via sorted locks),
-   * records kardex movements, creates a zero-balance CxC record, and generates
-   * accounting entries. Retries on version conflicts.
-   * @param {string} clienteId - Client third party ID
-   * @param {Array} items - Array of sale items
-   * @param {string} items[].id - Product ID
-   * @param {number} items[].cantidad - Quantity sold
-   * @param {number} items[].precio_unitario - Unit sale price
-   * @param {number} total - Total sale amount
-   * @param {string} [correlationId] - Idempotency key
+   * records kardex movements, creates a zero-balance CxC record (if credit sale),
+   * and generates accounting entries. Retries on version conflicts.
+   * @param {Object|*} paramsOrClienteId - Sale parameters object (new) or clienteId (legacy)
+   * @param {Array} [items] - Sale items (legacy signature)
+   * @param {number} [total] - Total (legacy signature)
+   * @param {string} [correlationId] - Idempotency key (legacy signature)
+   * @param {string} [paramsOrClienteId.clienteId] - Client third party ID (optional for CONTADO mode)
+   * @param {Array} paramsOrClienteId.items - Sale items
+   * @param {number} [paramsOrClienteId.total] - Total (calculated if not provided)
+   * @param {string} [paramsOrClienteId.modo='CXC'] - 'CXC' (default) or 'CONTADO'
+   * @param {number} [paramsOrClienteId.diasCredito=30] - Credit days for CxC mode
+   * @param {string} paramsOrClienteId.correlationId - Idempotency key
+   * @param {string} [paramsOrClienteId.usuario] - User performing the operation
    * @returns {{success: boolean, id: string, total: number}} Sale result with ID
    */
-  registrarVentaAtomic(clienteId, items, total, correlationId) {
-    const corrId = correlationId || ('venta_' + Date.now());
-    const idCliente = _sanitizeId(clienteId);
-    if (!idCliente) return _error("ID cliente inválido.");
-    const totalLimpio = _parseMoneda(total, NaN);
-    if (isNaN(totalLimpio) || totalLimpio <= 0) return _error("Total inválido.");
-    if (!items || items.length === 0) return _error("Debe incluir al menos un producto.");
+  registrarVentaAtomic(paramsOrClienteId, items, total, correlationId) {
+    // Support both legacy (clienteId, items, total, correlationId) and new (params) signatures
+    let idCliente, itemsList, totalVenta, corrId, modo, diasCredito, usuario;
 
-    for (let _i = 0; _i < items.length; _i++) {
-      const _item = items[_i];
+    if (typeof paramsOrClienteId === 'object' && paramsOrClienteId !== null) {
+      // New signature with params object
+      const params = paramsOrClienteId;
+      idCliente = _sanitizeId(params.clienteId || params.idTercero || "");
+      itemsList = params.items || [];
+      totalVenta = params.total;
+      corrId = params.correlationId || ('venta_' + Date.now());
+      modo = (params.modo || 'CXC').toUpperCase();
+      diasCredito = Number(params.diasCredito) || 30;
+      usuario = params.usuario || (SESSION_SERVICE.getCurrentUser()?.getEmail()) || "SYSTEM";
+    } else {
+      // Legacy signature
+      idCliente = _sanitizeId(paramsOrClienteId);
+      itemsList = items;
+      totalVenta = total;
+      corrId = correlationId || ('venta_' + Date.now());
+      modo = 'CXC';
+      diasCredito = 30;
+      usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+    }
+
+    // Validate mode
+    if (modo !== 'CXC' && modo !== 'CONTADO') {
+      return _error("Modo inválido: " + modo + ". Use CXC o CONTADO.");
+    }
+
+    // Validate items
+    if (!itemsList || itemsList.length === 0) {
+      return _error("Debe incluir al menos un producto.");
+    }
+
+    // For CxC mode, clienteId is required
+    if (modo === 'CXC' && !idCliente) {
+      return _error("ID cliente es requerido para ventas a crédito.");
+    }
+
+    // Validate items structure
+    for (let _i = 0; _i < itemsList.length; _i++) {
+      const _item = itemsList[_i];
       const _pid = _sanitizeId(_item.id || _item.productoId || _item.id_producto || "");
       const _cant = _parseMoneda(_item.cantidad || _item.cant || 0, 0);
       const _pUnit = _parseMoneda(_item.precio_unitario || _item.precio || 0, 0);
@@ -1600,12 +1637,15 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       const tx = _Transaction.create();
 
       try {
-        lockAcquired = LOCK_MANAGER.acquireResourceLock(idCliente);
+        // For CxC mode, lock the client; for CONTADO, no client lock needed
+        if (modo === 'CXC') {
+          lockAcquired = LOCK_MANAGER.acquireResourceLock(idCliente);
+        }
 
         // Collect unique product IDs and acquire locks sorted (deadlock prevention)
         const prodIds = [];
-        for (let j = 0; j < items.length; j++) {
-          const pid = _sanitizeId(items[j].id || items[j].productoId || items[j].id_producto || "");
+        for (let j = 0; j < itemsList.length; j++) {
+          const pid = _sanitizeId(itemsList[j].id || itemsList[j].productoId || itemsList[j].id_producto || "");
           if (pid && prodIds.indexOf(pid) === -1) prodIds.push(pid);
         }
         prodIds.sort();
@@ -1613,10 +1653,13 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           productLocks.push(LOCK_MANAGER.acquireResourceLock(prodIds[j]));
         }
 
-        const cliente = DAO.getTerceroById(idCliente);
-        if (!cliente) {
-          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, {}, { error: "CLIENTE_NO_EXISTE" }, "ERROR");
-          return _error("Cliente " + idCliente + " no existe.");
+        // For CxC mode, verify client exists
+        if (modo === 'CXC') {
+          const cliente = DAO.getTerceroById(idCliente);
+          if (!cliente) {
+            LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, {}, { error: "CLIENTE_NO_EXISTE" }, "ERROR", { correlationId: corrId });
+            return _error("Cliente " + idCliente + " no existe.");
+          }
         }
 
         CACHE.refresh();
@@ -1671,8 +1714,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
            changedRows[p + 2] = true;
 
           // Defer kardex until after optimistic lock validation (Bug #2 fix)
-            const kardexId = "KDX" + Date.now() + "_" + prodId + "_SAL_" + j;
-            const email = SESSION_SERVICE.getCurrentUser()?.getEmail() || "system";
+            const kardexId = "KDX-" + Utilities.formatDate(new Date(), _getTimeZone(), "yyyyMMdd") + "-" + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
             const costBase = _parseMoneda(prodData[p][C.precio_compra], 0);
           kardexEntries.push({
             id: kardexId,
@@ -1684,7 +1726,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
             stock_nuevo: nuevoStock,
             referencia: corrId,
             origen: "VENTA",
-            usuario: email,
+            usuario: usuario,
             costo_unitario: costBase,
             precio_unitario: pUnit
           });
@@ -1693,6 +1735,12 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         // Note: Optimistic locking verification uses prodSheet already read (line ~1391)
         // The productLocks acquired above ensure exclusive access to each product during transaction
         // No second read needed - lock prevents concurrent modification
+
+        // Calculate total if not provided
+        const totalCalculado = typeof totalVenta === 'number' ? _parseMoneda(totalVenta, NaN) : subtotalAcumulado;
+        if (isNaN(totalCalculado) || totalCalculado <= 0) {
+          return _error("Total inválido.");
+        }
 
         // Begin transaction covering stock, kardex, and cartera (Bug #3 fix)
         tx.begin();
@@ -1715,19 +1763,23 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           tx.markKardexPostAppend();
         }
 
-        // Crear registro de venta en cartera
+        // Create cartera record (different for CXC vs CONTADO)
         tx.markCarteraPreAppend();
-        const idVenta = "VTA" + Date.now() + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
+        const idVenta = "VTA-" + Utilities.formatDate(new Date(), _getTimeZone(), "yyyyMMdd") + "-" + Utilities.getUuid().replace(/-/g, "").slice(0, 8);
         const carteraRecord = {
           id: idVenta,
           fecha: new Date(),
-          id_tercero: idCliente,
+          id_tercero: modo === 'CXC' ? idCliente : "",
           origen_id: corrId,
-          total: totalLimpio,
-          saldo: 0,
-          tipo: CARTERA_CONFIG.TIPOS.CXC,
-          estado: CARTERA_CONFIG.ESTADOS.CANCELADA,
-          fecha_vencimiento: new Date(),
+          total: totalCalculado,
+          saldo: modo === 'CXC' ? totalCalculado : 0,
+          tipo: modo === 'CXC' ? CARTERA_CONFIG.TIPOS.CXC : CARTERA_CONFIG.TIPOS.CONTADO,
+          estado: modo === 'CXC' ? CARTERA_CONFIG.ESTADOS.ABIERTA : CARTERA_CONFIG.ESTADOS.CANCELADA,
+          fecha_vencimiento: modo === 'CXC' ? (function() { 
+          const d = _today(); 
+          d.setDate(d.getDate() + diasCredito); 
+          return d; 
+        })() : _today(),
           vencida_timestamp: ""
         };
 
@@ -1736,19 +1788,18 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
         CACHE.invalidateCartera();
 
-        // Registrar en libro diario
-        const usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+        // Register in libro diario
         tx.markLibroPreAppend();
         LIBRO_DIARIO.registrarVenta(
           new Date(),
           idVenta,
-          idCliente,
-          totalLimpio,
+          modo === 'CXC' ? idCliente : "CONTADO",
+          totalCalculado,
           usuario
         );
 
-        // Registrar costo de ventas en libro diario
-        const costoVentas = items.reduce(function(acc, item) {
+        // Register cost of goods sold
+        const costoVentas = itemsList.reduce(function(acc, item) {
           var pid = item.id || item.productoId || item.id_producto || "";
           var p = prodIndex[pid];
           if (p === undefined) return acc;
@@ -1760,30 +1811,30 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           LIBRO_DIARIO.registrarCostoVentas(
             new Date(),
             idVenta,
-            idCliente,
+            modo === 'CXC' ? idCliente : "CONTADO",
             costoVentas,
             usuario
           );
         }
         tx.markLibroPostAppend();
 
-        // Registrar entrada de caja por venta contado
+        // Register cash flow entries (for both modes)
         tx.markFlujoPreAppend();
         FLUJO_CAJA.registrarMovimiento(
           new Date(),
           FLUJO_CAJA.TIPOS.ENTRADA_VENTA,
-          "Venta a cliente: " + idCliente,
-          totalLimpio,
+          "Venta " + (modo === 'CXC' ? "a cliente " + idCliente : "contado"),
+          totalCalculado,
           corrId,
           usuario
         );
 
-        // Registrar salida de caja por costo de ventas
+        // Register cost of goods flow
         if (costoVentas > 0) {
           FLUJO_CAJA.registrarMovimiento(
             new Date(),
             FLUJO_CAJA.TIPOS.SALIDA_VENTA,
-            "Costo de venta: " + idCliente,
+            "Costo de venta: " + (modo === 'CXC' ? idCliente : "contado"),
             costoVentas,
             corrId,
             usuario
@@ -1794,9 +1845,9 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         tx.commit();
 
         LOG_ENGINE.logEvent("CREATE_VENTA", "VENTAS", idVenta,
-          {}, { cliente: idCliente, total: totalLimpio, items: items.length }, "SUCCESS", { correlationId: corrId });
+          {}, { cliente: modo === 'CXC' ? idCliente : "CONTADO", total: totalCalculado, items: itemsList.length, modo: modo }, "SUCCESS", { correlationId: corrId });
 
-        return { success: true, id: idVenta, total: totalLimpio };
+        return { success: true, id: idVenta, total: totalCalculado };
       } catch (e) {
         _captureError("procesarVenta", e);
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback venta error: " + rbErr.message); }
@@ -1820,7 +1871,7 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
           (e.message && e.message.includes('OptimisticLockError'));
 
         if (!isOptimisticLock || attempt >= MAX_RETRIES - 1) {
-          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", idCliente, {}, { error: e.toString() }, "FAILED");
+          LOG_ENGINE.logEvent("ERROR_VENTA", "VENTAS", modo === 'CXC' ? idCliente : "CONTADO", {}, { error: e.toString() }, "FAILED", { correlationId: corrId });
           return _error(e.message || "Error al registrar venta.");
         }
 

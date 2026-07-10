@@ -25,7 +25,7 @@ const CARTERA_CONFIG = {
     AUDIT_LOG:   { id: 0, timestamp: 1, operacion: 2, tabla: 3, id_registro: 4, usuario: 5, datos_previos: 6, datos_nuevos: 7, estado: 8 },
   },
   ESTADOS: { ABIERTA: "ABIERTA", PARCIAL: "PARCIAL", CANCELADA: "CANCELADA", VENCIDA: "VENCIDA" },
-  TIPOS:   { CXC: "CxC", CXP: "CxP" },
+  TIPOS:   { CXC: "CxC", CXP: "CxP", CONTADO: "CONTADO" },
 };
 
 /** Tipos de tercero (CLIENTE, PROVEEDOR, AMBOS) con lista de válidos. */
