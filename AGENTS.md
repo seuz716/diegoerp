@@ -410,3 +410,20 @@ Todas las dependencias existen en el proyecto:
 | LCK-008 | CRÍTICA | - | ✅ VERIFICADO | Token único + CAS para liberación atómica |
 | LCK-009 | CRÍTICA | - | ✅ VERIFICADO | Emergency circuit (LOCK_SUSPICIOUS) implementado |
 | LCK-010 | MAYOR | - | ✅ VERIFICADO | Métricas operativas getLockMetrics() disponible |
+
+---
+
+### Auditoría Fase 4 (Infraestructura) - Cerrada sin acción
+
+**Fecha:** 2026-07-10
+**Veredicto:** No se requieren cambios de código.
+
+**Razonamiento:**
+- La auditoría inicial señaló "dependencias globales no declaradas" (`BACKUP_CONFIG`, `_getTimeZone`, `SESSION_SERVICE`, `DAO._rowToCarteraItem`, etc.). Estas críticas son **infundadas**:
+  - Todos los símbolos están definidos en `Config.gs`, `DAO.gs` o módulos core, y Google Apps Script carga todos los archivos `.gs` globalmente **antes** de la ejecución, por lo que el orden de carga no es un factor de riesgo.
+- Los únicos puntos marginales identificados (copiar hojas gigantes en `BackupService` y el TTL de 5 min para el índice de `LockManager`) son **teóricos y no bloqueantes**:
+  - `BackupService` no está en el *hot path* (es bajo demanda/programado).
+  - El índice de `LockManager` es ligero y el escaneo de 5 min no ha mostrado ser un cuello de botella en la escala actual.
+- El costo de implementar los refactors sugeridos (copia por bloques, ajuste de TTL) supera el beneficio en este momento, ya que el sistema ya incluye patrones robustos (circuit breaker, checksums, lectura por bloques FIX M-06 en `CacheService`).
+
+**Decisión:** Cerrar sin acción. No se realizarán cambios de código derivados de esta fase.
