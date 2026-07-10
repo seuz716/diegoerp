@@ -1005,6 +1005,11 @@ function removeGeminiKey() {
 IA_SERVICE.verificarConfiguracion = function () {
   const configurada = AuthService.hasApiKey("GEMINI_API_KEY");
   const proxyUrl = PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL");
+  let rotacion = { requerida: false, dias: null, maxDias: null };
+  try {
+    const st = AuthService.getSecretStatus("GEMINI_API_KEY");
+    rotacion = { requerida: !!st.stale, dias: st.ageDays != null ? Math.floor(st.ageDays) : null, maxDias: st.maxAgeDays };
+  } catch (_) {}
   return {
     success: true,
     checks: {
@@ -1013,10 +1018,11 @@ IA_SERVICE.verificarConfiguracion = function () {
       error: null,
     },
     configurada,
+    rotacion: rotacion,
     key_preview: null,
     modelo: IA_SERVICE.MODEL,
     cache_ttl_ms: IA_SERVICE.CACHE_TTL_MS,
-    advertencia: configurada ? "API Key configurada. No se muestra preview por seguridad." : null,
+    advertencia: configurada ? (rotacion.requerida ? "API Key requiere rotación." : "API Key configurada. No se muestra preview por seguridad.") : null,
   };
 };
 

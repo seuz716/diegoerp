@@ -314,10 +314,19 @@ function checkIAKey() {
     Logger.log("checkIAKey: hasApiKey=%s", hasKey);
     
     if (hasKey) {
+      let stale = false;
+      let ageDays = null;
+      try {
+        const status = AuthService.getSecretStatus("GEMINI_API_KEY");
+        stale = !!status.stale;
+        ageDays = status.ageDays != null ? Math.floor(status.ageDays) : null;
+      } catch (_) {}
       // Do not log key length - security best practice
       return { 
         success: true, 
         hasKey: true, 
+        stale: stale,
+        ageDays: ageDays,
         proxyUrl: PropertiesService.getScriptProperties().getProperty("SECRET_PROXY_URL") ? "CONFIGURED" : null
       };
     }

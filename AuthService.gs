@@ -3,7 +3,7 @@ const ROLE_HIERARCHY = { ADMIN: 3, OPERATOR: 2, VIEWER: 1 };
 
 function _authLogError(message, context) {
   if (typeof LogService !== 'undefined' && LogService && typeof LogService.logError === 'function') {
-    (_authLogError(message, context);
+    LogService.logError(message, context);
   } else {
     Logger.log("[AUTH-LOG] ERROR: " + message);
   }
@@ -11,7 +11,7 @@ function _authLogError(message, context) {
 
 function _authLogWarn(message, context) {
   if (typeof LogService !== 'undefined' && LogService && typeof LogService.logWarn === 'function') {
-    (_authLogWarn(message, context);
+    LogService.logWarn(message, context);
   } else {
     Logger.log("[AUTH-LOG] WARN: " + message);
   }
@@ -19,7 +19,7 @@ function _authLogWarn(message, context) {
 
 function _authLogInfo(message, context) {
   if (typeof LogService !== 'undefined' && LogService && typeof LogService.logInfo === 'function') {
-    (_authLogInfo(message, context);
+    LogService.logInfo(message, context);
   } else {
     Logger.log("[AUTH-LOG] INFO: " + message);
   }
@@ -231,7 +231,7 @@ const CRYPTO_SERVICE = {
       return JSON.stringify({ c: encoded, i: iv, s: salt, h: hmac, v: this.TAG });
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.encrypt error:", e.message);
-      (_authLogError("encrypt error", { functionName: 'encrypt', error: e });
+      LogService.logError("encrypt error", { functionName: 'encrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en cifrado");
     }
   },
@@ -280,7 +280,7 @@ const CRYPTO_SERVICE = {
       return Utilities.newBlob(plaintext).getDataAsString();
     } catch (e) {
       Logger.log("CRYPTO_SERVICE.decrypt error:", e.message);
-      (_authLogError("decrypt error", { functionName: 'decrypt', error: e });
+      LogService.logError("decrypt error", { functionName: 'decrypt', error: e });
       throw new Error("CRYPTO_ERROR: Fallo en descifrado");
     }
   },
@@ -374,6 +374,32 @@ const AuthService = {
    * Removes an API key from both SecretService and legacy ScriptProperties.
    * @param {string} keyName - Name/identifier for the key.
    */
+  _getMaxAgeDays() {
+    const custom = PropertiesService.getScriptProperties().getProperty("SECRET_MAX_AGE_DAYS");
+    const n = custom ? parseInt(custom, 10) : NaN;
+    return (n && n > 0) ? n : (SecretService.DEFAULT_MAX_AGE_DAYS || 90);
+  },
+
+  /**
+   * Returns configuration/rotation status of a stored secret. (K-05)
+   * @param {string} keyName - Secret identifier.
+   * @returns {{configured: boolean, configuredAt: (number|null), ageDays: (number|null), stale: boolean, maxAgeDays: number}}
+   */
+  getSecretStatus(keyName) {
+    const maxAgeDays = this._getMaxAgeDays();
+    const meta = SecretService.getSecretMeta(keyName);
+    const configured = !!(meta && meta.value);
+    const ageDays = SecretService.getSecretAgeDays(keyName);
+    const stale = configured && ageDays !== null && ageDays > maxAgeDays;
+    return {
+      configured: configured,
+      configuredAt: meta ? meta.configuredAt : null,
+      ageDays: ageDays,
+      stale: stale,
+      maxAgeDays: maxAgeDays
+    };
+  },
+
   removeApiKey(keyName) {
     SecretService.deleteSecret(keyName);
     PropertiesService.getScriptProperties().deleteProperty(this.STORE_PREFIX + keyName);
@@ -386,21 +412,39 @@ const AuthService = {
    * @param {string} keyName - Name/identifier for the key.
    * @returns {boolean} true if the key exists with a non-empty value.
    */
+  /**
+   * Validates that a key value has a plausible Gemini API key format.
+   * Gemini keys begin with "AIza" and are at least ~30 chars of base64url chars.
+   * @param {string} key - Key value to validate.
+   * @returns {boolean} true if the format is plausible.
+   */
+  _isValidGeminiKeyFormat(key) {
+    if (!key || typeof key !== 'string') return false;
+    const trimmed = key.trim();
+    if (trimmed.length === 0) return false;
+    return /^AIza[0-9A-Za-z_-]{20,}$/.test(trimmed);
+  },
+
   hasApiKey(keyName) {
-    // Check proxy first
+    // Check proxy first (truthy resolved value; format not inspectable remotely)
     const proxyUrl = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
     if (proxyUrl) {
       const proxyValue = PROXY_SECRET_SERVICE.resolveSecret(keyName);
-      if (proxyValue) return true;
+      if (proxyValue && proxyValue.trim().length > 0) return true;
     }
-    
-    // Check SecretService (UserProperties)
-    if (SecretService.hasSecret(keyName)) return true;
-    
-    // Check legacy ScriptProperties
+
+    // Check SecretService (UserProperties) with format validation (K-02)
+    if (SecretService.hasSecret(keyName)) {
+      const val = SecretService.getSecret(keyName);
+      if (val && this._isValidGeminiKeyFormat(val)) return true;
+    }
+
+    // Check legacy ScriptProperties with format validation (K-02)
     const props = PropertiesService.getScriptProperties();
     const legacy = props.getProperty(this.STORE_PREFIX + keyName);
-    return !!(legacy && legacy.trim().length > 0);
+    if (legacy && legacy.trim().length > 0 && this._isValidGeminiKeyFormat(legacy)) return true;
+
+    return false;
   },
 
   _getCurrentUser() {
@@ -427,7 +471,7 @@ const AuthService = {
     const validation = SCHEMA_VALIDATOR.validateRoleMap(raw);
     if (!validation.valid) {
       Logger.log("AUTHORIZED_USERS_SCHEMA_ERROR: " + validation.error);
-      (_authLogError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
+      LogService.logError("AUTHORIZED_USERS_SCHEMA_ERROR", { functionName: 'getUserRole', details: { error: validation.error } });
       return null;
     }
     
@@ -459,7 +503,7 @@ const normalized = email.toLowerCase().trim();
     
     if (!email && isSafeAction) {
       Logger.log('[PERMISSION] Ejecución de acción segura "' + accion + '" sin identidad (trigger)');
-      (_authLogInfo('Ejecución de acción segura sin identidad (trigger)', { functionName: 'checkPermission', details: { accion: accion } });
+      LogService.logInfo('Ejecución de acción segura sin identidad (trigger)', { functionName: 'checkPermission', details: { accion: accion } });
       return;
     }
     
@@ -478,15 +522,59 @@ const normalized = email.toLowerCase().trim();
 const PROXY_SECRET_SERVICE = {
   DEFAULT_ENDPOINT_CONFIG_KEY: "SECRET_PROXY_URL",
   HMAC_SECRET_CONFIG_KEY: "PROXY_HMAC_SECRET",
+  ALLOWED_DOMAINS_CONFIG_KEY: "PROXY_ALLOWED_DOMAINS",
+  REQUIRE_RESPONSE_HMAC_CONFIG_KEY: "PROXY_REQUIRE_RESPONSE_HMAC",
+
+  /**
+   * Validates the proxy endpoint URL: must be HTTPS and, if a domain
+   * whitelist is configured (PROXY_ALLOWED_DOMAINS, comma-separated),
+   * must belong to an allowed host. (K-06)
+   * @param {string} url - URL to validate.
+   * @returns {{valid: boolean, error?: string}}
+   */
+  _validateEndpointUrl(url) {
+    if (!url || typeof url !== 'string' || url.trim() === '') {
+      return { valid: false, error: 'URL vacía' };
+    }
+    let parsed;
+    try {
+      parsed = new URL(url.trim());
+    } catch (e) {
+      return { valid: false, error: 'URL inválida' };
+    }
+    if (parsed.protocol !== 'https:') {
+      return { valid: false, error: 'El proxy debe usar HTTPS' };
+    }
+    const allowed = PropertiesService.getScriptProperties().getProperty(this.ALLOWED_DOMAINS_CONFIG_KEY);
+    if (allowed && allowed.trim() !== '') {
+      const hosts = allowed.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const host = parsed.hostname.toLowerCase();
+      if (!hosts.some(h => host === h || host.endsWith('.' + h))) {
+        return { valid: false, error: 'Dominio de proxy no permitido: ' + host };
+      }
+    }
+    return { valid: true };
+  },
 
   _getEndpointUrl() {
     const url = PropertiesService.getScriptProperties().getProperty(this.DEFAULT_ENDPOINT_CONFIG_KEY);
-    if (url) return url;
-    const legacyEndpoint = PropertiesService.getScriptProperties().getProperty("GEMINI_KEY_ENDPOINT");
-    return legacyEndpoint || "";
+    if (!url) {
+      const legacyEndpoint = PropertiesService.getScriptProperties().getProperty("GEMINI_KEY_ENDPOINT");
+      return legacyEndpoint || "";
+    }
+    const validation = this._validateEndpointUrl(url);
+    if (!validation.valid) {
+      Logger.log("PROXY: endpoint inválido - " + validation.error);
+      return "";
+    }
+    return url.trim();
   },
 
   _getHmacSecret() {
+    // Prefer UserProperties (private per-user, not visible to other editors) - K-01
+    const userSecret = PropertiesService.getUserProperties().getProperty(this.HMAC_SECRET_CONFIG_KEY);
+    if (userSecret) return userSecret;
+    // Fallback to legacy ScriptProperties for backward compatibility
     return PropertiesService.getScriptProperties().getProperty(this.HMAC_SECRET_CONFIG_KEY);
   },
 
@@ -497,9 +585,10 @@ const PROXY_SECRET_SERVICE = {
       try {
         const payload = JSON.stringify({ secret: secretName });
         const timestamp = String(Math.floor(Date.now() / 1000));
+        const nonce = Utilities.getUuid();
         const headers = {
           "Cache-Control": "no-cache",
-          "X-Request-ID": Utilities.getUuid(),
+          "X-Request-ID": nonce,
           "X-HMAC-Timestamp": timestamp,
         };
 
@@ -508,7 +597,8 @@ const PROXY_SECRET_SERVICE = {
           Logger.log("PROXY: HMAC secret no configurado.");
           return null;
         }
-        const signatureInput = timestamp + "." + payload;
+        // Bind signature to timestamp + nonce + payload so the proxy can reject replays (K-06)
+        const signatureInput = timestamp + "." + nonce + "." + payload;
         const hmacBytes = Utilities.computeHmacSha256Signature(signatureInput, hmacSecret);
         const hmacHex = hmacBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
         headers["Authorization"] = "HMAC " + hmacHex;
@@ -521,10 +611,30 @@ const PROXY_SECRET_SERVICE = {
           timeout: 10000,
           headers: headers,
         });
-        if (response.getResponseCode() === 200) {
-          const data = JSON.parse(response.getContentText());
-          return data.value || null;
+        if (response.getResponseCode() !== 200) continue;
+
+        const responseBody = response.getContentText();
+        // Verify response integrity if the proxy signs it (K-06, MitM protection)
+        const respHeaders = response.getHeaders() || {};
+        const respSig = respHeaders["X-Response-Signature"] || respHeaders["x-response-signature"] ||
+                        (this._safeParse(responseBody) || {}).signature;
+        if (respSig) {
+          const expectedInput = timestamp + "." + nonce + "." + responseBody;
+          const expectedBytes = Utilities.computeHmacSha256Signature(expectedInput, hmacSecret);
+          const expectedHex = expectedBytes.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+          if (respSig !== expectedHex) {
+            Logger.log("PROXY: firma de respuesta HMAC inválida - posible manipulación");
+            return null;
+          }
+        } else if (this._responseHmacRequired()) {
+          Logger.log("PROXY: respuesta sin firma HMAC requerida");
+          return null;
+        } else {
+          Logger.log("PROXY: respuesta sin firma HMAC (no verificada)");
         }
+
+        const data = JSON.parse(responseBody);
+        return data.value || null;
       } catch (e) {
         if (attempt < MAX_RETRIES - 1) {
           const delay = BASE_DELAY * Math.pow(2, attempt) + Math.random() * 100;
@@ -535,6 +645,14 @@ const PROXY_SECRET_SERVICE = {
     return null;
   },
 
+  _safeParse(text) {
+    try { return JSON.parse(text); } catch (e) { return null; }
+  },
+
+  _responseHmacRequired() {
+    return PropertiesService.getScriptProperties().getProperty(this.REQUIRE_RESPONSE_HMAC_CONFIG_KEY) === "true";
+  },
+
   /**
    * Sets the Secret Proxy endpoint URL in ScriptProperties.
    * @param {string} url - HTTPS URL of the secret proxy service.
@@ -543,6 +661,8 @@ const PROXY_SECRET_SERVICE = {
    */
   setEndpointUrl(url) {
     if (!url || url.trim() === "") throw new Error("URL de Secret Proxy requerida.");
+    const validation = this._validateEndpointUrl(url);
+    if (!validation.valid) throw new Error("URL de proxy inválida: " + validation.error);
     PropertiesService.getScriptProperties().setProperty(
       this.DEFAULT_ENDPOINT_CONFIG_KEY,
       url.trim()
@@ -558,7 +678,8 @@ const PROXY_SECRET_SERVICE = {
    */
   setHmacSecret(secret) {
     if (!secret || secret.trim() === "") throw new Error("HMAC secret requerido.");
-    PropertiesService.getScriptProperties().setProperty(
+    // Store in UserProperties (private per-user) to avoid exposure to other editors (K-01)
+    PropertiesService.getUserProperties().setProperty(
       this.HMAC_SECRET_CONFIG_KEY,
       secret.trim()
     );

@@ -12,6 +12,7 @@
  */
 const SecretService = {
   PREFIX: "SEC_",
+  DEFAULT_MAX_AGE_DAYS: 90,
   
   /**
    * Deriva una clave de ofuscación del ScriptId (determinista por script)
@@ -71,7 +72,10 @@ const SecretService = {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
     const key = this._getObfuscationKey();
     const obfuscated = this._obfuscate(value.trim(), key);
-    PropertiesService.getUserProperties().setProperty(this.PREFIX + keyName, obfuscated);
+    const props = PropertiesService.getUserProperties();
+    props.setProperty(this.PREFIX + keyName, obfuscated);
+    // K-05: record configuration timestamp for rotation/expiry tracking
+    props.setProperty(this.PREFIX + keyName + "_TS", String(Date.now()));
     return true;
   },
   
@@ -102,7 +106,44 @@ const SecretService = {
    * @param {string} keyName - Secret identifier
    */
   deleteSecret(keyName) {
-    PropertiesService.getUserProperties().deleteProperty(this.PREFIX + keyName);
+    const props = PropertiesService.getUserProperties();
+    props.deleteProperty(this.PREFIX + keyName);
+    props.deleteProperty(this.PREFIX + keyName + "_TS");
+  },
+
+  /**
+   * Retrieves secret metadata including the configuration timestamp. (K-05)
+   * @param {string} keyName - Secret identifier.
+   * @returns {{value: (string|null), configuredAt: (number|null)}}
+   */
+  getSecretMeta(keyName) {
+    const value = this.getSecret(keyName);
+    const ts = PropertiesService.getUserProperties().getProperty(this.PREFIX + keyName + "_TS");
+    return { value: value, configuredAt: ts ? Number(ts) : null };
+  },
+
+  /**
+   * Returns the age of a secret in days, or null if not configured. (K-05)
+   * @param {string} keyName - Secret identifier.
+   * @returns {number|null}
+   */
+  getSecretAgeDays(keyName) {
+    const ts = PropertiesService.getUserProperties().getProperty(this.PREFIX + keyName + "_TS");
+    if (!ts) return null;
+    return (Date.now() - Number(ts)) / (24 * 60 * 60 * 1000);
+  },
+
+  /**
+   * Determines whether a secret exceeds the maximum allowed age. (K-05)
+   * @param {string} keyName - Secret identifier.
+   * @param {number} [maxAgeDays] - Maximum age in days.
+   * @returns {boolean}
+   */
+  isStale(keyName, maxAgeDays) {
+    const age = this.getSecretAgeDays(keyName);
+    if (age === null) return false;
+    const max = (maxAgeDays && maxAgeDays > 0) ? maxAgeDays : this.DEFAULT_MAX_AGE_DAYS;
+    return age > max;
   }
 };
 
@@ -146,8 +187,9 @@ function migrateSecretsToUserProperties() {
             // Not JSON, treat as plaintext
           }
           
-          SecretService.setSecret(secretName, plainValue);
-          report.migrated.push(secretName);
+           SecretService.setSecret(secretName, plainValue);
+           props.deleteProperty(key); // remove plaintext legacy entry (K-01)
+           report.migrated.push(secretName);
         } catch (e) {
           report.errors.push({ key: key, error: e.message });
         }
