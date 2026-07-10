@@ -2145,6 +2145,124 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     }
   });
 
+  // ===== VENTAS MODO CONTADO (CONT-01 a CONT-02) =====
+
+  _test('CONT-01: Venta contado sin cliente escribe kardex y no crea cartera', () => {
+    try {
+      const ts = Date.now();
+      const prodId = 'TEST-CONT-01-' + ts;
+
+      // Create test product with stock
+      const prodRes = DAO_PRODUCTOS.crear({
+        id: prodId,
+        nombre: 'Test Contado',
+        stock: 10,
+        precio_compra: 500,
+        precio_venta: 1000
+      });
+      if (!prodRes || !prodRes.success) {
+        return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'null');
+      }
+
+      // Create CONTADO sale (no cliente)
+      const ventaRes = DOMAIN.registrarVentaAtomic({
+        items: [{ id: prodId, cantidad: 2, precio_unitario: 1000 }],
+        modo: 'CONTADO',
+        correlationId: 'test_contado_01_' + ts
+      });
+
+      if (!ventaRes || !ventaRes.success) {
+        return 'Venta contado falló: ' + (ventaRes ? ventaRes.error : 'null');
+      }
+
+      // Verify kardex entry exists (SALIDA)
+      const kardex = DAO_COMPRAS.getAllMovimientosKardex(30, 2000);
+      const salida = kardex.find(m => m.tipo_mov === 'SALIDA' && m.id_producto === prodId);
+      if (!salida) return 'No se generó SALIDA en kardex para venta contado';
+
+      // Verify stock was decremented
+      CACHE.refresh();
+      const prodFinal = CACHE.productoIndex ? CACHE.getProductoIndex(prodId) : null;
+      if (!prodFinal || prodFinal.stock !== 8) {
+        return 'Stock incorrecto: esperado 8, got ' + (prodFinal ? prodFinal.stock : 'null');
+      }
+
+      // Verify no cartera entry (should have empty id_tercero)
+      const cartera = CACHE.cartera || [];
+      const ventaCartera = cartera.find(c => c.origen_id === 'test_contado_01_' + ts);
+      if (ventaCartera && ventaCartera.id_tercero) {
+        return 'Venta contado creó cartera con cliente: ' + ventaCartera.id_tercero;
+      }
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('CONT-02: Venta CxC con cliente crea cartera con saldo pendiente', () => {
+    try {
+      const ts = Date.now();
+      const prodId = 'TEST-CXC-02-' + ts;
+      const cliId = 'CLI-CXC-02-' + ts;
+
+      // Create test product
+      const prodRes = DAO_PRODUCTOS.crear({
+        id: prodId,
+        nombre: 'Test CxC Item',
+        stock: 10,
+        precio_compra: 500,
+        precio_venta: 1000
+      });
+      if (!prodRes || !prodRes.success) {
+        return 'Crear producto falló: ' + (prodRes ? prodRes.error : 'null');
+      }
+
+      // Create test client
+      const cliRes = saveTercero({
+        id: cliId,
+        nombre: 'Cliente Test CxC',
+        tipo: 'CLIENTE',
+        limite_credito: 100000
+      });
+      if (!cliRes || !cliRes.success) {
+        return 'Crear cliente falló: ' + (cliRes ? cliRes.error : 'null');
+      }
+
+      // Create CxC sale
+      const ventaRes = DOMAIN.registrarVentaAtomic({
+        clienteId: cliId,
+        items: [{ id: prodId, cantidad: 3, precio_unitario: 1000 }],
+        modo: 'CXC',
+        diasCredito: 30,
+        correlationId: 'test_cxc_02_' + ts
+      });
+
+      if (!ventaRes || !ventaRes.success) {
+        return 'Venta CxC falló: ' + (ventaRes ? ventaRes.error : 'null');
+      }
+
+      // Verify cartera entry exists with correct saldo
+      CACHE.refresh();
+      const cartera = CACHE.cartera || [];
+      const ventaCartera = cartera.find(c => c.origen_id === 'test_cxc_02_' + ts);
+      if (!ventaCartera) return 'No se creó registro en cartera';
+      if (ventaCartera.saldo !== 3000) {
+        return 'Saldo incorrecto: esperado 3000, got ' + ventaCartera.saldo;
+      }
+      if (ventaCartera.tipo !== CARTERA_CONFIG.TIPOS.CXC) {
+        return 'Tipo incorrecto: esperado CxC, got ' + ventaCartera.tipo;
+      }
+      if (ventaCartera.estado !== CARTERA_CONFIG.ESTADOS.ABIERTA) {
+        return 'Estado incorrecto: esperado ABIERTA, got ' + ventaCartera.estado;
+      }
+
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   // ===== REPORTES INVENTARIO (REP-01 a REP-05) =====
 
   _test('REP-01: Rotación de inventario - getRotacionInventario returns valid', () => {
