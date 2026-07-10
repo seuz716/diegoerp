@@ -363,28 +363,27 @@ const AUDIT_ARCHIVE = {
         archivedIds[String(rowsToArchive[i][0])] = true;
       }
 
-      // Borrado por rangos contiguos en vez de deleteRow individual (AUL-005)
-      var rowIndices = [];
+      // Borrado en orden DESCENDENTE (AUL-005): al eliminar de abajo hacia
+      // arriba, los índices de las filas restantes no se desvían tras cada
+      // deleteRows, evitando borrar filas incorrectas.
+      var rowsToDelete = [];
       for (var j = 0; j < rows.length; j++) {
         if (archivedIds[String(rows[j][0])]) {
-          rowIndices.push(j + 2);
+          rowsToDelete.push(j + 2);
         }
       }
-      rowIndices.sort(function(a, b) { return a - b; });
+      rowsToDelete.sort(function(a, b) { return b - a; }); // descendente
 
-      // Agrupa filas contiguas y borra por rangos
-      var rangeStart = rowIndices[0];
-      var rangeEnd = rangeStart;
-      for (var k = 1; k < rowIndices.length; k++) {
-        if (rowIndices[k] === rangeEnd + 1) {
-          rangeEnd = rowIndices[k];
-        } else {
-          sheetAudit.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
-          rangeStart = rowIndices[k];
-          rangeEnd = rangeStart;
+      // Agrupa rangos contiguos en orden descendente y borra cada grupo
+      for (var k = 0; k < rowsToDelete.length; k++) {
+        var rangeEnd = rowsToDelete[k];        // fila más alta del grupo
+        var rangeStart = rangeEnd;
+        while (k + 1 < rowsToDelete.length && rowsToDelete[k + 1] === rangeStart - 1) {
+          rangeStart = rowsToDelete[k + 1];
+          k++;
         }
+        sheetAudit.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
       }
-      sheetAudit.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
 
       props.setProperty("LAST_ARCHIVE_MONTH", thisMonth);
       Logger.log("[PRF-004] Archivadas " + rowsToArchive.length + " filas");

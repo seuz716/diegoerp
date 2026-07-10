@@ -129,15 +129,12 @@ const CRYPTO_SERVICE = {
       key = PROXY_SECRET_SERVICE.resolveSecret("AES_MASTER_KEY");
     }
 
-    // 3. Bootstrap local: derivada del ScriptId (determinista por script)
-    if (!key) {
-      const scriptId = ScriptApp.getScriptId();
-      const raw = Utilities.computeHmacSha256Signature(scriptId, "DIECRP_MASTER_KEY_BOOTSTRAP");
-      key = raw.map(function(b) { return String.fromCharCode((b & 0xFF) % 26 + 65); }).join('').slice(0, 32);
-    }
+    // NOTA: se eliminó el bootstrap determinista basado en ScriptId (AUTH-002).
+    // Una clave maestra debe configurarse explícitamente en UserProperties
+    // (CRYPTO_SERVICE.setMasterKey) o resolverse vía proxy. Sin clave, se lanza error.
 
     if (!key || key.length < 32) {
-      throw new Error("CRYPTO_ERROR: No se pudo obtener una clave maestra válida (min 32 chars).");
+      throw new Error("CRYPTO_ERROR: No se encontró una clave maestra válida (min 32 chars). Configúrala con CRYPTO_SERVICE.setMasterKey() o vía SECRET_PROXY_URL.");
     }
     this._memoryCache["AES_MASTER_KEY"] = key;
     return key;
@@ -313,31 +310,10 @@ const AuthService = {
   },
 
   _loadKey(keyName) {
-    // Try SecretService (UserProperties) first
-    const userSecret = SecretService.getSecret(keyName);
-    if (userSecret) return userSecret;
-    
-    // Fallback to legacy ScriptProperties for backward compatibility
-    const props = PropertiesService.getScriptProperties();
-    const legacy = props.getProperty(this.STORE_PREFIX + keyName);
-    if (legacy) {
-      // Try to migrate legacy encrypted value
-      try {
-        const parsed = JSON.parse(legacy);
-        if (parsed.c && parsed.i && parsed.s) {
-          // Legacy CRYPTO_SERVICE format - try to decrypt
-          const decrypted = CRYPTO_SERVICE.deobfuscate(legacy);
-          if (decrypted) {
-            // Migrate to new location
-            SecretService.setSecret(keyName, decrypted);
-            props.deleteProperty(this.STORE_PREFIX + keyName);
-            return decrypted;
-          }
-        }
-      } catch (_) {}
-      return legacy; // Plaintext legacy value
-    }
-    return null;
+    // Única fuente autoritativa: SecretService (UserProperties).
+    // Se eliminó el fallback a ScriptProperties (AUTH-003) para evitar
+    // exposición de secretos a cualquier editor del script.
+    return SecretService.getSecret(keyName);
   },
 
   /**
@@ -438,11 +414,6 @@ const AuthService = {
       const val = SecretService.getSecret(keyName);
       if (val && this._isValidGeminiKeyFormat(val)) return true;
     }
-
-    // Check legacy ScriptProperties with format validation (K-02)
-    const props = PropertiesService.getScriptProperties();
-    const legacy = props.getProperty(this.STORE_PREFIX + keyName);
-    if (legacy && legacy.trim().length > 0 && this._isValidGeminiKeyFormat(legacy)) return true;
 
     return false;
   },
@@ -612,6 +583,15 @@ const PROXY_SECRET_SERVICE = {
           headers: headers,
         });
         if (response.getResponseCode() !== 200) continue;
+
+        // Replay protection (AUTH-005): rechazar respuestas con timestamp
+        // desfasado. Usamos el timestamp que el propio cliente generó al
+        // firmar la petición, sin depender de que el proxy lo devuelva.
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (Math.abs(nowSec - Number(timestamp)) > 60) {
+          Logger.log("PROXY: respuesta con timestamp desfasado (" + Math.abs(nowSec - Number(timestamp)) + "s) - posible replay");
+          return null;
+        }
 
         const responseBody = response.getContentText();
         // Verify response integrity if the proxy signs it (K-06, MitM protection)

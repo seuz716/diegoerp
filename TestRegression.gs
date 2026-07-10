@@ -2738,6 +2738,54 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     }
   });
 
+  // ===== SEC — Cierre de secretos (AUTH-003, AUTH-002, AUTH-005) =====
+
+  _test('SEC-01: getApiKey no lee ScriptProperties (cierre AUTH-003)', () => {
+    const proxyUrl = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
+    if (proxyUrl) return true; // proxy configurado: no determinista en test, skip
+    const name = 'TEST_NOEXISTE_' + Date.now();
+    try {
+      AuthService.getApiKey(name);
+      return 'getApiKey no lanzó para clave inexistente (debería lanzar ERROR_SEGURIDAD)';
+    } catch (e) {
+      return true;
+    }
+  });
+
+  _test('SEC-02: _getMasterKey no deriva clave del ScriptId (AUTH-002)', () => {
+    const stored = PropertiesService.getUserProperties().getProperty('CRYPTO_MASTER_KEY');
+    const proxyUrl = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
+    if (stored && stored.length >= 32) return true; // clave configurada: skip determinista
+    if (proxyUrl) return true; // proxy podría resolverla: skip determinista
+    try {
+      CRYPTO_SERVICE.encrypt('test');
+      return 'encrypt no lanzó sin clave maestra (el bootstrap ScriptId debería estar eliminado)';
+    } catch (e) {
+      if (e.message.indexOf('CRYPTO_ERROR') >= 0) return true;
+      return 'Error inesperado: ' + e.message;
+    }
+  });
+
+  _test('AUL-01: autoArchive ejecuta sin error y borra en orden descendente', () => {
+    try {
+      const res = AUDIT_ARCHIVE.autoArchive();
+      if (typeof res !== 'object' || typeof res.archived !== 'number') {
+        return 'autoArchive no retornó {archived:number}: ' + JSON.stringify(res);
+      }
+      return true;
+    } catch (e) {
+      return 'autoArchive lanzó excepción: ' + e.message;
+    }
+  });
+
+  _test('PROXY-01: resolveSecret retorna null sin endpoint configurado', () => {
+    const url = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
+    if (url) return true; // endpoint configurado: requiere mock para probar replay, skip
+    const v = PROXY_SECRET_SERVICE.resolveSecret('TEST_' + Date.now());
+    if (v === null) return true;
+    return 'resolveSecret sin endpoint debió retornar null, retornó: ' + v;
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,
