@@ -249,14 +249,52 @@ const DAO = {
     groups.push({ start, end });
 
     const items = [];
-    for (const group of groups) {
-      const values = sheet.getRange(group.start, 1, group.end - group.start + 1, numCols).getValues();
-      for (let i = 0; i < values.length; i++) {
-        items.push(this._rowToCarteraItem(values[i], group.start + i));
+    // AUDIT-011: batch-read todos los grupos contiguos en una sola llamada
+    // getRangeList().getValues() en lugar de múltiples getRange() individuales.
+    const lastColLetter = this._colNumToLetter(numCols);
+    const a1List = groups.map(g => `A${g.start}:${lastColLetter}${g.end}`);
+    try {
+      const rangeList = sheet.getRangeList(a1List);
+      const batched = rangeList.getValues();
+      for (let k = 0; k < groups.length; k++) {
+        const groupValues = batched[k];
+        // Guard de forma: RangeList.getValues() debe devolver un array 2D por rango.
+        if (!Array.isArray(groupValues) || groupValues.length === 0 || !Array.isArray(groupValues[0])) {
+          throw new Error("RangeList.getValues() forma inesperada");
+        }
+        for (let i = 0; i < groupValues.length; i++) {
+          items.push(this._rowToCarteraItem(groupValues[i], groups[k].start + i));
+        }
+      }
+    } catch (e) {
+      // Fallback: lectura secuencial por grupo (comportamiento anterior robusto)
+      Logger.log("[DAO.AUDIT-011] Fallback a lectura secuencial: " + e.message);
+      for (const group of groups) {
+        const values = sheet.getRange(group.start, 1, group.end - group.start + 1, numCols).getValues();
+        for (let i = 0; i < values.length; i++) {
+          items.push(this._rowToCarteraItem(values[i], group.start + i));
+        }
       }
     }
 
     return items;
+  },
+
+  /**
+   * Convierte un índice de columna (1-based) a notación de letra A1 (A, B, ..., Z, AA...).
+   * @param {number} col - Índice de columna basado en 1.
+   * @returns {string} Letra(s) de columna.
+   * @private
+   */
+  _colNumToLetter(col) {
+    let letter = '';
+    let n = col;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      letter = String.fromCharCode(65 + rem) + letter;
+      n = Math.floor((n - 1) / 26);
+    }
+    return letter;
   },
 
   _rowToCarteraItem(row, rowIndex) {
@@ -507,29 +545,57 @@ const DAO = {
         throw err;
       }
 
-      // Apply changes
+      // AUDIT-003: Escribir SOLO las filas modificadas (no todo el rango minRow..maxRow).
+      // El rango completo se leyó en una sola llamada (eficiente) pero reescribir
+      // filas no incluidas en `cambios` desperdicia cuota y riesgo stale-write.
+      const colsToWrite = [COL.saldo, COL.estado];
+      if (cambios.some(c => c.vencida_timestamp !== undefined)) colsToWrite.push(COL.vencida_timestamp);
+      if (hasVersionCheck) colsToWrite.push(COL.version);
+      const minWriteCol = Math.min(...colsToWrite);
+      const maxWriteCol = Math.max(...colsToWrite);
+      const writeNumCols = maxWriteCol - minWriteCol + 1;
+
+      // Construir escrituras por fila: preserva columnas no modificadas dentro del
+      // rango de escritura leyéndolas del array `values` ya cargado.
+      const rowWrites = [];
       for (const [rowIndex, cambio] of rowMap.entries()) {
         const localRowIndex = rowIndex - minRow;
-        if (localRowIndex >= 0 && localRowIndex < numRowsToProcess) {
-          const localColIndexSaldo = COL.saldo - minCol;
-          const localColIndexEstado = COL.estado - minCol;
-          values[localRowIndex][localColIndexSaldo] = cambio.saldo;
-          values[localRowIndex][localColIndexEstado] = cambio.estado;
-          if (cambio.vencida_timestamp !== undefined) {
-            const localColIndexTs = COL.vencida_timestamp - minCol;
-            values[localRowIndex][localColIndexTs] = cambio.vencida_timestamp;
-          }
-          if (hasVersionCheck && cambio.expectedVersion !== undefined) {
-            const localColVersion = COL.version - minCol;
-            values[localRowIndex][localColVersion] = cambio.expectedVersion + 1;
-          }
+        if (localRowIndex < 0 || localRowIndex >= numRowsToProcess) continue;
+
+        const rowValues = [];
+        for (let c = minWriteCol; c <= maxWriteCol; c++) {
+          rowValues.push(values[localRowIndex][c - minCol]);
+        }
+        rowValues[COL.saldo - minWriteCol] = cambio.saldo;
+        rowValues[COL.estado - minWriteCol] = cambio.estado;
+        if (cambio.vencida_timestamp !== undefined) {
+          rowValues[COL.vencida_timestamp - minWriteCol] = cambio.vencida_timestamp;
+        }
+        if (hasVersionCheck && cambio.expectedVersion !== undefined) {
+          rowValues[COL.version - minWriteCol] = cambio.expectedVersion + 1;
+        }
+        rowWrites.push({ rowIndex, rowValues });
+      }
+
+      // Agrupar filas contiguas para minimizar llamadas setValues
+      rowWrites.sort((a, b) => a.rowIndex - b.rowIndex);
+      const blocks = [];
+      for (const w of rowWrites) {
+        const last = blocks[blocks.length - 1];
+        if (last && w.rowIndex === last.endRow + 1) {
+          last.endRow = w.rowIndex;
+          last.rows.push(w.rowValues);
+        } else {
+          blocks.push({ startRow: w.rowIndex, endRow: w.rowIndex, rows: [w.rowValues] });
         }
       }
 
-      Logger.log(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}`);
+      Logger.log(`DAO.updateCarteraBatch: ${cambios.length} filas, minRow=${minRow}, maxRow=${maxRow}, versionCheck=${hasVersionCheck}, writeBlocks=${blocks.length}, writeCols=[${minWriteCol}..${maxWriteCol}]`);
 
       try {
-        targetRange.setValues(values);
+        for (const b of blocks) {
+          sheet.getRange(b.startRow, minWriteCol + 1, b.rows.length, writeNumCols).setValues(b.rows);
+        }
       } catch (e) {
         throw new DAOError("Error al escribir en la hoja de cartera", 'SHEET_WRITE_FAILURE', e);
       }
