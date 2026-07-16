@@ -1,36 +1,88 @@
 /**
- * SecretService - Gestión segura de secretos con ofuscación básica
- * 
- * Almacena secretos en UserProperties (privado por usuario) con ofuscación XOR
- * para evitar lectura casual en PropertiesService.
- * 
- * NOTA: Esta NO es encriptación fuerte. La seguridad proviene de:
- * 1. UserProperties es privado por usuario (no visible para otros editores)
- * 2. La ofuscación evita que los valores sean legible directamente
- * 
- * Para producción, usar SECRET_PROXY_URL con HMAC authentication.
+ * SecretService - Gestión segura de secretos
+ *
+ * Almacena secretos en UserProperties (privado por usuario) con
+ * encriptación AES-256 (Utilities.computeAesCipher). Sustituye la
+ * ofuscación XOR previa (S-01): XOR era trivialmente reversible por
+ * cualquier editor del script; AES protege la confidencialidad.
+ *
+ * La clave AES-256 (32 bytes) se deriva con HMAC-SHA256 del ScriptId.
+ * NOTA: sigue siendo derivable del scriptId, por lo que la protección
+ * fuerte depende de UserProperties (privado por usuario) y, en
+ * producción, de SECRET_PROXY_URL con HMAC authentication.
+ *
+ * Compatibilidad: getSecret intenta AES y, si falla, cae a la
+ * deofuscación XOR legada, re-encriptando con AES al leer (migración
+ * transparente de valores previos).
  */
 const SecretService = {
   PREFIX: "SEC_",
   DEFAULT_MAX_AGE_DAYS: 90,
-  
+
   /**
-   * Deriva una clave de ofuscación del ScriptId (determinista por script)
-   * @returns {string} 32-character obfuscation key
+   * Deriva la clave AES-256 (32 bytes) del ScriptId vía HMAC-SHA256. (S-01)
+   * @returns {Byte[]} 32-byte key suitable for AES-256.
    */
-  _getObfuscationKey() {
+  _getKeyBytes() {
+    const scriptId = ScriptApp.getScriptId();
+    return Utilities.computeHmacSha256Signature(scriptId, "SECRET_AES_KEY_V2");
+  },
+
+  /**
+   * Deriva la clave de ofuscación legada (XOR) para lectura de valores previos.
+   * @returns {string} 32-character obfuscation key.
+   */
+  _getLegacyKey() {
     const scriptId = ScriptApp.getScriptId();
     const raw = Utilities.computeHmacSha256Signature(scriptId, "SECRET_OBFUSC_KEY_V1");
     return raw.map(b => String.fromCharCode((b & 0xFF) % 26 + 65)).join('').slice(0, 32);
   },
-  
+
   /**
-   * Applies XOR obfuscation to a string value.
-   * @param {string} value - Value to obfuscate
-   * @param {string} key - Obfuscation key
-   * @returns {string} Obfuscated value (base64 encoded)
+   * Encripta un valor con AES-256 (ENCRYPT, PKCS5_PADDING). (S-01)
+   * @param {string} value - Plaintext value.
+   * @param {Byte[]} key - 32-byte AES key.
+   * @returns {string} base64-encoded ciphertext.
    */
-  _obfuscate(value, key) {
+  _encrypt(value, key) {
+    if (!value) return "";
+    const cipher = Utilities.computeAesCipher(
+      Utilities.newBlob(value).getBytes(),
+      key,
+      Utilities.AesCipherMode.ENCRYPT,
+      Utilities.AesPadding.PKCS5_PADDING
+    );
+    return Utilities.base64Encode(cipher);
+  },
+
+  /**
+   * Desencripta un valor AES-256. Devuelve null si falla.
+   * @param {string} b64 - base64-encoded ciphertext.
+   * @param {Byte[]} key - 32-byte AES key.
+   * @returns {string|null} Plaintext or null.
+   */
+  _decrypt(b64, key) {
+    if (!b64) return null;
+    try {
+      const plain = Utilities.computeAesCipher(
+        Utilities.base64Decode(b64),
+        key,
+        Utilities.AesCipherMode.DECRYPT,
+        Utilities.AesPadding.PKCS5_PADDING
+      );
+      return Utilities.newBlob(plain).getDataAsString();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /**
+   * Ofuscación XOR legada (solo para leer valores migrados previamente).
+   * @param {string} value - Value to obfuscate.
+   * @param {string} key - Legacy obfuscation key.
+   * @returns {string} base64-encoded obfuscated value.
+   */
+  _legacyObfuscate(value, key) {
     if (!value) return "";
     const bytes = Utilities.newBlob(value).getBytes();
     const keyBytes = Utilities.newBlob(key).getBytes();
@@ -40,14 +92,14 @@ const SecretService = {
     }
     return Utilities.base64Encode(obfuscated);
   },
-  
+
   /**
-   * Removes obfuscation from a value.
-   * @param {string} obfuscated - Obfuscated value (base64 encoded)
-   * @param {string} key - Obfuscation key
-   * @returns {string} Original value
+   * Remueve ofuscación XOR legada. Devuelve null si falla.
+   * @param {string} obfuscated - base64-encoded obfuscated value.
+   * @param {string} key - Legacy obfuscation key.
+   * @returns {string|null} Original value.
    */
-  _deobfuscate(obfuscated, key) {
+  _legacyDeobfuscate(obfuscated, key) {
     if (!obfuscated) return null;
     try {
       const bytes = Utilities.base64Decode(obfuscated);
@@ -61,34 +113,44 @@ const SecretService = {
       return null;
     }
   },
-  
+
   /**
-   * Stores a secret value in UserProperties with obfuscation.
+   * Stores a secret value in UserProperties with AES-256 encryption. (S-01)
    * @param {string} keyName - Secret identifier
    * @param {string} value - Secret value to store
    * @returns {boolean} true on success
    */
   setSecret(keyName, value) {
     if (!keyName || !value) throw new Error("keyName y value son requeridos");
-    const key = this._getObfuscationKey();
-    const obfuscated = this._obfuscate(value.trim(), key);
+    const key = this._getKeyBytes();
+    const encrypted = this._encrypt(value.trim(), key);
     const props = PropertiesService.getUserProperties();
-    props.setProperty(this.PREFIX + keyName, obfuscated);
+    props.setProperty(this.PREFIX + keyName, encrypted);
     // K-05: record configuration timestamp for rotation/expiry tracking
     props.setProperty(this.PREFIX + keyName + "_TS", String(Date.now()));
     return true;
   },
-  
+
   /**
    * Retrieves a secret value from UserProperties.
+   * Intenta AES primero; si falla, cae a XOR legada y re-encripta con AES.
    * @param {string} keyName - Secret identifier
    * @returns {string|null} Decoded secret value or null if not found
    */
   getSecret(keyName) {
     const stored = PropertiesService.getUserProperties().getProperty(this.PREFIX + keyName);
     if (!stored) return null;
-    const key = this._getObfuscationKey();
-    return this._deobfuscate(stored, key);
+    const key = this._getKeyBytes();
+    const decrypted = this._decrypt(stored, key);
+    if (decrypted !== null) return decrypted;
+    // Fallback: legacy XOR (pre-S-01 values) + transparent re-encryption
+    const legacyKey = this._getLegacyKey();
+    const legacy = this._legacyDeobfuscate(stored, legacyKey);
+    if (legacy !== null) {
+      try { this.setSecret(keyName, legacy); } catch (e) { /* best-effort */ }
+      return legacy;
+    }
+    return null;
   },
   
   /**
