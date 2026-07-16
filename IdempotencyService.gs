@@ -17,20 +17,38 @@ const IdempotencyService = {
   isProcessed(correlationId, entityId) {
     if (!correlationId) return false;
     const key = IDEMPOTENCY_PREFIX + correlationId + "::" + entityId;
+    // Capa 1 (rápida, volátil): CacheService
     const cache = CacheService.getScriptCache();
-    return cache.get(key) === "1";
+    if (cache.get(key) === "1") return true;
+    // Capa 2 (durable): PropertiesService sobrevive a clears de caché
+    const props = PropertiesService.getScriptProperties();
+    const ts = props.getProperty(key);
+    if (ts) {
+      // Auto-limpieza: respeta la ventana de 24h también en el store durable
+      const ageMs = Date.now() - Number(ts);
+      if (ageMs <= IDEMPOTENCY_TTL_SECONDS * 1000) {
+        try { cache.put(key, "1", IDEMPOTENCY_TTL_SECONDS); } catch (e) { /* best-effort */ }
+        return true;
+      }
+      props.deleteProperty(key); // expirado -> descartar
+    }
+    return false;
   },
 
   /**
-   * Marks a correlationId as processed.
+   * Marks a correlationId as processed (dos capas: caché + PropertiesService).
    * @param {string} correlationId - Unique operation identifier
    * @param {string} entityId - Entity identifier
    */
   markProcessed(correlationId, entityId) {
     if (!correlationId) return;
     const key = IDEMPOTENCY_PREFIX + correlationId + "::" + entityId;
-    const cache = CacheService.getScriptCache();
-    cache.put(key, "1", IDEMPOTENCY_TTL_SECONDS);
+    // Capa 1: caché volátil (rápido para lecturas repetidas)
+    CacheService.getScriptCache().put(key, "1", IDEMPOTENCY_TTL_SECONDS);
+    // Capa 2: backup durable (sobrevive a clears de caché)
+    try {
+      PropertiesService.getScriptProperties().setProperty(key, String(Date.now()));
+    } catch (e) { /* cuota/limite - la caché aún cubre el caso común */ }
   },
 
   /**
@@ -41,8 +59,8 @@ const IdempotencyService = {
   clearProcessed(correlationId, entityId) {
     if (!correlationId) return;
     const key = IDEMPOTENCY_PREFIX + correlationId + "::" + entityId;
-    const cache = CacheService.getScriptCache();
-    cache.remove(key);
+    CacheService.getScriptCache().remove(key);
+    PropertiesService.getScriptProperties().deleteProperty(key);
   }
 };
 
