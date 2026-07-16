@@ -650,30 +650,48 @@ _handleIntegrityFailure(kind) {
     return this._checksumMismatchTimestamps.length >= this._CHECKSUM_MISMATCH_THRESHOLD;
   },
 
-  /**
-   * Verifica integridad de la caché contra la hoja de cálculo usando SHA-256.
-   * Lee la hoja, reconstruye la estructura de datos, computa el checksum
-   * y lo compara con el registrado al cargar la caché. Si no coinciden,
-   * ejecuta recoverFromStale() para recargar desde la fuente, a menos que
-   * throwOnError esté activo.
-   * @param {'terceros'|'cartera'} kind Tipo de datos a verificar.
-   * @param {Object} [options] Opciones adicionales.
-   * @param {boolean} [options.throwOnError=false] Si es true, lanza CacheIntegrityError en lugar de recuperar.
-   * @returns {boolean} true si los datos están íntegros, false si se recuperó.
-   * @throws {CacheIntegrityError} Si throwOnError es true y hay mismatch.
-   */
-  ensureIntegrity(kind, options = {}) {
-    const { throwOnError = false } = options;
-    const result = this._verifyChecksum(kind);
-    if (result.mismatch) {
-      if (throwOnError) {
-        const storedChecksum = kind === 'terceros' ? this.lastChecksumTerceros : this.lastChecksumCartera;
-        throw new CacheIntegrityError(kind, result.currentChecksum, storedChecksum);
-      }
-      return this._handleIntegrityFailure(kind);
-    }
-    return true;
-  },
+/**
+    * Verifica integridad de la caché contra la hoja de cálculo usando SHA-256.
+    * Lee la hoja, reconstruye la estructura de datos, computa el checksum
+    * y lo compara con el registrado al cargar la caché. Si no coinciden,
+    * ejecuta recoverFromStale() para recargar desde la fuente, a menos que
+    * throwOnError esté activo.
+    * AUDIT-004: Retries con backoff exponencial anteceden a failure (tolerancia temporal).
+    * @param {'terceros'|'cartera'} kind Tipo de datos a verificar.
+    * @param {Object} [options] Opciones adicionales.
+    * @param {boolean} [options.throwOnError=false] Si es true, lanza CacheIntegrityError en lugar de recuperar.
+    * @param {number} [options.maxRetries=2] Número de reintentos (backoff exponencial) antes de failure.
+    * @returns {boolean} true si los datos están íntegros, false si se recuperó.
+    * @throws {CacheIntegrityError} Si throwOnError es true y hay mismatch.
+    */
+   ensureIntegrity(kind, options = {}) {
+     const { throwOnError = false, maxRetries = 2 } = options;
+
+     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+       const result = this._verifyChecksum(kind);
+
+       if (!result.mismatch) {
+         return true;
+       }
+
+       if (attempt < maxRetries) {
+         // Posible race condition temporal → backoff exponencial y reintentar
+         const delayMs = 100 * Math.pow(2, attempt) + Math.random() * 50;
+         Logger.log(`[AUDIT-004] Checksum mismatch intento ${attempt + 1}/${maxRetries + 1}, backoff ${Math.round(delayMs)}ms`);
+         Utilities.sleep(delayMs);
+         continue;
+       }
+
+       // Mismatch persistente después de retries → realmente hay corrupción
+       if (throwOnError) {
+         const storedChecksum = kind === 'terceros' ? this.lastChecksumTerceros : this.lastChecksumCartera;
+         throw new CacheIntegrityError(kind, result.currentChecksum, storedChecksum);
+       }
+       return this._handleIntegrityFailure(kind);
+     }
+
+     return false;
+   },
 
   /**
    * Returns detailed staleness and health info for terceros and cartera caches.

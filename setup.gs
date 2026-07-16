@@ -96,6 +96,33 @@ const SETUP_SERVICE = {
         results.spreadsheetIdSet = ss.getId();
       }
 
+      // Instalar triggers críticos de mantenimiento (AUDIT-010)
+      results.triggersInstalled = [];
+      if (typeof LOCK_MANAGER !== 'undefined' && LOCK_MANAGER) {
+        try {
+          const r1 = LOCK_MANAGER.crearTriggerLockCleanup();
+          if (r1 && r1.success) {
+            results.triggersInstalled.push('cleanupExpiredLocks');
+          } else if (r1 && r1.message) {
+            results.errors.push('Trigger cleanupExpiredLocks: ' + r1.message);
+          }
+        } catch (e) {
+          results.errors.push('Error instalando cleanupExpiredLocks: ' + e.message);
+        }
+        try {
+          const r2 = crearTriggerOrphanCleanup();
+          if (r2 && r2.success) {
+            results.triggersInstalled.push('removeOrphanLocksTrigger');
+          } else if (r2 && r2.message) {
+            results.errors.push('Trigger removeOrphanLocksTrigger: ' + r2.message);
+          }
+        } catch (e) {
+          results.errors.push('Error instalando removeOrphanLocksTrigger: ' + e.message);
+        }
+      } else {
+        results.errors.push('LOCK_MANAGER no disponible, triggers no instalados');
+      }
+
       results.success = results.errors.length === 0;
       return results;
     } catch (e) {

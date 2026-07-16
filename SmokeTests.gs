@@ -168,8 +168,8 @@ const SmokeTests = {
     const triggers = ScriptApp.getProjectTriggers();
     const handlerFunctions = triggers.map(t => t.getHandlerFunction());
     
-    const requiredTriggers = ['cleanupExpiredLocks'];
-    const optionalTriggers = ['removeOrphanLocksTrigger'];
+    const requiredTriggers = ['cleanupExpiredLocks', 'removeOrphanLocksTrigger'];
+    const optionalTriggers = [];
     const missingRequired = requiredTriggers.filter(t => !handlerFunctions.includes(t));
     const missingOptional = optionalTriggers.filter(t => !handlerFunctions.includes(t));
     

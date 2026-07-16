@@ -126,7 +126,7 @@ function handleHealthCheck() {
   try {
     // Check triggers
     const triggers = ScriptApp.getProjectTriggers();
-    const expectedHandlers = ["actualizarVencimientos", "revisarInventario", "cleanupExpiredLocks"];
+    const expectedHandlers = ["actualizarVencimientos", "revisarInventario", "cleanupExpiredLocks", "removeOrphanLocksTrigger"];
     const activeFunctions = triggers.map(t => t.getHandlerFunction());
     const missingHandlers = expectedHandlers.filter(f => activeFunctions.indexOf(f) === -1);
 
