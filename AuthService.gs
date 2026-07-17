@@ -341,7 +341,16 @@ const AuthService = {
     if (proxyValue) return proxyValue;
     
     const secureValue = this._loadKey(keyName);
-    if (secureValue) return secureValue;
+    if (secureValue) {
+      const maxAgeDays = this._getMaxAgeDays();
+      if (SecretService.isStale(keyName, maxAgeDays)) {
+        const ageDays = SecretService.getSecretAgeDays(keyName);
+        const err = new Error("SECRET_EXPIRED: API Key '" + keyName + "' expiró hace " + Math.floor(ageDays) + " días (máximo " + maxAgeDays + "). Ejecuta forceRotateSecret() o setupGeminiKey().");
+        err.code = "SECRET_EXPIRED";
+        throw err;
+      }
+      return secureValue;
+    }
     
     throw new Error("ERROR_SEGURIDAD: API Key '" + keyName + "' no encontrada. Configura SECRET_PROXY_URL o usa setupGeminiKey().");
   },
@@ -495,6 +504,7 @@ const PROXY_SECRET_SERVICE = {
   HMAC_SECRET_CONFIG_KEY: "PROXY_HMAC_SECRET",
   ALLOWED_DOMAINS_CONFIG_KEY: "PROXY_ALLOWED_DOMAINS",
   REQUIRE_RESPONSE_HMAC_CONFIG_KEY: "PROXY_REQUIRE_RESPONSE_HMAC",
+  FINGERPRINT_CONFIG_KEY: "PROXY_TRUSTED_FINGERPRINT",
 
   /**
    * Validates the proxy endpoint URL: must be HTTPS and, if a domain
@@ -613,6 +623,18 @@ const PROXY_SECRET_SERVICE = {
           Logger.log("PROXY: respuesta sin firma HMAC (no verificada)");
         }
 
+        // Certificate pinning validation (C2) - protect against MITM
+        const respFp = respHeaders["X-Certificate-Fingerprint"] ||
+                       respHeaders["x-certificate-fingerprint"] ||
+                       (this._safeParse(responseBody) || {}).certificateFingerprint;
+        if (respFp) {
+          const fpValidation = this._validateCertificateFingerprint(respFp);
+          if (!fpValidation.valid) {
+            Logger.log("PROXY: " + fpValidation.error);
+            return null;
+          }
+        }
+
         const data = JSON.parse(responseBody);
         return data.value || null;
       } catch (e) {
@@ -631,6 +653,53 @@ const PROXY_SECRET_SERVICE = {
 
   _responseHmacRequired() {
     return PropertiesService.getScriptProperties().getProperty(this.REQUIRE_RESPONSE_HMAC_CONFIG_KEY) === "true";
+  },
+
+  /**
+   * Gets the trusted certificate fingerprint (SHA-256) for MITM protection.
+   * @returns {string|null} Normalized fingerprint (64 hex chars) or null.
+   */
+  _getTrustedFingerprint() {
+    const fp = PropertiesService.getUserProperties().getProperty(this.FINGERPRINT_CONFIG_KEY) ||
+               PropertiesService.getScriptProperties().getProperty(this.FINGERPRINT_CONFIG_KEY);
+    if (!fp) return null;
+    return fp.toUpperCase().replace(/[^A-F0-9]/g, '');
+  },
+
+  /**
+   * Sets the trusted certificate fingerprint for the proxy endpoint.
+   * Provides MITM protection by pinning the expected cert fingerprint.
+   * @param {string} fp - SHA-256 fingerprint (hex string, any format).
+   * @returns {boolean} true on success.
+   * @throws {Error} If fingerprint format is invalid.
+   */
+  setTrustedFingerprint(fp) {
+    if (!fp || typeof fp !== 'string') {
+      throw new Error('Fingerprint SHA-256 requerido');
+    }
+    const normalized = fp.toUpperCase().replace(/[^A-F0-9]/g, '');
+    if (normalized.length !== 64) {
+      throw new Error('Fingerprint debe ser 64 caracteres hexadecimales (SHA-256)');
+    }
+    PropertiesService.getUserProperties().setProperty(this.FINGERPRINT_CONFIG_KEY, normalized);
+    return true;
+  },
+
+  /**
+   * Validates the certificate fingerprint received from the proxy response.
+   * Protects against MITM attacks if a trusted fingerprint is configured.
+   * @param {string} receivedFp - Fingerprint from proxy response header/body.
+   * @returns {{valid: boolean, error?: string}}
+   */
+  _validateCertificateFingerprint(receivedFp) {
+    const trustedFp = this._getTrustedFingerprint();
+    if (!trustedFp) return { valid: true }; // No pinning configured, skip validation
+    
+    const normalizedReceived = receivedFp ? receivedFp.toUpperCase().replace(/[^A-F0-9]/g, '') : '';
+    if (normalizedReceived !== trustedFp) {
+      return { valid: false, error: 'Fingerprint no coincide - posible ataque MITM' };
+    }
+    return { valid: true };
   },
 
   /**

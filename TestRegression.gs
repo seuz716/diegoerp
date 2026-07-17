@@ -2904,6 +2904,141 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     return 'resolveSecret sin endpoint debió retornar null, retornó: ' + v;
   });
 
+  // ===== ROT — Rotación/Expiración de secretos =====
+
+  _test('ROT-01: isStale retorna true para timestamp antiguo', () => {
+    try {
+      const testName = 'ROT_TEST_' + Date.now();
+      // Set secret with fresh timestamp
+      SecretService.setSecret(testName, 'test_value_123');
+      if (SecretService.isStale(testName)) return 'Secret fresco no debe ser stale';
+
+      // Tamper with timestamp to make it 200 days old
+      const props = PropertiesService.getUserProperties();
+      const oldTs = String(Date.now() - 200 * 24 * 60 * 60 * 1000);
+      props.setProperty('SEC_' + testName + '_TS', oldTs);
+
+      if (!SecretService.isStale(testName)) return 'Secret de 200 días debe ser stale';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('ROT-02: forceRotateSecret resetea timestamp y marca fresh', () => {
+    try {
+      const testName = 'ROT_ROT_' + Date.now();
+      SecretService.setSecret(testName, 'old_value');
+
+      // Make it stale
+      const props = PropertiesService.getUserProperties();
+      const oldTs = String(Date.now() - 200 * 24 * 60 * 60 * 1000);
+      props.setProperty('SEC_' + testName + '_TS', oldTs);
+      if (!SecretService.isStale(testName)) return 'Pre-condition failed: debe ser stale';
+
+      // Rotate
+      const rotated = SecretService.forceRotateSecret(testName, 'new_value');
+      if (rotated !== true) return 'forceRotateSecret debió retornar true';
+
+      // Verify fresh
+      if (SecretService.isStale(testName)) return 'Después de rotación no debe ser stale';
+      const val = SecretService.getSecret(testName);
+      if (val !== 'new_value') return 'Valor post-rotación incorrecto: ' + val;
+
+      SecretService.deleteSecret(testName);
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('ROT-03: getApiKey lanza SECRET_EXPIRED cuando stale', () => {
+    try {
+      // Only test if GEMINI_API_KEY is configured locally (not via proxy)
+      const proxyUrl = PropertiesService.getScriptProperties().getProperty(PROXY_SECRET_SERVICE.DEFAULT_ENDPOINT_CONFIG_KEY);
+      if (proxyUrl) return true; // proxy: can't test local expiration
+
+      if (!SecretService.hasSecret('GEMINI_API_KEY')) return true; // not configured, skip
+
+      // Save original timestamp
+      const props = PropertiesService.getUserProperties();
+      const origTs = props.getProperty('SEC_GEMINI_API_KEY_TS');
+
+      try {
+        // Make it stale
+        const oldTs = String(Date.now() - 200 * 24 * 60 * 60 * 1000);
+        props.setProperty('SEC_GEMINI_API_KEY_TS', oldTs);
+
+        let threw = false;
+        try {
+          AuthService.getApiKey('GEMINI_API_KEY');
+        } catch (e) {
+          if (e.code === 'SECRET_EXPIRED') threw = true;
+        }
+        if (!threw) return 'getApiKey no lanzó SECRET_EXPIRED para key stale';
+        return true;
+      } finally {
+        // Restore original timestamp
+        if (origTs) {
+          props.setProperty('SEC_GEMINI_API_KEY_TS', origTs);
+        } else {
+          props.deleteProperty('SEC_GEMINI_API_KEY_TS');
+        }
+      }
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  // ===== C2 — Certificate Pinning =====
+
+  _test('C2-01: setTrustedFingerprint valida formato SHA-256', () => {
+    try {
+      // Test invalid formats
+      let err = '';
+      try { PROXY_SECRET_SERVICE.setTrustedFingerprint(''); } catch (e) { err = e.message; }
+      if (!err.includes('requerido')) return 'Formato vacío debió lanzar error';
+      
+      try { PROXY_SECRET_SERVICE.setTrustedFingerprint('short'); } catch (e) { err = e.message; }
+      if (!err.includes('64 caracteres')) return 'Fingerprint corto debió lanzar error';
+      
+      // Test valid format
+      const validFp = 'A1B2C3D4E5F67890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890AB';
+      PROXY_SECRET_SERVICE.setTrustedFingerprint(validFp);
+      
+      const stored = PropertiesService.getUserProperties().getProperty('PROXY_TRUSTED_FINGERPRINT');
+      if (stored !== validFp.toUpperCase().replace(/[^A-F0-9]/g, '')) {
+        return 'Fingerprint no se guardó correctamente';
+      }
+      PropertiesService.getUserProperties().deleteProperty('PROXY_TRUSTED_FINGERPRINT');
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('C2-02: _validateCertificateFingerprint falla sin coincidencia', () => {
+    try {
+      const trustedFp = 'A1B2C3D4E5F67890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890AB';
+      PropertiesService.getUserProperties().setProperty('PROXY_TRUSTED_FINGERPRINT', trustedFp);
+      
+      const validation = PROXY_SECRET_SERVICE._validateCertificateFingerprint('DIFFERENT' + trustedFp.slice(8));
+      if (validation.valid) return 'Fingerprint diferente debió fallar';
+      
+      PropertiesService.getUserProperties().deleteProperty('PROXY_TRUSTED_FINGERPRINT');
+      return true;
+    } catch (e) {
+      PropertiesService.getUserProperties().deleteProperty('PROXY_TRUSTED_FINGERPRINT');
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('C2-03: _validateCertificateFingerprint pasa sin fingerprinting configurado', () => {
+    const validation = PROXY_SECRET_SERVICE._validateCertificateFingerprint('ANY_FINGERPRINT');
+    if (!validation.valid) return 'Sin fingerprint configurado debería pasar';
+    return true;
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,
