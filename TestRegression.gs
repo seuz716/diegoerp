@@ -277,6 +277,84 @@ function runAllRegressionTests() {
     }
   });
 
+  _test('M7-01: getCartera filtra por tipo usando cache', () => {
+    try {
+      CACHE.forceResetCircuit('all');
+      CACHE.refresh();
+      if (!CACHE.cartera || CACHE.cartera.length === 0) {
+        return 'SKIP: cache cartera vacía';
+      }
+      const tipo = CACHE.cartera[0].tipo;
+      const result = DAO.getCartera(tipo, null, 100, 0);
+      if (!result || !result.items) return 'getCartera no retornó items';
+      for (var i = 0; i < result.items.length; i++) {
+        if (result.items[i].tipo !== tipo) return 'Item ' + i + ' tiene tipo=' + result.items[i].tipo + ', esperado ' + tipo;
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M7-02: getCartera filtra por estado usando cache', () => {
+    try {
+      CACHE.refresh();
+      if (!CACHE.cartera || CACHE.cartera.length === 0) {
+        return 'SKIP: cache cartera vacía';
+      }
+      var estado = null;
+      for (var i = 0; i < CACHE.cartera.length; i++) {
+        if (CACHE.cartera[i].estado === 'ABIERTA') { estado = 'ABIERTA'; break; }
+        if (CACHE.cartera[i].estado === 'CANCELADA') { estado = 'CANCELADA'; break; }
+      }
+      if (!estado) return 'SKIP: no hay items con estado ABIERTA o CANCELADA';
+      const result = DAO.getCartera(null, estado, 100, 0);
+      if (!result || !result.items) return 'getCartera no retornó items';
+      for (var j = 0; j < result.items.length; j++) {
+        if (result.items[j].estado !== estado) return 'Item ' + j + ' tiene estado=' + result.items[j].estado + ', esperado ' + estado;
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M7-03: getCartera filtra tipo+estado combinado', () => {
+    try {
+      CACHE.refresh();
+      if (!CACHE.cartera || CACHE.cartera.length === 0) {
+        return 'SKIP: cache cartera vacía';
+      }
+      var tipo = null, estado = null;
+      for (var i = 0; i < CACHE.cartera.length; i++) {
+        if (CACHE.cartera[i].tipo === 'CxC' && CACHE.cartera[i].estado === 'ABIERTA') {
+          tipo = 'CxC'; estado = 'ABIERTA'; break;
+        }
+      }
+      if (!tipo) return 'SKIP: no hay combo CxC+ABIERTA';
+      const result = DAO.getCartera(tipo, estado, 100, 0);
+      if (!result || !result.items) return 'getCartera no retornó items';
+      for (var j = 0; j < result.items.length; j++) {
+        if (result.items[j].tipo !== tipo) return 'Item tipo mismatch';
+        if (result.items[j].estado !== estado) return 'Item estado mismatch';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M7-04: getCartera retorna vacío si no hay match', () => {
+    try {
+      const result = DAO.getCartera('TIPO_FANTASMA', null, 100, 0);
+      if (!result || !Array.isArray(result.items)) return 'No retornó items array';
+      if (result.items.length !== 0) return 'Debería retornar 0 items, retornó ' + result.items.length;
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   _test('removeOrphanLocks ejecuta sin error', () => {
     const result = LOCK_MANAGER.removeOrphanLocks();
     if (typeof result.removed !== 'number') return 'removed no es número';
@@ -3264,6 +3342,41 @@ const TEST_CLEANUP = {
   registerTercero: function(id) { this.createdTerceros.push(id); },
   registerCompra: function(id) { this.createdCompras.push(id); }
 };
+
+  // ===== M7 — Cache index optimization =====
+
+  _test('M7-01: CACHE has carteraIndicePorTipo and carteraIndicePorEstado', () => {
+    if (!CACHE || typeof CACHE.carteraIndicePorTipo === 'undefined' || typeof CACHE.carteraIndicePorEstado === 'undefined') {
+      return 'CACHE.carteraIndicePorTipo o carteraIndicePorEstado no definidos';
+    }
+    return true;
+  });
+
+  _test('M7-02: _getCarteraIndexed method exists and returns indexes', () => {
+    if (typeof CACHE._getCarteraIndexed !== 'function') {
+      return 'CACHE._getCarteraIndexed no es una función';
+    }
+    return true;
+  });
+
+  _test('M7-03: invalidateCartera clears indices', () => {
+    CACHE.invalidateCartera();
+    if (CACHE.carteraIndicePorTipo && Object.keys(CACHE.carteraIndicePorTipo).length !== 0) {
+      return 'carteraIndicePorTipo no se limpió con invalidateCartera';
+    }
+    if (CACHE.carteraIndicePorEstado && Object.keys(CACHE.carteraIndicePorEstado).length !== 0) {
+      return 'carteraIndicePorEstado no se limpió con invalidateCartera';
+    }
+    return true;
+  });
+
+  _test('M7-04: DAO.getCartera uses _getCarteraIndexed', () => {
+    const fnSrc = DAO.getCartera.toString();
+    if (fnSrc.indexOf('_getCarteraIndexed') < 0) {
+      return 'DAO.getCartera no usa CACHE._getCarteraIndexed';
+    }
+    return true;
+  });
 
 const TEST_TIMEOUT = {
   startTime: null,

@@ -128,28 +128,60 @@ const DAO = {
       return { items, nextPageToken };
     }
 
+    // M7 FIX: Use CACHE indexes for in-memory filtering (O(1) lookup)
+    CACHE.refresh();
+    if (!CACHE.cartera || CACHE.cartera.length === 0) {
+      Logger.log("[DAO.getCartera] Cache empty - falling back to TextFinder");
+      return this._getCarteraWithTextFinder(filtroTipo, filtroEstado, pageSize, pageToken, sheet, COL, numCols);
+    }
+
+    // Use indexes for efficient filtering
+    let rowIndexes = CACHE._getCarteraIndexed(filtroTipo, filtroEstado);
+    let filtered = [];
+    if (rowIndexes !== null && rowIndexes.length > 0) {
+      filtered = CACHE.cartera.filter(c => rowIndexes.includes(c.rowIndex));
+      Logger.log("[DAO.getCartera] Using indexes: " + filtered.length + " items");
+    } else {
+      // Fallback to in-memory filter on cached data
+      filtered = CACHE.cartera;
+      if (filtroTipo) {
+        filtered = filtered.filter(c => c.tipo === filtroTipo);
+        Logger.log("[DAO.getCartera] Filtered by tipo=" + filtroTipo + ": " + filtered.length + " items");
+      }
+      if (filtroEstado) {
+        filtered = filtered.filter(c => c.estado === filtroEstado);
+        Logger.log("[DAO.getCartera] Filtered by estado=" + filtroEstado + ": " + filtered.length + " items");
+      }
+
+    if (filtered.length === 0) {
+      Logger.log("[DAO.getCartera] No matches after filtering");
+      return { items: [], nextPageToken: null };
+    }
+
+    const totalCount = filtered.length;
+    const paginated = filtered.slice(pageToken, pageToken + pageSize);
+    const nextPageToken = (pageToken + pageSize < totalCount) ? pageToken + pageSize : null;
+    Logger.log("[DAO.getCartera] Returning " + paginated.length + " items from cache");
+    return { items: paginated, nextPageToken };
+  },
+
+  _getCarteraWithTextFinder(filtroTipo, filtroEstado, pageSize, pageToken, sheet, COL, numCols) {
     let rowIndexes = null;
     if (filtroTipo) {
-      Logger.log("[DAO.getCartera] Buscando por tipo: " + filtroTipo);
       rowIndexes = this._findRowIndexesByColumnValue(sheet, COL.tipo, filtroTipo);
-      Logger.log("[DAO.getCartera] Encontrados " + (rowIndexes ? rowIndexes.length : 0) + " por tipo");
     }
 
     if (filtroEstado) {
-      Logger.log("[DAO.getCartera] Buscando por estado: " + filtroEstado);
       const estadoRows = this._findRowIndexesByColumnValue(sheet, COL.estado, filtroEstado);
-      Logger.log("[DAO.getCartera] Encontrados " + (estadoRows ? estadoRows.length : 0) + " por estado");
       if (rowIndexes === null) {
         rowIndexes = estadoRows;
       } else {
         const estadoSet = new Set(estadoRows);
         rowIndexes = rowIndexes.filter(row => estadoSet.has(row));
-        Logger.log("[DAO.getCartera] Después del filtro combinado: " + rowIndexes.length);
       }
     }
 
     if (!rowIndexes || rowIndexes.length === 0) {
-      Logger.log("[DAO.getCartera] Retornando vacío - no hay coincidencias");
       return { items: [], nextPageToken: null };
     }
 
@@ -157,7 +189,6 @@ const DAO = {
     const totalCount = rowIndexes.length;
     const paginatedRows = rowIndexes.slice(pageToken, pageToken + pageSize);
     const items = this._fetchCarteraItemsFromRows(sheet, paginatedRows, numCols);
-    Logger.log("[DAO.getCartera] Items finales: " + items.length);
     const nextPageToken = (pageToken + paginatedRows.length < totalCount) ? (pageToken + paginatedRows.length) : null;
 
     return { items, nextPageToken };

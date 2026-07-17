@@ -35,6 +35,8 @@ let CACHE = {
    terceroIndex: {},  
    cartera: null,
    carteraIndex: {},
+   carteraIndicePorTipo: {},
+   carteraIndicePorEstado: {},
    compras: null,
    compraIndex: {},
    productos: null,
@@ -177,6 +179,8 @@ invalidateTerceros() {
 invalidateCartera() {
      this.cartera = null;
      this.carteraIndex = {};
+     this.carteraIndicePorTipo = {};
+     this.carteraIndicePorEstado = {};
      this.lastRefreshCartera = 0;
      this.carteraStale = false;
      this.carteraStaleStart = 0;
@@ -211,7 +215,13 @@ invalidateCartera() {
    * @returns {string} Current state: 'closed', 'open', or 'half_open'
    */
   _getCircuitState(kind) {
-    return kind === 'terceros' ? this.tercerosCircuitState : this.carteraCircuitState;
+    switch (kind) {
+      case 'terceros': return this.tercerosCircuitState;
+      case 'cartera': return this.carteraCircuitState;
+      case 'compras': return this.comprasCircuitState;
+      case 'productos': return this.productosCircuitState;
+      default: throw new Error('Circuit kind desconocido: ' + kind);
+    }
   },
 
   /**
@@ -220,17 +230,19 @@ invalidateCartera() {
    * @param {string} state - new state: 'closed', 'open', or 'half_open'
    */
   _setCircuitState(kind, state) {
-    if (kind === 'terceros') {
-      this.tercerosCircuitState = state;
-    } else {
-      this.carteraCircuitState = state;
+    switch (kind) {
+      case 'terceros': this.tercerosCircuitState = state; break;
+      case 'cartera': this.carteraCircuitState = state; break;
+      case 'compras': this.comprasCircuitState = state; break;
+      case 'productos': this.productosCircuitState = state; break;
+      default: throw new Error('Circuit kind desconocido: ' + kind);
     }
   },
 
   /**
    * Executes a function with circuit breaker protection and retry logic.
    * In HALF_OPEN state, allows one test request to verify service recovery.
-   * @param {string} kind - 'terceros' or 'cartera'
+   * @param {string} kind - 'terceros', 'cartera', 'compras', or 'productos'
    * @param {Function} fn - Function to execute
    * @param {number} maxRetries - Maximum retries (default 3)
    * @returns {*} Result of the function
@@ -267,53 +279,43 @@ invalidateCartera() {
   _halfOpenCircuit(kind, testResult) {
     if (!testResult) {
       this._setCircuitState(kind, 'open');
-      this[kind === 'terceros' ? 'tercerosCircuitOpen' : 'carteraCircuitOpen'] = true;
+      this[kind + 'CircuitOpen'] = true;
       const props = PropertiesService.getScriptProperties();
-      const currentFailures = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
+      const failCountProp = kind + 'FailCount';
+      const currentFailures = this[failCountProp] || 0;
       const backoffMs = Math.min(60000, 5000 * Math.pow(2, currentFailures));
       const newOpenTs = Date.now() + backoffMs;
-      if (kind === 'terceros') {
-        this._circuitOpenTercerosTimestamp = newOpenTs;
-        props.setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(newOpenTs));
-      } else {
-        this._circuitOpenCarteraTimestamp = newOpenTs;
-        props.setProperty('CIRCUIT_OPEN_CARTERA_TS', String(newOpenTs));
-      }
-      Logger.log(`[FIX-C-02] HALF_OPEN test failed. Circuit ${kind} back to OPEN with ${backoffMs}ms backoff`);
+      const tsProp = '_circuitOpen' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Timestamp';
+      this[tsProp] = newOpenTs;
+      props.setProperty('CIRCUIT_OPEN_' + kind.toUpperCase() + '_TS', String(newOpenTs));
+      Logger.log('[FIX-C-02] HALF_OPEN test failed. Circuit ' + kind + ' back to OPEN with ' + backoffMs + 'ms backoff');
       return false;
     }
 
-    const staleProp = kind === 'terceros' ? 'tercerosStale' : 'carteraStale';
-    const staleStartProp = kind === 'terceros' ? 'tercerosStaleStart' : 'carteraStaleStart';
+    const staleProp = kind + 'Stale';
+    const staleStartProp = kind + 'StaleStart';
     const isStale = this[staleProp] && (Date.now() - this[staleStartProp]) > this.MAX_STALE_MS / 2;
     if (isStale) {
-      Logger.log(`[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.`);
+      Logger.log('[FIX-C-02] HALF_OPEN test succeeded but data too stale. Keeping circuit OPEN.');
       const props = PropertiesService.getScriptProperties();
-      const currentFailures = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
+      const failCountProp = kind + 'FailCount';
+      const currentFailures = this[failCountProp] || 0;
       const backoffMs = Math.min(60000, 5000 * Math.pow(2, currentFailures));
       const newOpenTs = Date.now() + backoffMs;
-      if (kind === 'terceros') {
-        this._circuitOpenTercerosTimestamp = newOpenTs;
-        props.setProperty('CIRCUIT_OPEN_TERCEROS_TS', String(newOpenTs));
-      } else {
-        this._circuitOpenCarteraTimestamp = newOpenTs;
-        props.setProperty('CIRCUIT_OPEN_CARTERA_TS', String(newOpenTs));
-      }
+      const tsProp = '_circuitOpen' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Timestamp';
+      this[tsProp] = newOpenTs;
+      props.setProperty('CIRCUIT_OPEN_' + kind.toUpperCase() + '_TS', String(newOpenTs));
       return false;
     }
 
     this._setCircuitState(kind, 'closed');
-    this[kind === 'terceros' ? 'tercerosCircuitOpen' : 'carteraCircuitOpen'] = false;
-    this[kind === 'terceros' ? 'tercerosFailCount' : 'carteraFailCount'] = 0;
-    if (kind === 'terceros') {
-      this._circuitOpenTercerosTimestamp = 0;
-      PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_TERCEROS_TS');
-    } else {
-      this._circuitOpenCarteraTimestamp = 0;
-      PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
-    }
+    this[kind + 'CircuitOpen'] = false;
+    this[kind + 'FailCount'] = 0;
+    const tsProp = '_circuitOpen' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Timestamp';
+    this[tsProp] = 0;
+    PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_' + kind.toUpperCase() + '_TS');
     this._incrementMetric('circuitCloses');
-    Logger.log(`[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ${kind} CLOSED - service recovered`);
+    Logger.log('[FIX-C-02] HALF_OPEN test succeeded + health verified. Circuit ' + kind + ' CLOSED - service recovered');
     return true;
   },
   
@@ -321,7 +323,7 @@ invalidateCartera() {
 
   /**
    * Force reset circuit breaker (admin function)
-   * @param {string} kind - 'terceros', 'cartera', or 'all'
+   * @param {string} kind - 'terceros', 'cartera', 'compras', 'productos', or 'all'
    */
   forceResetCircuit(kind) {
     if (kind === 'terceros' || kind === 'all') {
@@ -338,18 +340,34 @@ invalidateCartera() {
       this._circuitOpenCarteraTimestamp = 0;
       PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_CARTERA_TS');
     }
-    Logger.log(`[FIX-C-02] Circuit breaker reset: ${kind}`);
+    if (kind === 'compras' || kind === 'all') {
+      this.comprasCircuitState = 'closed';
+      this.comprasCircuitOpen = false;
+      this.comprasFailCount = 0;
+      this._circuitOpenComprasTimestamp = 0;
+      PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_COMPRAS_TS');
+    }
+    if (kind === 'productos' || kind === 'all') {
+      this.productosCircuitState = 'closed';
+      this.productosCircuitOpen = false;
+      this.productosFailCount = 0;
+      this._circuitOpenProductosTimestamp = 0;
+      PropertiesService.getScriptProperties().deleteProperty('CIRCUIT_OPEN_PRODUCTOS_TS');
+    }
+    Logger.log('[FIX-C-02] Circuit breaker reset: ' + kind);
   },
 
   /**
    * Get current circuit state (health check)
-   * @param {string} kind - 'terceros' or 'cartera'
+   * @param {string} kind - 'terceros', 'cartera', 'compras', or 'productos'
    * @returns {Object} State information
    */
   getCircuitState(kind) {
     const state = this._getCircuitState(kind);
-    const timestamp = kind === 'terceros' ? this._circuitOpenTercerosTimestamp : this._circuitOpenCarteraTimestamp;
-    const failCount = kind === 'terceros' ? this.tercerosFailCount : this.carteraFailCount;
+    const tsProp = '_circuitOpen' + kind.charAt(0).toUpperCase() + kind.slice(1) + 'Timestamp';
+    const timestamp = this[tsProp] || 0;
+    const failCountProp = kind + 'FailCount';
+    const failCount = this[failCountProp] || 0;
     // timestamp is either 0 or a future timestamp when circuit is open
     const nextRetryMs = state === 'open' && timestamp > Date.now() ? Math.max(0, timestamp - Date.now()) : 0;
     return {
@@ -490,6 +508,28 @@ isCarteraValid() {
      }
 return this.cartera !== null && (Date.now() - this.lastRefreshCartera) < this.CACHE_TTL;
     },
+
+  /**
+   * M7: Get rowIndexes filtered by tipo and/or estado using in-memory indexes.
+   * @param {string|null} filtroTipo - 'CxC' or 'CxP'
+   * @param {string|null} filtroEstado - 'ABIERTA', 'VENCIDA', etc.
+   * @returns {number[]|null} Array of rowIndexes or null if indexes unavailable
+   */
+  _getCarteraIndexed(filtroTipo, filtroEstado) {
+    let rowIndexes = null;
+    if (filtroTipo && this.carteraIndicePorTipo) {
+      rowIndexes = this.carteraIndicePorTipo[filtroTipo] || [];
+    }
+    if (filtroEstado && this.carteraIndicePorEstado) {
+      const estadoRows = this.carteraIndicePorEstado[filtroEstado] || [];
+      if (rowIndexes === null) rowIndexes = estadoRows;
+      else {
+        const set = new Set(estadoRows);
+        rowIndexes = rowIndexes.filter(row => set.has(row));
+      }
+    }
+    return rowIndexes === null ? null : rowIndexes;
+  },
  
   /**
    * Refreshes cache data if stale, expired, or forceRefresh is requested.
@@ -915,8 +955,22 @@ ttl: this.CACHE_TTL
         });
       }
 
+      // M7: Build secondary indexes for tipo/estado queries
+      const indicePorTipo = {};
+      const indicePorEstado = {};
+      for (const item of newCartera) {
+        const tipo = item.tipo || '';
+        const estado = item.estado || '';
+        if (!indicePorTipo[tipo]) indicePorTipo[tipo] = [];
+        indicePorTipo[tipo].push(item.rowIndex);
+        if (!indicePorEstado[estado]) indicePorEstado[estado] = [];
+        indicePorEstado[estado].push(item.rowIndex);
+      }
+
       this.cartera = newCartera;
       this.carteraIndex = newIndex;
+      this.carteraIndicePorTipo = indicePorTipo;
+      this.carteraIndicePorEstado = indicePorEstado;
       this.lastRefreshCartera = Date.now();
       this.carteraStale = false;
       this.carteraStaleStart = 0;
@@ -928,6 +982,9 @@ ttl: this.CACHE_TTL
       this._putNativeCache("cartera", {
         cartera: this.cartera,
         carteraIndex: this.carteraIndex,
+        carteraIndicePorTipo: this.carteraIndicePorTipo,
+        carteraIndicePorEstado: this.carteraIndicePorEstado,
+        lastRefreshCartera: this.lastRefreshCartera,
         lastRefreshCartera: this.lastRefreshCartera,
         lastChecksumCartera: this.lastChecksumCartera
       });
@@ -1381,6 +1438,18 @@ _putNativeCache(keyPrefix, data) {
       this.comprasFailCount++;
       this.comprasStale = true;
       Logger.log("CACHE: Error _refreshCompras #" + this.comprasFailCount + ": " + e.toString());
+      if (this.comprasFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
+        this.comprasCircuitState = 'open';
+        this.comprasCircuitOpen = true;
+        this._circuitOpenComprasTimestamp = Date.now();
+        this._incrementMetric('circuitOpens');
+        try {
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_COMPRAS_TS', String(this._circuitOpenComprasTimestamp));
+        } catch (e2) {
+          Logger.log("[M3] Could not persist circuit timestamp: " + e2.toString());
+        }
+        Logger.log("CACHE: Circuito de compras abierto tras " + this.comprasFailCount + " fallos consecutivos");
+      }
     } finally {
       this._refreshingCompras = false;
     }
@@ -1430,6 +1499,18 @@ _putNativeCache(keyPrefix, data) {
       this.productosFailCount++;
       this.productosStale = true;
       Logger.log("CACHE: Error _refreshProductos #" + this.productosFailCount + ": " + e.toString());
+      if (this.productosFailCount >= this.MAX_CONSECUTIVE_FAILURES) {
+        this.productosCircuitState = 'open';
+        this.productosCircuitOpen = true;
+        this._circuitOpenProductosTimestamp = Date.now();
+        this._incrementMetric('circuitOpens');
+        try {
+          PropertiesService.getScriptProperties().setProperty('CIRCUIT_OPEN_PRODUCTOS_TS', String(this._circuitOpenProductosTimestamp));
+        } catch (e2) {
+          Logger.log("[M3] Could not persist circuit timestamp: " + e2.toString());
+        }
+        Logger.log("CACHE: Circuito de productos abierto tras " + this.productosFailCount + " fallos consecutivos");
+      }
     } finally {
       this._refreshingProductos = false;
     }
