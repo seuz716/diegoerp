@@ -3378,6 +3378,34 @@ const TEST_CLEANUP = {
     return true;
   });
 
+  // ===== M8 — Idempotency in sales/purchases =====
+
+  _test('M8-01: registrarCompraAtomic has idempotency check', () => {
+    const fnSrc = DOMAIN.registrarCompraAtomic.toString();
+    if (fnSrc.indexOf('_isIdempotent') < 0) {
+      return 'registrarCompraAtomic no tiene check de idempotencia';
+    }
+    return true;
+  });
+
+  _test('M8-02: registrarVentaAtomic has idempotency check', () => {
+    const fnSrc = DOMAIN.registrarVentaAtomic.toString();
+    if (fnSrc.indexOf('_isIdempotent') < 0) {
+      return 'registrarVentaAtomic no tiene check de idempotencia';
+    }
+    return true;
+  });
+
+  // ===== M9 — Total validation in purchase =====
+
+  _test('M9-01: registrarCompraAtomic validates total vs items sum', () => {
+    const fnSrc = DOMAIN.registrarCompraAtomic.toString();
+    if (fnSrc.indexOf('calculatedTotal') < 0) {
+      return 'registrarCompraAtomic no valida total vs suma de items';
+    }
+    return true;
+  });
+
 const TEST_TIMEOUT = {
   startTime: null,
   MAX_EXECUTION_MS: 300000,

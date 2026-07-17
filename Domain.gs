@@ -926,6 +926,10 @@ DAO.createCartera(record);
    */
   registrarCompraAtomic(proveedorId, items, total, fechaVencimiento, factura, correlationId) {
     const corrId = correlationId || ('compra_' + Date.now());
+    // M8: Idempotency check
+    if (_isIdempotent(corrId, proveedorId)) {
+      return { success: true, id: null, correlationId: corrId, deduplicated: true, total: total };
+    }
     const idProv = _sanitizeId(proveedorId);
     if (!idProv) return _error("ID proveedor inválido.");
     const totalLimpio = _parseMoneda(total, NaN);
@@ -956,6 +960,12 @@ DAO.createCartera(record);
       if (_pid && !productoMap[_pid] && !_nombre) {
         return _error("Producto '" + _pid + "' no existe en inventario. Incluya 'nombre' para crearlo automáticamente.");
       }
+    }
+
+    // M9: Validate total matches sum of items
+    const calculatedTotal = items.reduce((sum, item) => sum + (Number(item.cantidad || item.cant || 0) * Number(item.precio_unitario || item.precio || 0)), 0);
+    if (Math.abs(calculatedTotal - totalLimpio) > 1) {
+      return _error("Total (" + _formatMoneda(totalLimpio) + ") no coincide con suma de items (" + _formatMoneda(calculatedTotal) + "). Diferencia: " + _formatMoneda(Math.abs(calculatedTotal - totalLimpio)) + ".");
     }
 
     const idFacturaLimpia = String(factura || "").trim();
@@ -1641,6 +1651,11 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
       modo = 'CXC';
       diasCredito = 30;
       usuario = SESSION_SERVICE.getCurrentUser()?.getEmail() || "SYSTEM";
+    }
+
+    // M8: Idempotency check
+    if (_isIdempotent(corrId, idCliente || 'venta_contado')) {
+      return { success: true, id: null, total: totalVenta, correlationId: corrId, deduplicated: true };
     }
 
     // Validate mode
