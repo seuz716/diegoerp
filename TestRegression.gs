@@ -3406,6 +3406,17 @@ const TEST_CLEANUP = {
     return true;
   });
 
+  _test('M8-03: procesarPagoProveedorAtomic has idempotency check', () => {
+    const fnSrc = DOMAIN.procesarPagoProveedorAtomic.toString();
+    if (fnSrc.indexOf('_isIdempotent') < 0) {
+      return 'procesarPagoProveedorAtomic no tiene check de idempotencia';
+    }
+    if (fnSrc.indexOf('correlationId') < 0) {
+      return 'procesarPagoProveedorAtomic no acepta correlationId';
+    }
+    return true;
+  });
+
 const TEST_TIMEOUT = {
   startTime: null,
   MAX_EXECUTION_MS: 300000,
