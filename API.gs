@@ -758,7 +758,9 @@ function getProductos(filtro) {
       }
       if (filtro.busqueda) filtroLimpio.busqueda = INPUT_VALIDATOR.sanitizeString(filtro.busqueda, 100);
     }
-    const lista = DAO_PRODUCTOS.listar(filtroLimpio);
+    const lista = CACHE.executeWithCircuit('productos', function() {
+      return DAO_PRODUCTOS.listar(filtroLimpio);
+    }, 3);
     const productos = lista.map(function(p) {
       return {
         id: p.id,
@@ -1027,7 +1029,9 @@ function getCompras(filtroProveedor, filtroEstado, page, pageSize) {
     if (!page && page !== 0) page = 0;
     if (!pageSize) pageSize = 5000;
     pageSize = Math.min(5000, pageSize);
-    const compras = DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null, 10000);
+    const compras = CACHE.executeWithCircuit('compras', function() {
+      return DAO_COMPRAS.getCompras(filtroProveedor || null, filtroEstado || null, 10000);
+    }, 3);
     const tercerosMap = {};
     if (CACHE.terceros) {
       CACHE.terceros.forEach(function(t) { tercerosMap[t.id] = t.nombre; });
