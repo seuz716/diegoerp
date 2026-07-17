@@ -14,6 +14,55 @@
 // IdempotencyService handles persistent storage via CacheService
 const _PROCESSED_CORRELATION_IDS = {};
 
+const ROLLBACK_MAX_RETRIES = 3;
+const ROLLBACK_BASE_DELAY_MS = 500;
+
+/**
+ * Restaura una fila con reintentos y verificación de estado previo.
+ * M2: Rollback idempotente con backoff exponencial.
+ * @param {Sheet} sheet - Hoja de cálculo.
+ * @param {number} rowIndex - Índice de la fila.
+ * @param {Array} values - Valores a restaurar.
+ * @param {number} versionCol - Columna de versión (1-indexed).
+ * @param {number} expectedVersion - Versión esperada.
+ * @returns {boolean} true si se restauró, false si ya estaba restaurada.
+ */
+function _restoreRowWithRetry(sheet, rowIndex, values, versionCol, expectedVersion) {
+  var actualVersion = Number(sheet.getRange(rowIndex, versionCol, 1, 1).getValues()[0][0]) || 1;
+  if (actualVersion === expectedVersion) return true; // Ya restaurada (idempotente)
+  
+  for (var attempt = 0; attempt < ROLLBACK_MAX_RETRIES; attempt++) {
+    try {
+      var numCols = Math.max(...Object.values(CONFIG.COLUMNS.PRODUCTOS).concat(
+        Object.values(CARTERA_CONFIG.COLUMNS.TERCEROS).concat(
+        Object.values(CARTERA_CONFIG.COLUMNS.CARTERA).concat(
+        Object.values(COMPRAS_CONFIG.COLUMNS.COMPRAS)
+      ))) + 1;
+      
+      // Intentar restaurar según tipo de tabla
+      if (values.length <= 8) {
+        // Cartera/Producto snapshot (startCol based)
+        var startCol = values.length <= 3 ? 0 : 0;
+        sheet.getRange(rowIndex, startCol + 1, 1, values.length).setValues([values]);
+      } else {
+        sheet.getRange(rowIndex, 1, 1, values.length).setValues([values]);
+      }
+      
+      // Verificar versión después de escribir
+      var checkVersion = Number(sheet.getRange(rowIndex, versionCol, 1, 1).getValues()[0][0]) || 1;
+      if (checkVersion === expectedVersion) return true;
+      throw new Error('Verificación versión fallida');
+    } catch (e) {
+      if (attempt === ROLLBACK_MAX_RETRIES - 1) {
+        Logger.log('[ROLLBACK] CRÍTICO: Falló restauración fila ' + rowIndex + ' tras ' + ROLLBACK_MAX_RETRIES + ' intentos');
+      }
+      var delay = ROLLBACK_BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200;
+      Utilities.sleep(delay);
+    }
+  }
+  return false;
+}
+
 function _isIdempotent(correlationId, idTercero) {
   if (!correlationId) return false;
   const cacheHit = IdempotencyService.isProcessed(correlationId, idTercero);

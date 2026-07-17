@@ -162,6 +162,90 @@ function runAllRegressionTests() {
     return true;
   });
 
+  // ===== M1 — Deadlock prevention (acquireMultipleLocks) =====
+
+  _test('M1-01: acquireMultipleLocks ordena IDs alfabéticamente', () => {
+    try {
+      const acquiredOrder = [];
+      const origAcquire = LOCK_MANAGER.acquireResourceLock.bind(LOCK_MANAGER);
+      LOCK_MANAGER.acquireResourceLock = function(resourceId) {
+        acquiredOrder.push(resourceId);
+        return origAcquire(resourceId);
+      };
+      try {
+        LOCK_MANAGER.acquireMultipleLocks(['PID_C', 'PID_A', 'PID_B'], function() {
+          return true;
+        }, 5000);
+      } finally {
+        LOCK_MANAGER.acquireResourceLock = origAcquire;
+      }
+      if (acquiredOrder.length !== 3) return 'Se esperaban 3 locks, se obtuvieron ' + acquiredOrder.length;
+      if (acquiredOrder[0] !== 'PID_A') return 'Primer lock debió ser PID_A, fue ' + acquiredOrder[0];
+      if (acquiredOrder[1] !== 'PID_B') return 'Segundo lock debió ser PID_B, fue ' + acquiredOrder[1];
+      if (acquiredOrder[2] !== 'PID_C') return 'Tercer lock debió ser PID_C, fue ' + acquiredOrder[2];
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M1-02: acquireMultipleLocks libera locks aunque callback lance error', () => {
+    try {
+      var released = [];
+      var origAcquire = LOCK_MANAGER.acquireResourceLock.bind(LOCK_MANAGER);
+      LOCK_MANAGER.acquireResourceLock = function(resourceId) {
+        var handle = origAcquire(resourceId);
+        var origRelease = handle.releaseLock.bind(handle);
+        handle.releaseLock = function() {
+          released.push(resourceId);
+          return origRelease();
+        };
+        return handle;
+      };
+      try {
+        LOCK_MANAGER.acquireMultipleLocks(['X', 'Y', 'Z'], function() {
+          throw new Error('simulated_failure');
+        }, 5000);
+      } catch (e) {
+        if (e.message !== 'simulated_failure') return 'Error inesperado: ' + e.message;
+      } finally {
+        LOCK_MANAGER.acquireResourceLock = origAcquire;
+      }
+      if (released.length !== 3) return 'Se esperaban 3 releases, se obtuvieron ' + released.length;
+      if (released[0] !== 'Z') return 'Primer release debió ser Z (LIFO), fue ' + released[0];
+      if (released[1] !== 'Y') return 'Segundo release debió ser Y, fue ' + released[1];
+      if (released[2] !== 'X') return 'Tercer release debió ser X, fue ' + released[2];
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M1-03: acquireMultipleLocks retorna resultado del callback', () => {
+    try {
+      const result = LOCK_MANAGER.acquireMultipleLocks(['R1'], function() {
+        return { ok: true, value: 42 };
+      }, 5000);
+      if (!result || result.ok !== true) return 'Callback return no se propagó';
+      if (result.value !== 42) return 'Valor del callback incorrecto';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M1-04: acquireMultipleLocks sin IDs retorna callback directamente', () => {
+    try {
+      const result = LOCK_MANAGER.acquireMultipleLocks([], function() { return 'empty_ok'; }, 5000);
+      if (result !== 'empty_ok') return 'Con array vacío debió ejecutar callback directamente';
+      const result2 = LOCK_MANAGER.acquireMultipleLocks(null, function() { return 'null_ok'; }, 5000);
+      if (result2 !== 'null_ok') return 'Con null debió ejecutar callback directamente';
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   _test('removeOrphanLocks ejecuta sin error', () => {
     const result = LOCK_MANAGER.removeOrphanLocks();
     if (typeof result.removed !== 'number') return 'removed no es número';
@@ -2854,6 +2938,25 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     } finally {
       sheet.getRange(rowIndex, 1, 1, numCols).setValues([orig]); // restaurar fila original
     }
+  });
+
+  // ===== M2 — Idempotent rollback with retries =====
+
+  _test('M2-01: _restoreRowWithRetry function exists', () => {
+    if (typeof _restoreRowWithRetry !== 'function') {
+      return '_restoreRowWithRetry no está definida (rollback idempotente pendiente)';
+    }
+    return true;
+  });
+
+  _test('M2-02: ROLLBACK_MAX_RETRIES constant defined', () => {
+    if (typeof ROLLBACK_MAX_RETRIES === 'undefined') {
+      return 'ROLLBACK_MAX_RETRIES no está definido';
+    }
+    if (ROLLBACK_MAX_RETRIES < 1) {
+      return 'ROLLBACK_MAX_RETRIES debe ser >= 1, actual: ' + ROLLBACK_MAX_RETRIES;
+    }
+    return true;
   });
 
   // ===== SEC — Cierre de secretos (AUTH-003, AUTH-002, AUTH-005) =====
