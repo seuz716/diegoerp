@@ -587,6 +587,43 @@ const LOCK_MANAGER = {
   },
 
   /**
+   * Adquiere múltiples locks en orden alfabético estricto para evitar deadlocks.
+   * Libera todos los locks (orden inverso LIFO) tanto en éxito como en error.
+   * @param {string[]} resourceIds - IDs de los recursos a bloquear.
+   * @param {Function} callback - Función que se ejecutará una vez adquiridos todos los locks.
+   * @param {number} [timeoutMs] - Timeout global para adquirir todos los locks.
+   * @returns {*} Resultado del callback.
+   * @throws {Error} Si no se pueden adquirir todos los locks en el tiempo especificado.
+   */
+  acquireMultipleLocks(resourceIds, callback, timeoutMs) {
+    if (!resourceIds || resourceIds.length === 0) return callback();
+
+    const sortedIds = resourceIds.slice().sort(function(a, b) {
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+    const locks = [];
+    const startTime = Date.now();
+    const effectiveTimeout = timeoutMs || this.RESOURCE_LOCK_TIMEOUT;
+
+    try {
+      for (var i = 0; i < sortedIds.length; i++) {
+        var lock = this.acquireResourceLock(sortedIds[i]);
+        locks.push(lock);
+        if (Date.now() - startTime > effectiveTimeout) {
+          throw new Error('Timeout al adquirir múltiples locks (obtenidos ' + locks.length + '/' + sortedIds.length + ').');
+        }
+      }
+      return callback();
+    } finally {
+      for (var j = locks.length - 1; j >= 0; j--) {
+        try { locks[j].releaseLock(); } catch (e) {
+          Logger.log("[LOCK_MULTI] Error liberando lock en posición " + j + ": " + e.message);
+        }
+      }
+    }
+  },
+
+  /**
    * Limpia el log y sospechosos.
    */
   _resetMetrics() {

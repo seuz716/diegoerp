@@ -922,24 +922,18 @@ DAO.createCartera(record);
     const MAX_RETRIES = 3;
 
     const _executeCompraTx = () => {
-      let lockAcquired = null;
+      // Collect product IDs and combine with proveedor for deterministic lock order
+      const compraProdIds = [];
+      for (let j = 0; j < items.length; j++) {
+        const pid = _sanitizeId(items[j].id || items[j].productoId || items[j].id_producto || "");
+        if (pid && compraProdIds.indexOf(pid) === -1) compraProdIds.push(pid);
+      }
+      const lockIds = [idProv].concat(compraProdIds);
+
+      return LOCK_MANAGER.acquireMultipleLocks(lockIds, function() {
       const tx = _Transaction.create();
 
       try {
-        lockAcquired = LOCK_MANAGER.acquireResourceLock(idProv);
-
-        // Acquire locks per product (Bug #5 fix)
-        const productLocks = [];
-        const compraProdIds = [];
-        for (let j = 0; j < items.length; j++) {
-          const pid = _sanitizeId(items[j].id || items[j].productoId || items[j].id_producto || "");
-          if (pid && compraProdIds.indexOf(pid) === -1) compraProdIds.push(pid);
-        }
-        compraProdIds.sort();
-        for (let j = 0; j < compraProdIds.length; j++) {
-          productLocks.push(LOCK_MANAGER.acquireResourceLock(compraProdIds[j]));
-        }
-
         const tercero = DAO.getTerceroById(idProv);
         if (!tercero) { LOG_ENGINE.logEvent("ERROR_COMPRA", "COMPRAS", idProv, {}, { error: "PROVEEDOR_NO_EXISTE" }, "ERROR"); return _error("Proveedor " + idProv + " no existe."); }
         const tipoTercero = (tercero.tipo || "").toUpperCase();
@@ -1255,12 +1249,8 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback error en compra: " + rbErr.message); }
         CACHE.invalidateCartera();
         throw e;
-      } finally {
-        if (lockAcquired) lockAcquired.releaseLock();
-        for (let j = (productLocks || []).length - 1; j >= 0; j--) {
-          if (productLocks[j]) productLocks[j].releaseLock();
-        }
       }
+      }, 30000); // acquireMultipleLocks handles lock release in finally
     };
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1632,27 +1622,18 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
 
     const MAX_RETRIES = 3;
     const _executeVentaTx = () => {
-      let lockAcquired = null;
-      const productLocks = [];
+      // Collect product IDs and optionally client for deterministic lock order
+      const prodIds = [];
+      for (let j = 0; j < itemsList.length; j++) {
+        const pid = _sanitizeId(itemsList[j].id || itemsList[j].productoId || itemsList[j].id_producto || "");
+        if (pid && prodIds.indexOf(pid) === -1) prodIds.push(pid);
+      }
+      const lockIds = (modo === 'CXC' && idCliente) ? [idCliente].concat(prodIds) : prodIds;
+
+      return LOCK_MANAGER.acquireMultipleLocks(lockIds, function() {
       const tx = _Transaction.create();
 
       try {
-        // For CxC mode, lock the client; for CONTADO, no client lock needed
-        if (modo === 'CXC') {
-          lockAcquired = LOCK_MANAGER.acquireResourceLock(idCliente);
-        }
-
-        // Collect unique product IDs and acquire locks sorted (deadlock prevention)
-        const prodIds = [];
-        for (let j = 0; j < itemsList.length; j++) {
-          const pid = _sanitizeId(itemsList[j].id || itemsList[j].productoId || itemsList[j].id_producto || "");
-          if (pid && prodIds.indexOf(pid) === -1) prodIds.push(pid);
-        }
-        prodIds.sort();
-        for (let j = 0; j < prodIds.length; j++) {
-          productLocks.push(LOCK_MANAGER.acquireResourceLock(prodIds[j]));
-        }
-
         // For CxC mode, verify client exists
         if (modo === 'CXC') {
           const cliente = DAO.getTerceroById(idCliente);
@@ -1853,13 +1834,8 @@ LOG_ENGINE.logEvent("PAGO_PROVEEDOR", "COMPRAS", idCompraLimpio,
         try { tx.rollback(); } catch (rbErr) { Logger.log("[DOMAIN] Rollback venta error: " + rbErr.message); }
         CACHE.invalidateCartera();
         throw e;
-      } finally {
-        // Release product locks in reverse order
-        for (let j = productLocks.length - 1; j >= 0; j--) {
-          try { productLocks[j].releaseLock(); } catch (_) {}
-        }
-        if (lockAcquired) lockAcquired.releaseLock();
       }
+      }, 30000); // acquireMultipleLocks handles lock release in finally
     };
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
