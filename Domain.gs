@@ -1350,11 +1350,17 @@ LOG_ENGINE.logEvent("CREATE_COMPRA", "COMPRAS", idCompra,
    * @param {string} referencia - Payment reference or description
    * @returns {{success: boolean, id: string, saldo_restante: number, estado: string}} Payment result with remaining balance
    */
-  procesarPagoProveedorAtomic(idCompra, monto, referencia) {
+  procesarPagoProveedorAtomic(idCompra, monto, referencia, correlationId) {
     const idCompraLimpio = String(idCompra || "").trim();
     if (!idCompraLimpio) return _error("ID de compra inválido.");
     const montoLimpio = _parseMoneda(monto, NaN);
     if (isNaN(montoLimpio) || montoLimpio <= 0) return _error("Monto inválido.");
+    
+    // M8: Idempotency check
+    const corrId = correlationId || ('pago_' + Date.now());
+    if (_isIdempotent(corrId, idCompraLimpio)) {
+      return { success: true, msg: "Pago ya procesado", correlationId: corrId, deduplicated: true };
+    }
 
     const MAX_RETRIES = 3;
 
