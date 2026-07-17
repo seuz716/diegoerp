@@ -145,7 +145,9 @@ const LOCK_MANAGER = {
     while (attempt < MAX_RETRIES) {
       if (Date.now() - startTime >= timeoutMs) {
         this._metrics.timeouts++;
-        throw new Error("Timeout (" + timeoutMs + "ms) al adquirir bloqueo para " + resourceId + ".");
+        var err = new Error("LOCK_TIMEOUT: No se pudo adquirir el bloqueo para " + resourceId + " después de " + timeoutMs + "ms.");
+        err.code = "LOCK_TIMEOUT";
+        throw err;
       }
 
       if (this._safeTryLock(this.RESOURCE_LOCK_WAIT)) {
