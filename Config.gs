@@ -487,8 +487,12 @@ function _isValidDate(d) { return d instanceof Date && !isNaN(d.getTime()); }
 function _error(msg) { return { success: false, message: String(msg || "Error desconocido"), code: "ERROR" }; }
 
 function _captureError(context, error) {
-  var stack = error && error.stack ? error.stack : (error ? String(error) : 'Unknown error');
+  var stack = error && error.stack ? String(error.stack) : (error ? String(error) : 'Unknown error');
   var corrId = error && error.correlationId ? error.correlationId : 'NO_CORR_ID';
+  // C3: Sanitize stack traces to remove secrets and URLs
+  stack = stack.replace(/https?:\/\/[^\s\]]+/g, '[URL_REDACTED]');
+  stack = stack.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[API_KEY_REDACTED]');
+  stack = stack.replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]');
   Logger.log('[' + context + '] ' + stack + ' (corr: ' + corrId + ')');
 }
 

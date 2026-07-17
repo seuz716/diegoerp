@@ -32,6 +32,53 @@ const LogService = {
   },
 
   /**
+   * Sanitiza datos antes de escribirlos en logs, redactando secretos.
+   * C3: Previene exposición de API keys, HMACs, tokens en logs.
+   * @param {*} data - Valor a sanitizar (string, object, array).
+   * @returns {*} Datos con secretos redactados.
+   */
+  _sanitizeForLog: function(data) {
+    var secretPatterns = [
+      /AIza[0-9A-Za-z_-]{20,}/g,           // Gemini API keys
+      /Bearer\s+\S+/gi,                     // Bearer tokens
+      /[0-9a-f]{64}(?!"|\]|')/gi,         // HMAC SHA-256 (64 hex chars)
+    ];
+    
+    function sanitizeValue(val) {
+      if (typeof val === 'string') {
+        var sanitized = val;
+        for (var i = 0; i < secretPatterns.length; i++) {
+          sanitized = sanitized.replace(secretPatterns[i], '[REDACTED]');
+        }
+        // Remove URLs with embedded tokens
+        sanitized = sanitized.replace(/https?:\/\/[^\s\]]+/g, '[URL_REDACTED]');
+        return sanitized;
+      }
+      if (Array.isArray(val)) {
+        return val.map(sanitizeValue);
+      }
+      if (val && typeof val === 'object') {
+        var result = {};
+        for (var key in val) {
+          if (val.hasOwnProperty(key)) {
+            var lowerKey = key.toLowerCase();
+            if (lowerKey.indexOf('key') >= 0 || lowerKey.indexOf('secret') >= 0 || 
+                lowerKey.indexOf('token') >= 0 || lowerKey.indexOf('authorization') >= 0) {
+              result[key] = '[REDACTED]';
+            } else {
+              result[key] = sanitizeValue(val[key]);
+            }
+          }
+        }
+        return result;
+      }
+      return val;
+    }
+    
+    return sanitizeValue(data);
+  },
+
+  /**
    * Ensures Logs sheet exists with proper headers
    * L-01: Auto-creates sheet if missing
    */
@@ -78,16 +125,17 @@ const LogService = {
 
       var details = '';
       if (context && context.details) {
-        details = typeof context.details === 'object' ? JSON.stringify(context.details) : String(context.details);
+        var sanitized = this._sanitizeForLog(context.details);
+        details = typeof sanitized === 'object' ? JSON.stringify(sanitized) : String(sanitized);
         details = this._truncateMessage(details);
       }
 
-      // Handle error object differently
+      // Handle error object differently - C3: sanitize stack traces
       if (context && context.error) {
-        var errDetails = {
+        var errDetails = this._sanitizeForLog({
           message: context.error.message,
           stack: context.error.stack
-        };
+        });
         details = JSON.stringify(errDetails);
       }
 

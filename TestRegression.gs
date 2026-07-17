@@ -3039,6 +3039,33 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     return true;
   });
 
+  // ===== C3 — Log Sanitization =====
+
+  _test('C3-01: _sanitizeForLog redacta API keys', () => {
+    var input = 'Error with key AIza1234567890abcdefghijklmnopqrstuvwxyz';
+    var output = LogService._sanitizeForLog(input);
+    if (output.indexOf('AIza') >= 0) return 'API key no fue redactada';
+    if (output.indexOf('[REDACTED]') < 0) return 'No se agregó marcador de redcción';
+    return true;
+  });
+
+  _test('C3-02: _sanitizeForLog redacta objetos con keys sensibles', () => {
+    var input = { apiKey: 'AIza123456', secret: 'secret123', name: 'test' };
+    var output = LogService._sanitizeForLog(input);
+    if (output.apiKey !== '[REDACTED]') return 'Campo apiKey no fue redactado';
+    if (output.secret !== '[REDACTED]') return 'Campo secret no fue redactado';
+    if (output.name !== 'test') return 'Campo no-key fue modificado incorrectamente';
+    return true;
+  });
+
+  _test('C3-03: _sanitizeForLog redacta URLs', () => {
+    var input = 'Error fetching https://api.example.com?key=AIza123456&token=secret';
+    var output = LogService._sanitizeForLog(input);
+    if (output.indexOf('AIza') >= 0) return 'API key en URL no fue redactada';
+    if (output.indexOf('[URL_REDACTED]') < 0) return 'URL no fue redactada';
+    return true;
+  });
+
   return {
     passed: TEST_RESULTS.passed,
     failed: TEST_RESULTS.failed,
