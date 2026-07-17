@@ -72,7 +72,7 @@ function _startLongOpTimeout(onUserSaysYes) {
       else { App._longOpResolve = null; }
     };
     document.getElementById('btn-longop-yes').addEventListener('click', function() { if (App._longOpResolve) App._longOpResolve(true); });
-    document.getElementById('btn-longop-no').addEventListener('click', function() { if (App._longOpResolve) App._longOpResolve(false); });
+    document.getElementById('btn-longop-no').addEventListener('click', function() { if (App._longOpResolve) App._longOpResolve(false); App._cancelLongOpTimeout(); });
   }, 45000);
 }
 function _cancelLongOpTimeout() {

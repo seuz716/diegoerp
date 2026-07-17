@@ -1,14 +1,19 @@
 /*
  * DESIGN TOKENS — System-wide design constants
- * Generated: 2026-06-28
- * 
+ * Updated: 2026-07-16 — consolidated with styles.html:root
+ *
  * These tokens should be the SINGLE SOURCE OF TRUTH for all design values.
  * All components must use these tokens, not hardcoded values.
+ *
+ * NOTE: styles.html :root overrides colors per theme (light/dark).
+ * This file defines spacing, sizing, typography, and transitions.
  */
 
 :root {
   /* ========== SPACING ========== */
+  --space-half: 2px;
   --space-1: 4px;
+  --space-1-5: 6px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
@@ -16,10 +21,9 @@
   --space-6: 24px;
   --space-7: 28px;
   --space-8: 32px;
-  --space-9: 36px;
   --space-10: 40px;
   --space-12: 48px;
-  
+
   /* Layout specific */
   --space-80: 80px;
   --space-76: 76px;
@@ -29,7 +33,9 @@
   --main-max-width: 900px;
   --modal-max-width: 480px;
   --toast-max-width: 360px;
-  
+  --toggle-w: 32px;
+  --toggle-h: 16px;
+
   /* Component sizes */
   --loader-size: 14px;
   --icon-size-lg: 18px;
@@ -45,22 +51,38 @@
   --font-size-lg: 15px;
   --font-size-xl: 17px;
   --font-size-2xl: 20px;
-  
+
+  /* Responsive typography — clamp(min, preferred, max) */
+  --text-xs: clamp(11px, 2.5vw, 12px);
+  --text-micro: clamp(11px, 2.5vw, 12px);
+  --text-data: clamp(11px, 2.5vw, 12px);
+  --text-sm: clamp(12px, 2.8vw, 13px);
+  --text-label: clamp(13px, 3vw, 14px);
+  --text-base: clamp(13px, 3vw, 14px);
+  --text-body: clamp(14px, 3.2vw, 15px);
+  --text-lg: clamp(15px, 3.5vw, 17px);
+  --text-stat-hero: clamp(1.8rem, 7vw, 2.6rem);
+  --text-stat-normal: clamp(1.3rem, 5vw, 1.6rem);
+
+  /* Font families */
+  --mono: 'DM Mono', 'Roboto Mono', Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --display: 'Libre Baskerville', Georgia, 'Times New Roman', serif;
+  --font-body: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
   /* ========== TRANSITIONS ========== */
   --duration-fast: 150ms;
   --duration-base: 250ms;
   --duration-slow: 400ms;
-  
+
   /* Easing curves */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.87, 0, 0.13, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
 
-/* For backward compatibility - alias existing variables */
-:root {
-  --text-xs: var(--font-size-xs);
-  --text-sm: var(--font-size-sm);
-  --text-base: var(--font-size-base);
-  --text-lg: var(--font-size-lg);
+  /* ========== MISC ========== */
+  --radius: 0px;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --hover: rgba(0, 0, 0, 0.04);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --inverse: #1A1814;
 }
