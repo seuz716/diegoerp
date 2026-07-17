@@ -400,13 +400,6 @@ App.mapearEstadoCartera = function (estado) {
   var map = { VENCIDA: { label: 'Vencida', cls: 'badge-venc' }, ABIERTA: { label: 'Abierta', cls: 'badge-open' }, PARCIAL: { label: 'Parcial', cls: 'badge-partial' }, CANCELADA: { label: 'Cancelada', cls: 'badge-done' } };
   return map[estado] || { label: estado || '\u2014', cls: 'badge-done' };
 };
-function mostrarRespuestaServidor(res, container) {
-  container.innerHTML = '';
-  var pre = document.createElement('pre');
-  pre.style.cssText = 'font-size:var(--text-xs);color:var(--text);padding:var(--space-3);background:var(--bg-2);overflow:auto;max-height:400px;';
-  pre.textContent = JSON.stringify(res, null, 2);
-  container.appendChild(pre);
-}
 App.mapearTipoTercero = function (tipo) {
   var map = { CLIENTE: { label: 'Cliente', cls: 'badge-open' }, PROVEEDOR: { label: 'Proveedor', cls: '' }, AMBOS: { label: 'Ambos', cls: 'badge-open' } };
   return map[tipo] || { label: tipo || '\u2014', cls: 'badge-done' };
@@ -515,7 +508,7 @@ function safeInnerHTML(el, html) {
   if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
     el.innerHTML = DOMPurify.sanitize(html, {ALLOWED_TAGS: ['td', 'tr', 'button', 'span', 'div'], ALLOWED_ATTR: ['class', 'style', 'colspan', 'data-id', 'data-activo', 'data-saldo', 'id', /^data-.*/]} );
   } else {
-    console.error('[SECURITY] DOMPurify no disponible - se omite innerHTML para prevenir XSS');
+    el.textContent = html;
   }
 }
 // Hierarchy of error types for differentiated feedback
@@ -582,13 +575,28 @@ function showErrorCode(code, customMsg) {
 // Soft refresh: invalidates cache after optimistic lock conflict
 App._softRefresh = function (recordId, conflictKey) {
   if (!recordId) return;
-  // Invalidate entire cartera cache - requires re-render of current view
-  // The record may be on any page, so we can't reliably fetch just one page
   App.data.invalidate('cartera');
-  // Trigger re-render of current view if needed
   if (typeof window._rerenderCurrentView === 'function') {
     window._rerenderCurrentView();
   }
+};
+
+// Re-render current active view after optimistic lock conflict
+window._rerenderCurrentView = function () {
+  var active = document.querySelector('.view.active');
+  if (!active) return;
+  var id = active.id.replace('view-', '');
+  var map = {
+    dashboard: cargarDashboard,
+    cartera: cargarCartera,
+    abonos: cargarAbonoSelect,
+    terceros: cargarTerceros,
+    ventas: cargarVentas,
+    compras: cargarCompras,
+    vencimientos: cargarVencimientos,
+    productos: cargarProductos
+  };
+  if (map[id]) map[id]();
 };
 App.logError = function (message, context) {
   var tag = '[' + (context || 'App') + '] ' + (message || 'Error desconocido');
@@ -616,7 +624,6 @@ App.drafts = {
     } catch (e) { return null; }
   },
   hasDraft: function (formKey) { return !!this.load(formKey); },
-  clear: function (formKey) { try { localStorage.removeItem(this._prefix + formKey); } catch (e) {} },
   getAgeMs: function (formKey) { var e = this.load(formKey); return e ? Date.now() - e.timestamp : -1; },
   getAgeText: function (formKey) {
     var ms = this.getAgeMs(formKey);

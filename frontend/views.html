@@ -969,36 +969,40 @@ function guardarTercero() {
 }
 App.state.productos.cache = [];
 async function cargarVentas() {
-  App.state.productos.cache = [];
-  await cargarVentasProductos();
-  cargarVentasTerceros();
-  document.getElementById('venta-tipo').value = 'CONTADO';
-  document.getElementById('venta-tercero-row').style.display = 'none';
-  document.getElementById('venta-dias-row').style.display = 'none';
-  document.getElementById('venta-error').classList.remove('show');
-  document.getElementById('venta-success').style.display = 'none';
-  var container = document.getElementById('venta-productos');
-  container.innerHTML = '';
-  agregarFilaProducto();
-  calcularTotalVenta();
-  // Draft auto-save for static fields
-  App.drafts.wireForm('venta', '#view-ventas select, #view-ventas input:not([type=hidden])', function () {
-    return {
-      tipo: document.getElementById('venta-tipo').value,
-      cliente: document.getElementById('venta-cliente').value,
-      dias: document.getElementById('venta-dias').value,
-    };
-  });
-  App.drafts.showRestorePrompt('venta', null, function (data) {
-    if (data.tipo) {
-      document.getElementById('venta-tipo').value = data.tipo;
-      if (data.tipo === 'CxC') { document.getElementById('venta-tercero-row').style.display = ''; document.getElementById('venta-dias-row').style.display = ''; }
-      else { document.getElementById('venta-tercero-row').style.display = 'none'; document.getElementById('venta-dias-row').style.display = 'none'; }
-    }
-    if (data.cliente) document.getElementById('venta-cliente').value = data.cliente;
-    if (data.dias) document.getElementById('venta-dias').value = data.dias;
-    App.drafts._showIndicator('venta');
-  });
+  try {
+    App.state.productos.cache = [];
+    await cargarVentasProductos();
+    cargarVentasTerceros();
+    document.getElementById('venta-tipo').value = 'CONTADO';
+    document.getElementById('venta-tercero-row').style.display = 'none';
+    document.getElementById('venta-dias-row').style.display = 'none';
+    document.getElementById('venta-error').classList.remove('show');
+    document.getElementById('venta-success').style.display = 'none';
+    var container = document.getElementById('venta-productos');
+    container.innerHTML = '';
+    agregarFilaProducto();
+    calcularTotalVenta();
+    // Draft auto-save for static fields
+    App.drafts.wireForm('venta', '#view-ventas select, #view-ventas input:not([type=hidden])', function () {
+      return {
+        tipo: document.getElementById('venta-tipo').value,
+        cliente: document.getElementById('venta-cliente').value,
+        dias: document.getElementById('venta-dias').value,
+      };
+    });
+    App.drafts.showRestorePrompt('venta', null, function (data) {
+      if (data.tipo) {
+        document.getElementById('venta-tipo').value = data.tipo;
+        if (data.tipo === 'CxC') { document.getElementById('venta-tercero-row').style.display = ''; document.getElementById('venta-dias-row').style.display = ''; }
+        else { document.getElementById('venta-tercero-row').style.display = 'none'; document.getElementById('venta-dias-row').style.display = 'none'; }
+      }
+      if (data.cliente) document.getElementById('venta-cliente').value = data.cliente;
+      if (data.dias) document.getElementById('venta-dias').value = data.dias;
+      App.drafts._showIndicator('venta');
+    });
+  } catch (e) {
+    showErrorCode('SERVER_ERROR', e.message);
+  }
 }
 function cargarVentasProductos() {
   return App.api.getProductos().then(function (data) {
@@ -1135,38 +1139,51 @@ function registrarVenta() {
     return;
   }
   if (tipo === 'CxC' && idTercero) {
-    var totalVentaCentavos = 0;
-    for (var iC = 0; iC < carrito.length; iC++) {
-      totalVentaCentavos += carrito[iC].cantidad * carrito[iC].precio;
-    }
-    var cliente = null;
-    var itemsT = App.data.terceros && App.data.terceros.items ? App.data.terceros.items : [];
-    for (var iT = 0; iT < itemsT.length; iT++) {
-      if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
-    }
-    if (cliente) {
-      if (cliente.limite_credito === 0 || cliente.limite_credito === null) {
-        errorEl.textContent = 'Este cliente no tiene lÃ­mite de crÃ©dito configurado. Configure un lÃ­mite o seleccione venta de contado.';
-        errorEl.classList.add('show');
-        return;
+    // Refrescar datos de terceros y cartera antes de validar lÃ­mite de crÃ©dito
+    return Promise.all([
+      App.data.refreshTerceros ? App.data.refreshTerceros() : App.api.getTerceros(null),
+      App.data.refreshCartera ? App.data.refreshCartera() : App.api.getCartera(null, null)
+    ]).then(function () {
+      var totalVentaCentavos = 0;
+      for (var iC = 0; iC < carrito.length; iC++) {
+        totalVentaCentavos += carrito[iC].cantidad * carrito[iC].precio;
       }
-      var saldoActual = 0;
-      var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
-      for (var iCa = 0; iCa < carteraItems.length; iCa++) {
-        var itemC = carteraItems[iCa];
-        if (itemC.id_tercero === idTercero && itemC.estado !== 'CANCELADA') {
-          saldoActual += itemC.saldo || 0;
+      var cliente = null;
+      var itemsT = App.data.terceros && App.data.terceros.items ? App.data.terceros.items : [];
+      for (var iT = 0; iT < itemsT.length; iT++) {
+        if (itemsT[iT].id === idTercero) { cliente = itemsT[iT]; break; }
+      }
+      if (cliente) {
+        if (cliente.limite_credito === 0 || cliente.limite_credito === null) {
+          errorEl.textContent = 'Este cliente no tiene lÃ­mite de crÃ©dito configurado. Configure un lÃ­mite o seleccione venta de contado.';
+          errorEl.classList.add('show');
+          return;
+        }
+        var saldoActual = 0;
+        var carteraItems = App.data.cartera && App.data.cartera.items ? App.data.cartera.items : [];
+        for (var iCa = 0; iCa < carteraItems.length; iCa++) {
+          var itemC = carteraItems[iCa];
+          if (itemC.id_tercero === idTercero && itemC.estado !== 'CANCELADA') {
+            saldoActual += itemC.saldo || 0;
+          }
+        }
+        var creditoDisponible = cliente.limite_credito - saldoActual;
+        if (totalVentaCentavos > creditoDisponible) {
+          errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crÃ©dito disponible. Disponible: ' + App.formatearMoneda(creditoDisponible) + '.';
+          errorEl.classList.add('show');
+          return;
         }
       }
-      var creditoDisponible = cliente.limite_credito - saldoActual;
-      if (totalVentaCentavos > creditoDisponible) {
-        errorEl.textContent = 'La venta (' + App.formatearMoneda(totalVentaCentavos) + ') excede el crÃ©dito disponible. Disponible: ' + App.formatearMoneda(creditoDisponible) + '.';
-        errorEl.classList.add('show');
-        return;
-      }
-    }
+      proceedToConfirm();
+    }).catch(function (err) {
+      showErrorCode(err.code || 'SERVER_ERROR', err.message);
+      errorEl.textContent = 'Error validando crÃ©dito: ' + (err.message || err);
+      errorEl.classList.add('show');
+    });
   }
-  var totalStr = document.getElementById('venta-total').textContent;
+  proceedToConfirm();
+  function proceedToConfirm() {
+    var totalStr = document.getElementById('venta-total').textContent;
   confirmarAccion(['Â¿Confirmar el registro de esta venta?', 'Total: ' + totalStr, 'Tipo: ' + tipo], function() {
   btn.disabled = true;
   btn.classList.add('is-processing');
@@ -1326,7 +1343,7 @@ function abrirModalProducto(producto) {
       precioVenta: document.getElementById('producto-precio-venta').value,
     };
   });
-  App.drafts.save(draftKey, null); // clear stale for new
+  App.drafts.clear(draftKey); // clear stale for new
   document.getElementById('sidebar').setAttribute('aria-hidden', 'true');
   document.getElementById('main').setAttribute('aria-hidden', 'true');
   modal.classList.add('active');
@@ -1407,6 +1424,23 @@ function cargarCompras(append) {
   if (!body) return;
   if (!append) {
     _showSkeleton(body, 'table');
+    // Poblar filtro de proveedores
+    var provSelect = document.getElementById('compras-filter-prov');
+    if (provSelect) {
+      var currentVal = provSelect.value;
+      App.api.getTerceros(null).then(function (data) {
+        var items = data && data.items ? data.items : (Array.isArray(data) ? data : []);
+        var proveedores = items.filter(function(t) { return t.tipo === 'PROVEEDOR' || t.tipo === 'AMBOS'; });
+        provSelect.innerHTML = '<option value="">Todos los proveedores</option>';
+        proveedores.forEach(function (t) {
+          var opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.id + ' — ' + (t.nombre || '—');
+          provSelect.appendChild(opt);
+        });
+        if (currentVal) provSelect.value = currentVal;
+      });
+    }
   }
   var filtroProv = document.getElementById('compras-filter-prov') ? document.getElementById('compras-filter-prov').value || null : null;
   var filtroEstado = document.getElementById('compras-filter-estado') ? document.getElementById('compras-filter-estado').value || null : null;
@@ -1613,30 +1647,34 @@ function guardarCompra() {
   if (total < 1) { errEl.textContent = 'El total debe ser mayor a 0.'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
   var btn = document.getElementById('btn-compra-guardar');
-  btn.disabled = true;
-  btn.textContent = 'Guardando...';
-  App.api.registrarCompra(proveedorId, items, total, vencimiento || null, factura || null).then(function (res) {
-    btn.disabled = false;
-    btn.textContent = 'Guardar compra';
-    if (res && res.success === false) {
-      errEl.textContent = res.error || 'Error al registrar compra';
+  var proveedorSel = document.getElementById('compra-proveedor');
+  var proveedorNombre = proveedorSel.options[proveedorSel.selectedIndex] ? proveedorSel.options[proveedorSel.selectedIndex].text : '';
+  confirmarAccion(['¿Confirmar el registro de esta compra?', 'Proveedor: ' + proveedorNombre, 'Total: ' + App.formatearMoneda(total)], function() {
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+    App.api.registrarCompra(proveedorId, items, total, vencimiento || null, factura || null).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar compra';
+      if (res && res.success === false) {
+        errEl.textContent = res.error || 'Error al registrar compra';
+        errEl.style.display = 'block';
+        return;
+      }
+      App.drafts.clear('compra');
+      document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
+      document.getElementById('compra-success').style.display = 'block';
+      App.api.getProductos().then(function (data) {
+        App.state.productos.cache = (data && data.productos) || data || [];
+      });
+      setTimeout(cerrarModalNuevaCompra, 1500);
+      cargarCompras();
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar compra';
+      showErrorCode(err.code || 'SERVER_ERROR', err.message);
+      errEl.textContent = err.message || err;
       errEl.style.display = 'block';
-      return;
-    }
-    App.drafts.clear('compra');
-    document.getElementById('compra-success').textContent = 'Compra registrada exitosamente';
-    document.getElementById('compra-success').style.display = 'block';
-    App.api.getProductos().then(function (data) {
-      App.state.productos.cache = (data && data.productos) || data || [];
     });
-    setTimeout(cerrarModalNuevaCompra, 1500);
-    cargarCompras();
-  }).catch(function (err) {
-    btn.disabled = false;
-    btn.textContent = 'Guardar compra';
-    showErrorCode(err.code || 'SERVER_ERROR', err.message);
-    errEl.textContent = err.message || err;
-    errEl.style.display = 'block';
   });
 }
 function abrirModalPagoCompra(idCompra, saldo) {
@@ -1686,26 +1724,28 @@ function ejecutarPagoCompra() {
   if (!montoCentavos || montoCentavos < 100) { errEl.textContent = 'Ingrese un monto vÃ¡lido (mÃ­nimo $1).'; errEl.style.display = 'block'; return; }
   errEl.style.display = 'none';
   var btn = document.getElementById('btn-pago-compra-ejecutar');
-  btn.disabled = true;
-  btn.textContent = 'Procesando...';
-  App.api.registrarPagoProveedor(App.state.pagos.compraId, montoCentavos, ref || 'Pago manual').then(function (res) {
-    btn.disabled = false;
-    btn.textContent = 'Pagar';
-    if (res && res.success === false) {
-      errEl.textContent = res.error || 'Error al procesar pago';
+  confirmarAccion(['¿Confirmar el registro de este pago?', 'Monto: ' + App.formatearMoneda(montoCentavos), 'Referencia: ' + (ref || 'Pago manual')], function() {
+    btn.disabled = true;
+    btn.textContent = 'Procesando...';
+    App.api.registrarPagoProveedor(App.state.pagos.compraId, montoCentavos, ref || 'Pago manual').then(function (res) {
+      btn.disabled = false;
+      btn.textContent = 'Pagar';
+      if (res && res.success === false) {
+        errEl.textContent = res.error || 'Error al procesar pago';
+        errEl.style.display = 'block';
+        return;
+      }
+      App.drafts.clear('pago_compra_' + App.state.pagos.compraId);
+      cerrarModalPagoCompra();
+      showToast('Pago registrado exitosamente', 'success');
+      cargarCompras();
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Pagar';
+      showErrorCode(err.code || 'SERVER_ERROR', err.message);
+      errEl.textContent = err.message || err;
       errEl.style.display = 'block';
-      return;
-    }
-    App.drafts.clear('pago_compra_' + App.state.pagos.compraId);
-    cerrarModalPagoCompra();
-    showToast('Pago registrado exitosamente', 'success');
-    cargarCompras();
-  }).catch(function (err) {
-    btn.disabled = false;
-    btn.textContent = 'Pagar';
-    showErrorCode(err.code || 'SERVER_ERROR', err.message);
-    errEl.textContent = err.message || err;
-    errEl.style.display = 'block';
+    });
   });
 }
 function cargarVencimientos() {
