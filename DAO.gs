@@ -600,6 +600,11 @@ const DAO = {
         throw new DAOError("Error al escribir en la hoja de cartera", 'SHEET_WRITE_FAILURE', e);
       }
 
+      // M5: Cache consistency - invalidate inside lock before release
+      try { CACHE.invalidateCartera(); } catch (e) {
+        Logger.log("[M5] Warning: cache invalidation failed: " + e.message);
+      }
+
       return true;
     } finally {
       if (lock) {

@@ -246,6 +246,37 @@ function runAllRegressionTests() {
     }
   });
 
+  // ===== M3 — Circuit Breaker extension (compras/productos) =====
+
+  _test('M3-01: getCircuitState soporta 4 tipos', () => {
+    try {
+      const kinds = ['terceros', 'cartera', 'compras', 'productos'];
+      for (var i = 0; i < kinds.length; i++) {
+        var state = CACHE.getCircuitState(kinds[i]);
+        if (!state || typeof state.state !== 'string') return 'getCircuitState(' + kinds[i] + ') no retorna {state}';
+        if (typeof state.failCount !== 'number') return 'getCircuitState(' + kinds[i] + ') no tiene failCount';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
+  _test('M3-02: forceResetCircuit resetea los 4 tipos', () => {
+    try {
+      const kinds = ['terceros', 'cartera', 'compras', 'productos'];
+      CACHE.forceResetCircuit('all');
+      for (var i = 0; i < kinds.length; i++) {
+        var state = CACHE.getCircuitState(kinds[i]);
+        if (state.state !== 'closed') return 'forceResetCircuit(all): ' + kinds[i] + ' no quedó closed, quedó ' + state.state;
+        if (state.failCount !== 0) return 'forceResetCircuit(all): ' + kinds[i] + ' failCount no es 0';
+      }
+      return true;
+    } catch (e) {
+      return 'Exception: ' + e.message;
+    }
+  });
+
   _test('removeOrphanLocks ejecuta sin error', () => {
     const result = LOCK_MANAGER.removeOrphanLocks();
     if (typeof result.removed !== 'number') return 'removed no es número';
@@ -2938,6 +2969,30 @@ _test('INV-05: Ajustes de inventario requieren justificación', () => {
     } finally {
       sheet.getRange(rowIndex, 1, 1, numCols).setValues([orig]); // restaurar fila original
     }
+  });
+
+  // ===== M5 — Cache consistency inside lock =====
+
+  _test('M5-01: DAO._updateCarteraBatch invalidates cache inside lock', () => {
+    // Verify the code has cache invalidation before lock release
+    if (typeof DAO === 'undefined' || typeof DAO._updateCarteraBatch !== 'function') {
+      return 'DAO._updateCarteraBatch no existe';
+    }
+    // Check that CACHE.invalidateCartera is called in the function
+    const fnSrc = DAO._updateCarteraBatch.toString();
+    if (fnSrc.indexOf('CACHE.invalidateCartera') < 0) {
+      return 'M5: CACHE.invalidateCartera() no se llama en _updateCarteraBatch';
+    }
+    if (fnSrc.indexOf('lock.releaseLock') < 0) {
+      return 'M5: lock.releaseLock() no encontrado';
+    }
+    // Verify invalidate is BEFORE release (simple check: invalidate appears before release in source)
+    const invPos = fnSrc.indexOf('CACHE.invalidateCartera');
+    const relPos = fnSrc.indexOf('lock.releaseLock');
+    if (invPos > relPos) {
+      return 'M5: CACHE.invalidateCartera() está DESPUÉS del releaseLock (incorrecto)';
+    }
+    return true;
   });
 
   // ===== M2 — Idempotent rollback with retries =====
